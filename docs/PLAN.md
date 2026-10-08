@@ -68,6 +68,7 @@ one giant post where every item is a photo and every claim is a comment.
 | D55 | **Sellers must be 18+ and verify email and phone. Pro sellers skip phone verification.** | 2026-10-08 |
 | D56 | Browse and search include public sales only (not unlisted). | 2026-10-08 |
 | D57 | **Import/export tools ship at launch:** bulk import of sale data, export of sales and buyer/order info, and re-import of shipping tracking numbers. See section 3c. | 2026-10-08 |
+| D58 | Import/export defaults accepted: exports carry only handle, display name and shipping address (no email or phone); CSV + XLSX both ways plus a JSON account export; Pirate Ship preset + generic CSV at launch; a column-mapping step for any CSV, with named collection-app presets in v1; photos by ZIP only; all import/export tools free; imports only into draft or scheduled sales, upserting by `sku` / `item_id`, with removal opt-in. | 2026-10-08 |
 
 The detailed behavior spec for claims, offers, take-backs and invoices lives in
 [`STATE_MACHINES.md`](./STATE_MACHINES.md).
@@ -316,7 +317,11 @@ seller confirms, and every apply is recorded in the audit log.
 - **Target:** a sale in `draft` or `scheduled`. A live sale can't be imported into,
   because price and quantity lock once items have entries (D40). An import can also
   create a new draft sale.
-- **Formats:** CSV and XLSX, plus an optional ZIP of photos (Q-IO-5).
+- **Formats:** CSV and XLSX, plus an optional ZIP of photos (D58).
+- **Column mapping:** if the headers don't match a template, the seller maps their
+  columns to ours (the mapping is remembered per seller), so exports from any
+  collection or inventory app work. Named presets for TCGplayer, Collectr and Dragon
+  Shield come in v1.
 - **Templates:** a downloadable template per item type. Columns come from the item
   type's attribute schema (section 3, "Item types"), and include one example row and
   a `template_version`.
@@ -343,14 +348,14 @@ seller confirms, and every apply is recorded in the audit log.
 | --- | --- | --- |
 | **Sale items** | Every item with all its attributes, `item_id`, `sku`, status, winner handle, final price. Uses the same columns as the import template, so it can be re-imported (e.g. to relist unsold items). | CSV, XLSX |
 | **Orders / buyers** | One row per invoice line: invoice number, buyer handle and display name, **shipping name and address**, item, price, shipping option, totals, status, paid / shipped dates, carrier, tracking. | CSV, XLSX |
-| **Shipping-tool preset** | The same order data in the column layout a shipping tool expects, so the seller can make labels in bulk (Q-IO-3). | CSV |
+| **Shipping-tool preset** | The same order data in **Pirate Ship's** import layout (plus a generic layout), so the seller can make labels in bulk (D58). | CSV |
 | **Full account export** | Everything the seller owns: sales, items, entries, invoices, messages, feedback. This is for data portability. | JSON (zipped) |
 
 - **Generated in the background:** export jobs run on a Queue, write to R2, and give a
   download link that expires after 24h. Large sales never time out a request.
 - **Privacy:** buyer data in exports is limited to what the seller needs to fulfil
   orders: handle, display name and shipping address for won items. **No buyer
-  emails or phone numbers** (Q-IO-1). Every export is audit-logged (who, when, which sale).
+  emails or phone numbers** (D58). Every export is audit-logged (who, when, which sale).
 - **Spreadsheet formula injection:** any cell starting with `=`, `+`, `-`, `@`, tab or
   CR is prefixed with `'` on export. Buyer-controlled text (names, addresses, notes)
   could otherwise run as a formula in Excel.
@@ -693,29 +698,12 @@ end-to-end and load tests.
 
 ## 12. Open questions
 
-**Import/export (D57).** Each has a recommended default in *italics*.
-- **Q-IO-1. Buyer data in exports.** The plan never collected shipping addresses,
-  and sellers need them to ship. Buyers would keep an address book, and the address
-  would be shared with the seller only for won items. Should exports include only the
-  handle, display name and address, never email or phone? *Yes.*
-- **Q-IO-2. Formats.** CSV + XLSX for import and export, plus a JSON full-account
-  export? *Yes.*
-- **Q-IO-3. Shipping tools.** Which do you or your sellers use (Pirate Ship, ShipStation,
-  eBay labels, USPS Click-N-Ship)? *Pirate Ship preset + a generic CSV at launch;
-  others on request.*
-- **Q-IO-4. Collection-app imports.** Should we import directly from collection or
-  inventory apps' exports (TCGplayer, Collectr, Dragon Shield Card Manager) by
-  mapping their columns? *The generic template at launch, plus a column-mapping
-  step (pick which of your columns is "price", etc.) so any CSV works. Named presets in v1.*
-- **Q-IO-5. Photos.** ZIP upload matched by file name? *Yes. Image URLs are not accepted.*
-- **Q-IO-6. Free vs Pro.** Are import, export and tracking re-import free for everyone
-  (the 10-item cap still applies to free imports)? *Yes, all free. Data portability
-  builds trust, and the item cap already separates the tiers.*
-- **Q-IO-7. Import targets.** Draft and scheduled sales only; re-imports update by
-  `sku` / `item_id`; "remove items not in file" is opt-in. *Yes.*
+All planning rounds are answered (product D1–D58, stack S1–S29, testing S27).
+The one item still open:
 
-**Still open from before:** name and domain. Production email needs an onboarded
-sending domain (TECH_STACK S28), so it must be decided before the pilot sale.
+- **Name and domain.** Staging and previews can run on `workers.dev` and send email only
+  to verified addresses. **Production email requires an onboarded sending domain**
+  (TECH_STACK S28), so the domain must be decided before the pilot sale.
 
 ## 13. Proposed first milestones
 
@@ -743,7 +731,7 @@ sending domain (TECH_STACK S28), so it must be decided before the pilot sale.
 7. **The seller control room:** deciding, take-backs, rescinds with reason codes,
    and the admin dispute queue.
 8. **Invoices after close:** shipping menu, buyer addresses, payment deadlines,
-   completion, **order and item exports, the shipping-tool preset, and tracking re-import**.
+   completion, **order and item exports, the Pirate Ship preset, and tracking re-import**.
 9. **Notifications and messaging:** Queue → Cloudflare Email Service / web push; on-site messages.
 10. **Discovery:** browse and search (FTS5), follows, share cards, text export →
     pilot sale.
