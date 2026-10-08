@@ -18,6 +18,22 @@ one giant post where every item is a photo and every claim is a comment.
 | D5 | Sale visibility: **public**, **unlisted** (link only), or **private** (password-protected or an email allowlist). | 2026-10-08 |
 | D6 | **Claims are binding.** The seller can rescind a claim. The buyer can only *request* a take-back, which the seller approves or denies. | 2026-10-08 |
 | D7 | **US and USD only** at launch. Store a currency code anyway so expanding later doesn't need a migration. | 2026-10-08 |
+| D8 | **Launch free**, with **Pro tiers for buyers and sellers**, plus **optional on-site checkout with a fee** later. See section 3a. | 2026-10-08 |
+| D9 | The operator will form an **LLC** before taking any payments. | 2026-10-08 |
+| D10 | **Sales are events only.** No permanent storefronts. | 2026-10-08 |
+| D11 | **Offers ship in the first release.** Accepted offers are binding. **The seller has the final call** between a full-price claim and an offer. | 2026-10-08 |
+| D12 | Buyers can claim multiple units of a listing, up to a per-buyer limit the seller sets. | 2026-10-08 |
+| D13 | Payment deadline: **48h** by default; **Pro sellers can set 24h**. Every seller gets one-click "rescind and pass to the next backup". | 2026-10-08 |
+| D14 | Leaving the backup queue is free until you are promoted. | 2026-10-08 |
+| D15 | Sellers define a shipping menu. **Tracking is required above $20 for free sellers and above $40 for Pro sellers.** | 2026-10-08 |
+| D16 | Combining shipping across sales ("merge invoices") comes in v1. Shipping labels come later. | 2026-10-08 |
+| D17 | Communities: v1/v2, but the data model is designed for them now. | 2026-10-08 |
+| D18 | **Buyer↔seller messaging on-site.** | 2026-10-08 |
+| D19 | Discord webhooks are a **Pro seller** feature. | 2026-10-08 |
+| D20 | Email verification is required; **Pro buyers bypass** it (exact meaning: Q-R3-2). | 2026-10-08 |
+| D21 | **Proxies, orica and counterfeits are banned.** | 2026-10-08 |
+| D22 | While payment is off-site, the platform's role in disputes is reputation, reports and bans only. | 2026-10-08 |
+| D23 | The owner is the solo builder and sole admin. No target date or pilot group yet; the name is undecided. | 2026-10-08 |
 
 ---
 
@@ -86,13 +102,14 @@ Any account can be both a buyer and a seller.
 - A buyer presses **Claim** and gets a position in that item's queue.
   - Positions `1..quantity` are **winners**; everyone after them is a **backup**.
   - This mirrors the FB convention ("claim", "BU1", "BU2").
-- **Claims are binding (D6).** The buyer cannot release one on their own.
+- **Claims are binding (D6).** A free buyer cannot release one on their own.
+  - **Exception: Pro buyers can rescind their own claim** without seller approval
+    (D8). The guardrails are still open (Q-R3-1).
   - **Take-back request:** the buyer asks to back out, with an optional reason.
     The seller sees it in the control room and **approves** (the claim is released
     and the next backup is promoted) or **denies** (the claim stands). While the
     request is pending, the claim stays active.
-  - Backup positions are also binding, but leaving a backup queue is free
-    (open question Q7).
+  - Leaving a backup queue is free until you are promoted (D14).
   - Approved take-backs are counted on the buyer's record (section 3b).
 - The seller can **rescind** a claim at any time: a non-payer, a blocked buyer,
   a listing mistake, or an item that turned out damaged. They choose a reason.
@@ -103,27 +120,50 @@ Any account can be both a buyer and a seller.
   The seller can turn this off for sales where speed matters.
 - Optional per-sale limits: a maximum number of claims per buyer, and a maximum backups per item.
 
-### Offer
-- A buyer submits an amount below asking, with an optional note.
-- The seller can **accept** (it becomes a winning claim if a slot is free, otherwise a
-  backup or rejected, depending on rules), **decline**, or **counter** (the buyer accepts
-  or declines).
-- Offers expire after a configurable time (e.g. 24h) or when the item is claimed at asking.
-- **Key rule to decide per sale:** does a claim at full price beat a pending offer?
-  The FB norm is yes ("asking price claims take priority"), so that is the default.
-- Offers are visible only to the seller and the offering buyer. Public bidding
-  turns into an auction, which is a different product (see Later).
+### Offer (first release, D11)
+- A buyer submits an amount below asking, with an optional note. **Offers are
+  binding**: if the seller accepts, the buyer owes it.
+- The seller can **accept**, **decline**, or **counter**. If countered, the buyer
+  accepts (binding) or declines.
+- **The seller has the final call** between full-price claims and offers. A full-price
+  claim does *not* automatically win. Proposed mechanics (to be confirmed in round 3):
+  - When an item has offers enabled, a full-price claim puts it in
+    **`claimed — seller deciding`** rather than final.
+  - The seller picks the winner (the claimant or an offer) or lets it auto-confirm
+    the claimant after a decision window.
+  - Everyone else on the item drops to backup, in an order the seller can adjust.
+- Offers expire after a configurable time, or when the item is finalized.
+- Offers are visible only to the seller and the offering buyer. Buyers see only
+  "N offers" (Q-R3-10). Public bidding would turn this into an auction.
 
 ### Invoice (per buyer per sale)
 - Built automatically from that buyer's winning claims and accepted offers.
-- Shipping rules per sale: a flat rate per buyer, per item, first item plus
-  each additional item, free over $X, or "seller will quote".
+- **Shipping menu (D15):** the seller defines options, for example "PWE (untracked)
+  $1.50", "BMWT (tracked) $5", or "Local pickup". The buyer picks one on the invoice.
+  - Options can be per-buyer flat, per item, or first item plus each additional,
+    with free shipping over $X.
+  - **Tracking rule:** untracked options are hidden once the invoice subtotal goes
+    over **$20 (free seller)** or **$40 (Pro seller)**.
+- **Payment deadline (D13):** 48h after the invoice is sent (Pro sellers can choose
+  24h). When it's missed, the seller is offered one-click "rescind and pass to the
+  next backup".
 - The seller can adjust lines, add a discount or custom shipping, then **send** it.
 - Status: `draft → sent → paid → shipped (tracking #) → complete`.
 - **Payment happens off-platform** (PayPal G&S, Venmo, etc.). The invoice shows the
   seller's handles, and the buyer clicks "I've paid" with an optional reference. The
   seller confirms. We never touch money in the MVP: no PCI scope and no
   money-transmitter questions.
+
+### Messaging (D18)
+- Buyer↔seller messages are on-site, with one conversation per buyer per sale,
+  linked to their invoice. A buyer can message a seller before claiming (e.g. "can I
+  see the back of the card?").
+- Messages update in real time over the same WebSocket infrastructure, with an
+  email or push notification if unread after N minutes.
+- Image attachments are allowed (for condition photos), stored in R2 with access checks.
+- A report button on every message; a seller can block a user from messaging them.
+- **Off-platform payment risk:** messaging is where scams happen ("pay me F&F
+  instead"). Show a warning when a message contains payment-handle patterns.
 
 ### Q&A
 - A threaded comment area per item. The seller's answers are highlighted.
@@ -172,6 +212,26 @@ The options:
 | **D. Per-sale listing fee / boosts** | Pay to run a large sale, or to feature a sale on the browse page. | Simple. | Friction at the moment a seller is deciding whether to try us. |
 | **E. Buyer fee** | A small fee added to the buyer's invoice. | Doesn't scare away sellers. | Buyers hate it, and they're the side we need most at launch. |
 
+### Free vs Pro (D8, draft; prices TBD)
+
+| Capability | Free | Pro |
+| --- | --- | --- |
+| **Seller:** items per sale | 10 | Unlimited |
+| **Seller:** concurrent live/scheduled sales | ? (Q-R3-3) | Unlimited |
+| **Seller:** payment deadline | 48h | 48h or 24h |
+| **Seller:** tracking required above | $20 | $40 |
+| **Seller:** rescind and pass to the next backup | ✓ | ✓ |
+| **Seller:** private sales (password / allowlist) | ? (Q-R3-4) | ✓ |
+| **Seller:** Discord webhooks | — | ✓ |
+| **Buyer:** rescind own claim without approval | — | ✓ (guardrails: Q-R3-1) |
+| **Buyer:** skip email verification / buyer requirements | — | ✓ (Q-R3-2) |
+| **On-site checkout fee** (later) | X% | Lower % ? |
+
+Implementation: an `entitlements(user)` function that returns limits from the
+user's plan, checked server-side on every relevant action. There is never a
+client-only check. Subscriptions are handled by Stripe Billing (Checkout + Customer
+Portal + webhooks into D1).
+
 **Recommendation: launch free, then go hybrid.**
 1. **Launch:** free, with no fees, to build the seller base. Collect GMV (total
    sales value) data to size later fees.
@@ -216,6 +276,9 @@ themselves from strangers.
 - Authentication, user profile, and layout shell.
 
 ### Phase 1 — MVP: run one real sale end to end
+- *Now also includes:* offers (seller decides), on-site messaging, the shipping
+  menu with tracking thresholds, payment deadlines, and Free vs Pro limit checks
+  (with Pro grantable by an admin before billing exists).
 - Seller: create a sale, bulk upload items (drag in many photos, one item per photo
   or grouped, then fill in titles and prices in a table view), and set terms.
 - Schedule or go-live, close.
@@ -228,7 +291,9 @@ themselves from strangers.
 - "Copy as text" export of the item list for the FB post body.
 
 ### Phase 2 — v1
-- Offers (submit, accept, decline, counter, expire).
+- Stripe Billing for Pro subscriptions.
+- Merge invoices across sales from the same seller (D16).
+- Discord webhooks (Pro).
 - Per-item Q&A.
 - Web push notifications, plus "follow seller" to get notified of new sales.
 - Automatic promotion after the payment deadline passes.
@@ -241,7 +306,7 @@ themselves from strangers.
 - "Groups": a community space with member-only sales (mirrors FB groups).
 - Timed **offer windows**: highest offer wins at the close. This is really an
   auction mode, so build it only if people ask for it.
-- On-platform payments via Stripe Connect.
+- On-platform checkout via Stripe Connect with a platform fee (after the LLC and a sales tax review).
 - Shipping label integration (Pirate Ship / EasyPost).
 - A CSV import of items.
 - A PWA (installable app) with offline drafts.
@@ -481,64 +546,85 @@ that should cover early usage. Durable Objects need the paid plan. Watch for:
 - **Load test** before the first real sale: simulate the go-live rush with k6 or
   `autocannon` against a preview deployment.
 
-## 12. Open questions — round 2
+## 12. Open questions — round 3
 
-Answered in round 1: niche (D2), sign-up (D3), private sales (D5), binding claims
-(D6), geography (D7). Each question below has a recommended default in *italics*.
+Rounds 1–2 are recorded as D2–D23. Each question below has a recommended default in *italics*.
 
-**Money and business**
-- **Q1. Monetization path.**
-  - Option 1: launch free, then a Pro subscription plus an optional card checkout
-    with a % fee (section 3a).
-  - Option 2: fees from day one.
-  - Option 3: keep money off-platform forever (subscription and/or a billed fee).
-  - Are you willing to take on chargebacks and sales-tax registration in exchange
-    for a true cut of sales? *Option 1.*
-- **Q2. Business entity.** Will this run under an LLC or another entity? It
-  matters for Stripe, the terms of service, and liability. *Form one before taking any payments.*
+**Pro buyer rescind (needs guardrails, since sellers will have opinions)**
+- **Q-R3-1.** A Pro buyer can rescind without approval. When is that allowed?
+  - (a) any time until they pay, (b) only until the invoice is sent, (c) only
+    within N minutes of claiming, or (d) a monthly quota.
+  - Does a Pro rescind count on the buyer's record?
+  - Can a seller opt a sale out of Pro rescinds?
+  - *Allowed until the invoice is sent, with up to 5 per month. It counts on the
+    record as a "rescind", which is softer than a non-pay. Sellers cannot opt out,
+    otherwise the perk is worthless, but sellers do see the buyer's rescind rate before accepting.*
 
-**Sale format and claim rules**
-- **Q3. Sales as events, or also persistent storefronts** (a seller "binder" that
-  stays up)? *Events for the MVP. Allowing a sale with no close time covers storefronts later.*
-- **Q4. Offers.** Should they be in the MVP or v1? Is an accepted offer binding?
-  Does a full-price claim beat a pending offer? *v1; yes; yes.*
-- **Q5. Quantity greater than 1** (e.g. "4 copies available"). Can one buyer claim
-  several units? *Yes, up to a per-buyer limit the seller sets.*
-- **Q6. Payment deadline.** What's the default, and what happens when it's missed?
-  *24h. The seller gets a one-click "rescind and promote"; automatic rescind is opt-in per sale.*
-- **Q7. Leaving the backup queue.** Is it free, or binding like claims? *Free until
-  you are promoted.*
+**Pro verification bypass**
+- **Q-R3-2.** What exactly does "Pro bypasses this" skip?
+  - The email-verified requirement, or sellers' per-sale buyer requirements (min
+    account age / completed purchases)?
+  - Paying via Stripe already verifies a card, which arguably *is* a stronger check
+    than email.
+  - We still need a working email for notifications and invoices; Stripe gives us one.
+  - *Pro skips the email-verification step and the "new account" requirements;
+    sellers can still block individuals.*
 
-**Shipping and fulfillment**
-- **Q8. Shipping menu.** The seller defines options such as PWE (untracked envelope),
-  BMWT (tracked bubble mailer) and local pickup, and the buyer picks one on the
-  invoice. *Yes, with tracking required above a value the seller sets.*
-- **Q9. Combined shipping across several sales** by the same seller. *v1, as "merge invoices".*
-- **Q10. Buying shipping labels in-app.** *Later.*
+**Free-tier limits**
+- **Q-R3-3.** Free sellers get 10 items per sale. Is there also a cap on concurrent
+  sales? Without one, a seller runs five 10-item sales at once.
+  - *Max 2 concurrent live/scheduled sales on free.*
+- **Q-R3-4.** Are private sales (password / allowlist) free or Pro? Unlisted stays free.
+  *Pro.*
+- **Q-R3-5.** Lots work around the item cap ("Lot of 40 cards" is one item). Is that
+  acceptable? *Yes. Lots are legit and common.*
+- **Q-R3-6.** Photos per item? *Free: 4; Pro: 12.*
 
-**Community and communication**
-- **Q11. Communities.** YGO FB groups have admins, rules and approved-seller lists.
-  Should there be community spaces with their own moderators, membership and
-  members-only sales? This doubles as a growth strategy: win over group admins and
-  their members follow. *v1/v2, but design for it now.*
-- **Q12. Messaging.** In-app buyer↔seller messages, or leave it to
-  Messenger/Discord? *One message thread per invoice, nothing more.*
-- **Q13. Discord.** Should sellers or communities be able to post new sales and
-  "claims open" alerts to a Discord webhook? *Yes, in v1. It's cheap to build.*
+**Offer mechanics (seller has the final call)**
+- **Q-R3-7.** When a full-price claim lands on an item with pending offers, it goes
+  to "seller deciding". Is that what you meant? And what happens if the seller
+  never decides?
+  - *Yes. The seller has a decision window (default 24h, seller-configurable per sale).
+    After it, the full-price claimant auto-wins.*
+- **Q-R3-8.** Can an item with *no* offers be finalized instantly by a full-price
+  claim? Or should sellers be able to hold every item for review?
+  - *Instant when there are no pending offers. "Review all claims" is a per-sale
+    option for sellers who want it.*
+- **Q-R3-9.** Can offers be **above** asking? This often happens in hot drops.
+  *Yes. It's effectively a bid, and the seller decides.*
+- **Q-R3-10.** Do buyers see the number of offers on an item, or just whether it has
+  any? *Show the count, never the amounts.*
+- **Q-R3-11.** Can sellers set a per-item **minimum offer** that auto-declines
+  offers below it? *Yes, hidden from buyers.*
 
-**Trust and safety**
-- **Q14. Buyer verification.** Email only, or phone verification (about $0.05 per
-  check)? *Email by default. Phone can be an optional requirement per sale.*
-- **Q15. Proxies, orica and counterfeits.** Ban them outright, or allow them in a
-  clearly labelled category? *Ban.*
-- **Q16. Our role in disputes.** With off-platform payment, it is limited to
-  reputation, reports and bans. Is that acceptable? *Yes, until checkout (A) exists.*
+**Pro pricing (rough is fine)**
+- **Q-R3-12.** What are the price points? Monthly and/or annual? A free trial?
+  - *Seller Pro about $8/month, Buyer Pro about $4/month, a bundle for both, and a 20%
+    discount for annual. Let early adopters keep Pro free for the first N months.*
+- **Q-R3-13.** On-site checkout fee target? Should Pro sellers get a lower fee? Who
+  absorbs Stripe's ~2.9% + 30¢?
+  - *Platform fee 3% on free and 1.5% on Pro. The Stripe fee is passed to the seller,
+    as eBay and TCGplayer do.*
 
-**Product and project**
-- **Q17. Name and domain.**
-- **Q18. Team and timeline.** Are you building solo? Is there a target date for a
-  pilot sale, and a group to run it with?
-- **Q19. Moderation.** Will you be the only admin and moderator at launch?
+**Legal, safety and age**
+- **Q-R3-14.** Minimum age? YGO skews young. COPPA rules out under-13s, and Stripe
+  requires 18+ to receive payouts.
+  - *13+ to buy (with a parental-consent checkbox for under-18), 18+ to sell.*
+- **Q-R3-15.** Should sellers be **required** to offer protected payment methods
+  (PayPal G&S) while payment is off-site, or should we just warn about F&F, Zelle and Cash App?
+  - *Warn, and show a "Accepts G&S" badge on sales. Don't require it.*
+- **Q-R3-16.** Can sellers edit an item's price or details once it has claims?
+  - *Title and photos yes, with the change noted in the audit log. Price and quantity are
+    locked once claimed.*
+
+**Discovery and growth**
+- **Q-R3-17.** Will the site have a public browse/search across all public sales
+  from day one, or start link-only (sellers bring their own buyers from FB)?
+  - *Link-only plus seller profiles at MVP. Browse/search after there's enough
+    supply to make it look alive.*
+- **Q-R3-18.** Should buyers be able to follow sellers and get notified when a new sale is scheduled? *Yes, MVP. It's how repeat buyers come back.*
+- **Q-R3-19.** Do sales have a maximum duration (e.g. 14 days)? This is needed
+  even as events-only (D10). *Max 14 days live, and the preview can open at most 7 days before go-live.*
 
 ## 13. Proposed first milestones
 
