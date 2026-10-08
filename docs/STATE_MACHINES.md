@@ -436,4 +436,10 @@ IDs stay in the table, marked ~~struck~~.
 | `IO-tracking-transition` | Only `paid` invoices move to `shipped`; others are rejected with a reason | PLAN 3c.3, SM 6 |
 | `IO-tracking-replace` | Replacing an existing tracking number needs confirmation and is logged | PLAN 3c.3 |
 | `IO-tracking-carrier` | The carrier is detected from the tracking number format when blank; ambiguous ones are flagged | PLAN 3c.3 |
+| `TCG-tracked-graded-sealed` | Graded singles and sealed product always require tracked shipping, whatever the seller's threshold | PLAN 3 (TCG catalog), SM 6 |
+| `TCG-real-photo` | Singles above the threshold, and all graded and sealed items, need at least one seller photo to publish | PLAN 3 (TCG catalog) |
+| `TCG-attribute-schema` | An item's attributes validate against its game + kind schema (forms, imports and API alike) | PLAN 3 (TCG catalog) |
+| `TCG-catalog-match` | Import matching order: TCGplayer ID → game ID → set + number → fuzzy name + set; ambiguous → seller chooses | PLAN 3c.1 |
+| `TCG-want-list-notify` | A listing in a public sale that matches a want-list entry (product, finish, condition ≥ min, price ≤ max) notifies its owner once | PLAN 3 (TCG catalog) |
+| `TCG-catalog-free` | Catalog browsing and card search never require Pro (Scryfall terms) | PLAN 3 (TCG catalog) |
 
