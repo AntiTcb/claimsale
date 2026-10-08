@@ -7,6 +7,20 @@ one giant post where every item is a photo and every claim is a comment.
 
 ---
 
+## 0. Decisions so far
+
+| # | Decision | Date |
+| --- | --- | --- |
+| D1 | Stack: SvelteKit 3 + Svelte 5 on Cloudflare Workers (D1, R2, Durable Objects, Queues). | 2026-10-07 |
+| D2 | **Category-agnostic platform.** Yu-Gi-Oh is the launch community and gets first-class support (cards, sealed product, playmats, deck boxes, accessories), but nothing in the core is YGO-specific. | 2026-10-08 |
+| D3 | **Open sign-up** for buyers and sellers from day one. | 2026-10-08 |
+| D4 | **Monetize from sales.** See section 3a for options. | 2026-10-08 |
+| D5 | Sale visibility: **public**, **unlisted** (link only), or **private** (password-protected or an email allowlist). | 2026-10-08 |
+| D6 | **Claims are binding.** The seller can rescind a claim. The buyer can only *request* a take-back, which the seller approves or denies. | 2026-10-08 |
+| D7 | **US and USD only** at launch. Store a currency code anyway so expanding later doesn't need a migration. | 2026-10-08 |
+
+---
+
 ## 1. What's broken about doing this on Facebook
 
 These are the pains the product has to solve; each one maps to a feature below.
@@ -37,9 +51,20 @@ Any account can be both a buyer and a seller.
 ### Sale
 - Title, description, cover image, and the seller's **terms**: payment methods,
   shipping policy, payment deadline, region/country restrictions, and free-text rules.
-- **Visibility:** `public` (listed on a browse page), `unlisted` (link only, the
-  default since most sales get shared into a FB group), or `private` (only invited
-  users or members of a group).
+- **Visibility:**
+  - `public`: listed on the browse page and in search, and indexable.
+  - `unlisted`: anyone with the link can view; it isn't listed or indexed (`noindex`).
+    This is likely the most common choice, since sales get shared into FB groups.
+  - `private`: the sale is gated, and the seller picks one or both methods:
+    - **Password:** a shared password unlocks the sale for that browser session.
+      It's stored as a hash and rate-limited against guessing. The buyer still
+      needs an account to claim.
+    - **Email allowlist:** the seller pastes or uploads emails. Only signed-in
+      users whose *verified* email is on the list can view. Invitees get an email
+      with a link. The seller can add or remove addresses during the sale.
+  - Private-sale photos must not be readable by guessing URLs. Serve them through
+    an access-checked route or a short-lived signed URL, not a public R2 path.
+  - The share card for private sales shows only the title and seller, never the items.
 - **Lifecycle:** `draft → scheduled → live → closed → archived`.
   - `scheduled`: items are visible ("preview") but claim buttons are disabled
     and a countdown is shown. This replaces "sale goes live at 8pm EST".
@@ -49,6 +74,8 @@ Any account can be both a buyer and a seller.
 
 ### Item
 - Title, description, condition, photos (ordered, the first one is the cover), category/tags.
+- An **item type** with typed attributes (see "Item types" below), so YGO cards get
+  set code, rarity and edition fields, while a generic item gets only the basics.
 - **Asking price** (integer cents) and **quantity** (usually 1; >1 for "3 available").
 - **Offers:** `off`, `on`, or `on with a minimum` (the minimum is never shown to buyers).
 - Per-item shipping override (e.g. oversized items).
@@ -59,14 +86,21 @@ Any account can be both a buyer and a seller.
 - A buyer presses **Claim** and gets a position in that item's queue.
   - Positions `1..quantity` are **winners**; everyone after them is a **backup**.
   - This mirrors the FB convention ("claim", "BU1", "BU2").
-- The buyer can **release** a claim. Rule options per sale:
-  - free release until the sale closes,
-  - release only within N minutes of claiming,
-  - or no releases ("claims are binding").
-- The seller can **void** a claim (non-payer, blocked buyer, mistake); it then
-  promotes the next backup.
-- **Promotion** happens when a winner releases or is voided. The new winner is
-  notified and gets the payment deadline restarted.
+- **Claims are binding (D6).** The buyer cannot release one on their own.
+  - **Take-back request:** the buyer asks to back out, with an optional reason.
+    The seller sees it in the control room and **approves** (the claim is released
+    and the next backup is promoted) or **denies** (the claim stands). While the
+    request is pending, the claim stays active.
+  - Backup positions are also binding, but leaving a backup queue is free
+    (open question Q7).
+  - Approved take-backs are counted on the buyer's record (section 3b).
+- The seller can **rescind** a claim at any time: a non-payer, a blocked buyer,
+  a listing mistake, or an item that turned out damaged. They choose a reason.
+  Rescinding promotes the next backup unless the seller marks the item as withdrawn.
+- **Promotion** happens when a winner is rescinded or a take-back is approved. The
+  new winner is notified and their payment deadline restarts.
+- Claim buttons show a short confirmation ("Claims are binding. Claim for $40?").
+  The seller can turn this off for sales where speed matters.
 - Optional per-sale limits: a maximum number of claims per buyer, and a maximum backups per item.
 
 ### Offer
@@ -94,6 +128,86 @@ Any account can be both a buyer and a seller.
 ### Q&A
 - A threaded comment area per item. The seller's answers are highlighted.
 - Separate from claims, so "is this still available?" never counts as a claim.
+
+### Item types (flexible categories)
+To stay general-purpose without a schema change per hobby:
+- **Categories** form a tree, for example *Trading Card Games › Yu-Gi-Oh › Single Cards*.
+- **Item types** each define an attribute schema: field name, type (text, number,
+  enum, boolean), whether it is required, and whether it is filterable. A category
+  points to a default item type.
+- Attribute values live in a JSON column on the item. A few hot attributes (game,
+  set code, rarity) are copied into indexed columns or a `item_attributes` table so
+  they can be filtered.
+- Types are curated by admins at first (not user-defined) to keep data clean.
+- A **generic** type (title, description, condition, price) always exists as a fallback.
+
+**Launch types for Yu-Gi-Oh:**
+
+| Type | Attributes |
+| --- | --- |
+| Single card | card name (autocomplete), set code (e.g. `LOB-EN001`), rarity, edition (1st / Unlimited / Limited), language, condition (NM / LP / MP / HP / DMG), quantity |
+| Graded card | the single-card fields + grading company (PSA / BGS / CGC / other), grade, cert number (with a link to look it up on the grader's site) |
+| Sealed product | product name, product type (booster box / case / pack / tin / structure deck / collection box), set, language, sealed condition notes |
+| Playmat | name / art, event or official vs custom, size, condition, has tube / box |
+| Deck box / sleeves / accessories | brand, product line, color, count (for sleeves), condition |
+| Lot / bundle | free-text contents, item count, an optional list of the cards inside |
+
+**Card data:** use the free YGOPRODeck API for card names, set codes, rarities and
+reference images, cached in D1/KV and refreshed nightly. It also returns
+TCGplayer / Cardmarket / eBay reference prices, which can be shown to the seller
+as a pricing hint while listing. Check their terms on caching and attribution first.
+
+## 3a. Monetization (D4)
+
+**The core tension:** in the original plan, payment happens off-platform (PayPal
+G&S, Venmo). If the money never passes through us, a cut of each sale can only be
+*billed* to the seller afterward, and that relies on sellers reporting honestly.
+The options:
+
+| Model | How it works | Pros | Cons |
+| --- | --- | --- | --- |
+| **A. On-platform checkout (Stripe Connect)** | Buyers pay their invoice by card through us. Stripe splits the payment and the platform keeps an application fee (e.g. X% + Y¢). | A true cut of every sale, collected automatically. Buyer protection we control. Stripe handles seller identity checks and payouts. | Disputes and chargebacks become our problem. Possible **marketplace facilitator sales tax** obligations in many states (see below). Card fees stack on top of ours. YGO buyers are used to G&S. |
+| **B. Final value fee, billed to the seller** | Payment stays off-platform. Monthly, we charge the seller's card on file X% of invoices marked paid. | Simple, and no payments liability. | Easy to dodge (never mark paid; deal in DMs). The incentive to dodge grows with the fee. |
+| **C. Seller subscription** | Free tier with limits; a Pro plan at $N/month removes them. | Predictable revenue, cheap to build (Stripe Billing), no tax or dispute exposure. | Not a cut of sales. Small sellers may never upgrade. |
+| **D. Per-sale listing fee / boosts** | Pay to run a large sale, or to feature a sale on the browse page. | Simple. | Friction at the moment a seller is deciding whether to try us. |
+| **E. Buyer fee** | A small fee added to the buyer's invoice. | Doesn't scare away sellers. | Buyers hate it, and they're the side we need most at launch. |
+
+**Recommendation: launch free, then go hybrid.**
+1. **Launch:** free, with no fees, to build the seller base. Collect GMV (total
+   sales value) data to size later fees.
+2. **Then:** **A + C together.**
+   - *Free tier:* off-platform payment, capped (e.g. N active sales and M items per
+     sale), with private sales limited.
+   - *Pro subscription:* higher limits, password and email-allowlist sales,
+     analytics, scheduled relists, branding.
+   - *Integrated checkout:* optional for any seller. We take a % fee, and offer
+     incentives such as buyer protection, faster payouts, and a "Pays on site"
+     trust badge.
+   - Option B can stay as a fallback for off-platform sales over a threshold.
+3. **Before turning on A:** talk to an accountant about marketplace facilitator
+   laws. Most US states treat a platform that *processes payment* for third-party
+   sellers as responsible for collecting and remitting sales tax. Stripe Tax can
+   do the calculation, but the registration and filing obligation would be ours.
+   Also confirm 1099-K reporting is handled through Stripe Connect.
+
+**Build implications now (even before charging):**
+- Record `gmv_cents` per invoice and keep a `fees` ledger table from day one.
+- Add a `plans` / `entitlements` check layer (e.g. `can(user, 'private_sale')`),
+  so limits can be turned on without refactoring.
+- Design invoices so a "Pay with card" button can be added later.
+
+## 3b. Buyer and seller reputation
+
+With binding claims and open sign-up, reputation is how sellers protect
+themselves from strangers.
+- **Counts on each profile:** completed purchases, completed sales, approved
+  take-backs, rescinds for non-payment, and account age.
+- **After an invoice completes:** two-way feedback (positive / neutral / negative + comment).
+- **When reviewing a claimant,** the seller sees their record at a glance
+  ("12 completed, 1 non-pay, member since 2026").
+- **Per-sale buyer requirements** (optional): a minimum number of completed
+  purchases, a minimum account age, or a verified phone. This mirrors "no
+  zero-feedback buyers" rules in FB groups.
 
 ## 4. Features by phase
 
@@ -275,6 +389,22 @@ blocks           seller_id, blocked_user_id, reason
 notifications    id, user_id, type, payload JSON, read_at, created_at
 push_subscriptions  id, user_id, endpoint, keys JSON
 audit_log        id, sale_id, item_id, actor_id, action, data JSON, created_at
+
+-- added in round 2
+sale_access      sale_id PK, password_hash, allowlist_enabled
+sale_allowlist   sale_id, email, invited_at, accepted_user_id
+takeback_requests id, claim_id, buyer_id, reason, status ('pending'|'approved'|'denied'),
+                 created_at, decided_at
+categories       id, parent_id, slug, name, default_item_type_id
+item_types       id, slug, name, attribute_schema JSON, version
+                 -- items gain: category_id, item_type_id, attributes JSON
+item_attributes  item_id, key, value_text, value_num   -- only filterable attributes
+cards            id (YGOPRODeck id), name, data JSON, updated_at   -- reference cache
+card_printings   card_id, set_code, set_name, rarity
+feedback         id, invoice_id, from_user_id, to_user_id, rating, comment, created_at
+plans            id, name, limits JSON
+subscriptions    user_id, plan_id, stripe_customer_id, status, current_period_end
+fees             id, invoice_id, seller_id, kind, amount_cents, status, created_at
 ```
 
 Indexes: `items(sale_id, sort_order)`, `claims(item_id, status, position)`,
@@ -351,20 +481,64 @@ that should cover early usage. Durable Objects need the paid plan. Watch for:
 - **Load test** before the first real sale: simulate the go-live rush with k6 or
   `autocannon` against a preview deployment.
 
-## 12. Open questions for the product owner
+## 12. Open questions — round 2
 
-1. **Niche:** is this for a specific hobby (cards, sneakers, plants, LEGO…)? That
-   affects categories, condition scales and the shipping defaults.
-2. **Single seller vs community:** is it just you and your group(s) at first, or open
-   sign-up for any seller from day one?
-3. **Group-gated sales:** do sales need to be restricted to members of a community,
-   like FB groups are?
-4. **Offers vs claims priority:** confirm that "full-price claim beats pending offers"
-   is the right default.
-5. **Binding claims:** should a claim be binding by default, or releasable?
-6. **Payments:** is off-platform payment acceptable long-term, or is Stripe a goal?
-7. **Geography:** US only (USD, US shipping) at first, or multi-currency?
-8. **Domain name and branding.**
+Answered in round 1: niche (D2), sign-up (D3), private sales (D5), binding claims
+(D6), geography (D7). Each question below has a recommended default in *italics*.
+
+**Money and business**
+- **Q1. Monetization path.**
+  - Option 1: launch free, then a Pro subscription plus an optional card checkout
+    with a % fee (section 3a).
+  - Option 2: fees from day one.
+  - Option 3: keep money off-platform forever (subscription and/or a billed fee).
+  - Are you willing to take on chargebacks and sales-tax registration in exchange
+    for a true cut of sales? *Option 1.*
+- **Q2. Business entity.** Will this run under an LLC or another entity? It
+  matters for Stripe, the terms of service, and liability. *Form one before taking any payments.*
+
+**Sale format and claim rules**
+- **Q3. Sales as events, or also persistent storefronts** (a seller "binder" that
+  stays up)? *Events for the MVP. Allowing a sale with no close time covers storefronts later.*
+- **Q4. Offers.** Should they be in the MVP or v1? Is an accepted offer binding?
+  Does a full-price claim beat a pending offer? *v1; yes; yes.*
+- **Q5. Quantity greater than 1** (e.g. "4 copies available"). Can one buyer claim
+  several units? *Yes, up to a per-buyer limit the seller sets.*
+- **Q6. Payment deadline.** What's the default, and what happens when it's missed?
+  *24h. The seller gets a one-click "rescind and promote"; automatic rescind is opt-in per sale.*
+- **Q7. Leaving the backup queue.** Is it free, or binding like claims? *Free until
+  you are promoted.*
+
+**Shipping and fulfillment**
+- **Q8. Shipping menu.** The seller defines options such as PWE (untracked envelope),
+  BMWT (tracked bubble mailer) and local pickup, and the buyer picks one on the
+  invoice. *Yes, with tracking required above a value the seller sets.*
+- **Q9. Combined shipping across several sales** by the same seller. *v1, as "merge invoices".*
+- **Q10. Buying shipping labels in-app.** *Later.*
+
+**Community and communication**
+- **Q11. Communities.** YGO FB groups have admins, rules and approved-seller lists.
+  Should there be community spaces with their own moderators, membership and
+  members-only sales? This doubles as a growth strategy: win over group admins and
+  their members follow. *v1/v2, but design for it now.*
+- **Q12. Messaging.** In-app buyer↔seller messages, or leave it to
+  Messenger/Discord? *One message thread per invoice, nothing more.*
+- **Q13. Discord.** Should sellers or communities be able to post new sales and
+  "claims open" alerts to a Discord webhook? *Yes, in v1. It's cheap to build.*
+
+**Trust and safety**
+- **Q14. Buyer verification.** Email only, or phone verification (about $0.05 per
+  check)? *Email by default. Phone can be an optional requirement per sale.*
+- **Q15. Proxies, orica and counterfeits.** Ban them outright, or allow them in a
+  clearly labelled category? *Ban.*
+- **Q16. Our role in disputes.** With off-platform payment, it is limited to
+  reputation, reports and bans. Is that acceptable? *Yes, until checkout (A) exists.*
+
+**Product and project**
+- **Q17. Name and domain.**
+- **Q18. Team and timeline.** Are you building solo? Is there a target date for a
+  pilot sale, and a group to run it with?
+- **Q19. Moderation.** Will you be the only admin and moderator at launch?
 
 ## 13. Proposed first milestones
 
