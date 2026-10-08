@@ -53,6 +53,20 @@ one giant post where every item is a photo and every claim is a comment.
 | D40 | Once an item has entries: title and photos are editable (logged); price and quantity are locked. | 2026-10-08 |
 | D41 | Follow a seller and get notified of new sales, in the MVP. | 2026-10-08 |
 | D42 | Sales run live for at most 14 days; the preview can open at most 7 days before go-live. | 2026-10-08 |
+| D43 | Backup offers on sold-out items: a per-sale toggle, on by default. | 2026-10-08 |
+| D44 | Backup ranking: amount (highest first), then time; the seller can reorder. | 2026-10-08 |
+| D45 | Backups at or above asking auto-promote; below asking goes back to the seller (decision window restarts). | 2026-10-08 |
+| D46 | Buyers can withdraw a pending offer until it is accepted. | 2026-10-08 |
+| D47 | Visible-offer mode shows amounts with anonymous labels ("Buyer A"); the seller sees names. | 2026-10-08 |
+| D48 | Counter-offers: one round at launch. Offers still pending at close get 24h for the seller to accept, then lapse. | 2026-10-08 |
+| D49 | **Invoices go out only after the sale closes**, never mid-sale. The seller sends them, or auto-send at close is on. | 2026-10-08 |
+| D50 | Completion: the buyer confirms receipt, or it auto-completes 14 days after shipping; feedback opens on completion. | 2026-10-08 |
+| D51 | **Seller rescinds need a reason code plus a written explanation, and the code assigns fault** (buyer, seller, neutral, or admin review). Only seller-fault rescinds count against the seller. Buyers can contest within 7 days, and the admin resolves it. See STATE_MACHINES 4.3.1. | 2026-10-08 |
+| D52 | Take-back requests are allowed until the buyer marks the invoice paid. | 2026-10-08 |
+| D53 | Buyers see a running total of their wins during a live sale. | 2026-10-08 |
+| D54 | Seller analytics: basic counts are free; detailed analytics are Pro. | 2026-10-08 |
+| D55 | **Sellers must be 18+ and verify email and phone. Pro sellers skip phone verification.** | 2026-10-08 |
+| D56 | Browse and search include public sales only (not unlisted). | 2026-10-08 |
 
 The detailed behavior spec for claims, offers, take-backs and invoices lives in
 [`STATE_MACHINES.md`](./STATE_MACHINES.md).
@@ -252,6 +266,8 @@ The options:
 | **Seller:** rescind and pass to the next backup | ✓ | ✓ |
 | **Seller:** private sales (password / allowlist) | — (unlisted only) | ✓ |
 | **Seller:** Discord webhooks | — | ✓ |
+| **Seller:** phone verification to publish | Required | Skipped |
+| **Seller:** analytics | Basic counts | Detailed |
 | **Buyer:** rescind own claim without approval | — | ✓ until the invoice is sent, 5/month |
 | **Buyer:** skip email verification / new-account requirements | — | ✓ |
 | **On-site checkout fee** (later) | 3% | 1.5% |
@@ -291,7 +307,11 @@ Portal + webhooks into D1).
 With binding claims and open sign-up, reputation is how sellers protect
 themselves from strangers.
 - **Counts on each profile:** completed purchases, completed sales, approved
-  take-backs, rescinds for non-payment, and account age.
+  take-backs, Pro rescinds, buyer-fault rescinds (non-pay, payment reversed),
+  seller-fault cancels, and account age.
+- **Fault comes from the rescind reason code** (D51, STATE_MACHINES 4.3.1). A seller who
+  cancels because the buyer reversed a payment gets no mark. Contested cases count
+  for no one until an admin resolves them.
 - **After an invoice completes:** two-way feedback (positive / neutral / negative + comment).
 - **When reviewing a claimant,** the seller sees their record at a glance
   ("12 completed, 1 non-pay, member since 2026").
@@ -347,9 +367,12 @@ themselves from strangers.
 ## 5. Technical architecture
 
 ### Stack
+> The detailed, versioned stack proposal and its open questions are in
+> [`TECH_STACK.md`](./TECH_STACK.md). The table below is the summary.
+
 | Concern | Choice | Notes |
 | --- | --- | --- |
-| Framework | **SvelteKit 3** (latest `3.0.x`) + **Svelte 5** (runes) | Use remote functions (`query` / `form` / `command`) for data and mutations where they fit. |
+| Framework | **SvelteKit 3** (latest `3.0.x`) + **Svelte 5** (runes) | Remote functions are still behind `experimental.remoteFunctions` in 3.0.1; see TECH_STACK T2. |
 | Hosting | **Cloudflare Workers** with static assets via `@sveltejs/adapter-cloudflare` (v8) | Workers rather than Pages: Cloudflare is steering new features to Workers, and we need Durable Objects, Queues and cron in the same deployment. |
 | Database | **Cloudflare D1** (SQLite) + **Drizzle ORM** | Drizzle migrations are applied with `wrangler d1 migrations`. |
 | Images | **R2** for originals + **Cloudflare Images transformations** for resizing | Thumbnails are generated on the fly from URL params and cached at the edge. |
@@ -408,7 +431,13 @@ Details are in [`STATE_MACHINES.md` section 9](./STATE_MACHINES.md#9-write-path-
   review (the `user_link` permission). The MVP lets users paste their FB profile URL
   on their profile. The seller sees it next to claims and can verify it themselves.
   Display names are not unique, so show the avatar plus the profile link.
-- Require a verified email before a user can claim.
+- **Buyers:** a verified email is required before claiming (Pro buyers skip it, D29),
+  and buyers must be 13+ (D38).
+- **Sellers (D55):** must attest they are 18+ and verify both email and phone before
+  publishing a sale. **Pro sellers skip phone verification.** Their paid
+  subscription card is the identity signal.
+- **Phone numbers** are stored in E.164 format, are unique per account (one
+  number can't verify many seller accounts), and are never shown publicly.
 
 ### Scheduled work
 - Each live or scheduled sale's DO sets an **alarm** for its next event: go-live,
@@ -433,8 +462,9 @@ stored as integer milliseconds, set by the server. IDs are ULIDs or UUIDv7, so
 they are sortable and not guessable.
 
 ```
-users            id, email, email_verified, display_name, avatar_url, fb_profile_url,
-                 country, created_at
+users            id, email, email_verified, phone_e164 UNIQUE, phone_verified_at,
+                 display_name, handle UNIQUE, avatar_url, fb_profile_url,
+                 age_attested ('13+'|'18+'), country, created_at
 accounts/sessions/verifications  (managed by Better Auth)
 
 seller_profiles  user_id PK, payment_handles JSON, default_terms, default_shipping JSON
@@ -483,6 +513,10 @@ item_types       id, slug, name, attribute_schema JSON, version
 item_attributes  item_id, key, value_text, value_num   -- only filterable attributes
 cards            id (YGOPRODeck id), name, data JSON, updated_at   -- reference cache
 card_printings   card_id, set_code, set_name, rarity
+rescinds         id, entry_id, seller_id, buyer_id, reason_code, explanation,
+                 attachment_key, fault ('buyer'|'seller'|'neutral'|'review'),
+                 refund_owed, refunded_at, refund_ref,
+                 contested_at, contest_text, resolved_by, resolved_fault, resolved_at, created_at
 feedback         id, invoice_id, from_user_id, to_user_id, rating, comment, created_at
 plans            id, name, limits JSON
 subscriptions    user_id, plan_id, stripe_customer_id, status, current_period_end
@@ -563,52 +597,10 @@ that should cover early usage. Durable Objects need the paid plan. Watch for:
 - **Load test** before the first real sale: simulate the go-live rush with k6 or
   `autocannon` against a preview deployment.
 
-## 12. Open questions — round 4
+## 12. Open questions — round 5 (tech stack)
 
-These came up while writing [`STATE_MACHINES.md`](./STATE_MACHINES.md). Each has a
-recommended default in *italics*.
-
-**Offers and ranking**
-- **R4-1. Backup offers.** Can buyers make offers on a sold-out item, to be next in
-  line if the winner falls through? *Yes, per-sale toggle, on by default.*
-- **R4-2. Backup ranking.** Default order is amount (highest first), then time. A
-  $45 offer outranks a $40 claim as backup. Is that right? Or should claims always
-  outrank offers? *Amount, then time; the seller can reorder.*
-- **R4-3. Promotion below asking.** If a winner is removed and the best backup is an
-  offer *below* asking, should it auto-promote, or go back to the seller to decide?
-  *Back to the seller (decision window restarts). Backups at or above asking auto-promote.*
-- **R4-4. Withdrawing offers.** Can a buyer withdraw a pending offer before the seller
-  responds? *Yes, until accepted.*
-- **R4-5. Visible-offer mode.** Show who made each offer, or only amounts?
-  *Amounts with anonymous labels ("Buyer A"); the seller sees names.*
-- **R4-6. Counter-offers.** One round (seller counters, buyer accepts/declines), or
-  unlimited back-and-forth? *One round at launch.*
-- **R4-7. Offers after close.** Offers that are still pending when the sale closes:
-  should the seller get the same 24h to accept, after which they lapse? *Yes.*
-
-**Invoices**
-- **R4-8. When invoices go out.** The seller sends whenever they like (mid-sale
-  for early winners is fine), and there's an optional per-sale **auto-send at close**.
-  Wins after an invoice has been sent go onto a second invoice. *Yes to all.*
-- **R4-9. Completion.** The buyer confirms receipt, or it auto-completes 14 days after
-  shipping. Feedback opens on completion. *Yes.*
-- **R4-10. Seller rescind after the buyer marked paid.** Allowed, with a
-  confirmation, flagged as "refund owed" and counted against the seller's record?
-  *Yes.*
-- **R4-11. Take-back cutoff.** Take-back requests are allowed until the buyer marks
-  paid. *Yes.*
-
-**Product**
-- **R4-12. Buyer cart behavior.** Should buyers see a running total across their
-  wins during a live sale ("You've won 4 items · $86")? *Yes.*
-- **R4-13. Seller analytics (Pro?).** Views, unique visitors, claim rate, sell-through
-  and time-to-sell per sale. Is this a Pro feature? *Basic counts free; details Pro.*
-- **R4-14. Seller requirements.** Should *sellers* need anything beyond 18+ and a
-  verified email to run a public sale (e.g. a verified phone, or a first sale capped
-  at N items until they have feedback)? *Phone verification to publish a public or
-  unlisted sale; no cap.*
-- **R4-15. Search scope.** Should browse/search include items from **unlisted** sales?
-  *No. Only public sales appear in browse and search.*
+The product rules are settled through D56. The open questions are now about
+packages and tooling, and live in [`TECH_STACK.md`](./TECH_STACK.md) section "Questions".
 
 ## 13. Proposed first milestones
 

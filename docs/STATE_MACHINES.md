@@ -6,8 +6,7 @@ functions**: `(state, command, actor, now) → (newState, events)`. Those functi
 are unit-tested without any I/O and called from the serialized write path
 (see "Write path" at the end).
 
-Decision references (D#) point to `PLAN.md` section 0. Questions marked **R4-#**
-are open (see `PLAN.md` section 12).
+Decision references (D#) point to `PLAN.md` section 0.
 
 ---
 
@@ -19,7 +18,7 @@ are open (see `PLAN.md` section 12).
 | **Unit** | One sellable copy. An item with `quantity = 3` has 3 units. |
 | **Won** | The entry holds a unit. It is binding and goes on the buyer's invoice. |
 | **Open** | The entry is active but doesn't hold a unit. Depending on the item's state, it is either *awaiting the seller's decision* or a *backup*. |
-| **Rank** | The order of open entries. Default: **amount descending, then time ascending**, so a claim at $40 ranks above an offer at $35, and an offer at $45 ranks above both. The seller can reorder manually (R4-2). |
+| **Rank** | The order of open entries. Default: **amount descending, then time ascending**, so a claim at $40 ranks above an offer at $35, and an offer at $45 ranks above both. The seller can reorder manually (D44). |
 | **Decision window** | The time the seller has to choose between a full-price claim and competing offers before the earliest claim wins automatically. **24h for free sellers; Pro sellers can configure it** (D25). |
 
 ---
@@ -63,7 +62,7 @@ stateDiagram-v2
     deciding --> sold_out: seller awards / window expires (all units taken)
     deciding --> available: units remain after the award
     sold_out --> available: a winner is removed and no backup is auto-promoted
-    sold_out --> deciding: a winner is removed and the best backup is below asking (R4-3)
+    sold_out --> deciding: a winner is removed and the best backup is below asking (D45)
     available --> withdrawn: seller withdraws
     deciding --> withdrawn: seller withdraws
     available --> unsold: sale closes with no open entries
@@ -94,7 +93,7 @@ stateDiagram-v2
     countered --> open: buyer accepts but no unit is free (re-ranked at the counter amount)
     countered --> declined: buyer declines / counter expires
     open --> declined: seller declines an offer
-    open --> withdrawn: buyer withdraws (an offer before it's accepted, R4-4) or leaves the backup queue (D14)
+    open --> withdrawn: buyer withdraws (an offer before it's accepted, D46) or leaves the backup queue (D14)
     open --> lost: the item's units are all paid for and the sale is closed
     open --> ended: item withdrawn / sale cancelled
     won --> rescinded: seller rescinds (any time; reason required)
@@ -128,7 +127,7 @@ place(item, buyer, kind, amount):
       else:
           → open (backup)
   if kind == offer:
-      if freeUnits == 0 and not sale.allowBackupOffers: reject (R4-1)
+      if freeUnits == 0 and not sale.allowBackupOffers: reject (D43)
       → open                                      # offers never auto-win
       notify the seller
 ```
@@ -159,9 +158,39 @@ A winner can be removed in three ways:
 
 | How | Who | Allowed when | Counts on the record as |
 | --- | --- | --- | --- |
-| **Seller rescind** | Seller | Any time before fulfilled. A reason is required (non-payment, buyer blocked, listing mistake, item damaged, other). After the buyer has marked the invoice paid, it needs confirmation and is flagged "refund owed" (R4-10). | `non_pay` on the buyer only if the reason is non-payment; otherwise a seller-side cancel |
+| **Seller rescind** | Seller | Any time before fulfilled. A structured reason **and** a written explanation are required (see 4.3.1). After the buyer has marked the invoice paid, it needs an extra confirmation and the line is flagged "refund owed" unless the reason says no refund is due (D51). | Whatever the reason's **fault attribution** says (4.3.1) |
 | **Pro buyer rescind** | Buyer (Pro) | Until the invoice containing the entry is **sent**, max **5 per month** (D24) | `rescind` (a softer signal than non-pay) |
-| **Take-back approved** | Seller approves the buyer's request | The request can be filed until the buyer marks the invoice paid (R4-11) | `takeback` |
+| **Take-back approved** | Seller approves the buyer's request | The request can be filed until the buyer marks the invoice paid (D52) | `takeback` |
+
+#### 4.3.1 Rescind reasons and fault attribution (D51)
+
+Every seller rescind records a **reason code**, a **required written explanation**
+(minimum 20 characters), and an optional attachment (e.g. a screenshot of a
+reversed payment). The reason code decides whose record it affects:
+
+| Reason code | Fault | Buyer record | Seller record | Typical case |
+| --- | --- | --- | --- | --- |
+| `buyer_nonpayment` | Buyer | `non_pay` | — | Payment deadline missed |
+| `buyer_unresponsive` | Buyer | `non_pay` | — | Paid nothing and stopped replying |
+| `buyer_payment_reversed` | Buyer | `payment_reversed` (severe) | — | Chargeback, or PayPal dispute filed after shipping was arranged |
+| `buyer_requested_after_payment` | Buyer | `takeback` | — | Buyer asked to cancel after paying; the seller refunds as a courtesy |
+| `buyer_terms_violation` | Buyer | `violation` | — | Ships outside the allowed region, harassment, etc. |
+| `seller_item_unavailable` | Seller | — | `seller_cancel` | Lost, damaged, or sold elsewhere |
+| `seller_listing_error` | Seller | — | `seller_cancel` | Wrong price, set or condition |
+| `mutual_agreement` | Neither | — | — | Both sides agreed in messages |
+| `suspected_fraud` | Pending review | held | held | Goes to the admin queue; nothing is counted until resolved |
+
+- **The buyer sees** the reason code and the explanation. They can **contest the
+  attribution** within 7 days by giving their side.
+- **A contested rescind** goes to the admin queue. Until it's resolved, neither
+  record is affected. The admin can re-attribute it (e.g. buyer-fault → seller-fault).
+- **`mutual_agreement` requires the buyer's confirmation.** The buyer gets an
+  "Agree / Dispute" prompt; agreeing marks it neutral, and no response in 72h also counts as neutral.
+- **Abuse guard:** if a seller's buyer-fault rescinds are contested and overturned
+  repeatedly, the admin queue flags that seller.
+- **Refund owed:** set for any rescind after `buyer_paid` except
+  `buyer_payment_reversed` (the buyer already has their money back). The seller marks
+  "Refunded" with an optional reference; the buyer confirms or disputes.
 
 Then:
 
@@ -170,7 +199,7 @@ promote(item):    # runs after any winner removal, unless the seller withdrew th
   best = highest-ranked open entry
   if best is null: item → available (or unsold if the sale is closed)
   elif best.amount >= item.price: best → won (auto-promoted); notify; payment deadline starts with its invoice
-  else: set decision_deadline = now + window; notify the seller "backup below asking — decide"   (R4-3)
+  else: set decision_deadline = now + window; notify the seller "backup below asking — decide"   (D45)
 ```
 
 The seller's one-click **"Rescind and pass to next"** (D13) is `rescind` followed by
@@ -179,7 +208,7 @@ The seller's one-click **"Rescind and pass to next"** (D13) is `rescind` followe
 ### 4.4 Counter-offers
 
 - The seller counters an `open` offer with `counter_amount`, and the entry becomes
-  `countered`. The counter expires after 24h (R4-6: one round only at launch).
+  `countered`. The counter expires after 24h (D48: one round only at launch).
 - The buyer **accepts**:
   - If a unit is free, the entry is `won` at `counter_amount`.
   - Otherwise it goes back to `open`, re-ranked at `counter_amount`, and the buyer is
@@ -222,14 +251,14 @@ An invoice groups one buyer's `won` entries in one sale.
 ```mermaid
 stateDiagram-v2
     [*] --> draft: first entry won by this buyer in this sale
-    draft --> sent: seller sends (any time) / auto-send at close if enabled (R4-8)
+    draft --> sent: sale closed, then the seller sends / auto-send at close if enabled (D49)
     sent --> buyer_paid: buyer picks shipping + "I've paid" (+ reference)
     sent --> overdue: payment deadline passes (48h, or 24h for Pro, D13)
     overdue --> buyer_paid: buyer pays late (the seller can still accept it)
     buyer_paid --> paid: seller confirms receipt
     buyer_paid --> sent: seller says "not received" (the deadline does not restart)
     paid --> shipped: seller adds a carrier + tracking (required if over the threshold, D15)
-    shipped --> completed: buyer confirms receipt / auto 14 days after shipped (R4-9)
+    shipped --> completed: buyer confirms receipt / auto 14 days after shipped (D50)
     draft --> cancelled: all lines removed
     sent --> cancelled: all lines removed
     overdue --> cancelled: all lines removed
@@ -237,12 +266,21 @@ stateDiagram-v2
 
 **Rules:**
 - **Lines** are added automatically when the buyer wins (or is promoted to) an entry.
-  - While the invoice is `draft`, new wins are added to it.
-  - After it is `sent`, new wins go into a new draft invoice (one open draft per
-    buyer per sale). The "merge invoices" feature in v1 can combine them (D16).
+  - **Invoices can only be sent after the sale closes (D49).** During the sale, a
+    buyer's wins accumulate in their `draft` invoice, shown to them as a running
+    total (D53).
+  - At close, the seller reviews and sends all drafts (one click, "Send all"), or the
+    sale's **auto-send at close** option sends them. Items still `deciding` at close
+    are added when decided; if the invoice has already been sent by then, they go on a
+    second invoice.
+  - Wins after an invoice is `sent` (promotions, late decisions) go into a new draft
+    invoice, which the seller can send immediately (the sale is already closed). The
+    "merge invoices" feature in v1 can combine them (D16).
+  - A consequence for **Pro buyer rescind (D24):** "until the invoice is sent" means
+    in practice "until the sale closes and the seller sends invoices".
 - **Rescinding a line** on a `sent` / `overdue` invoice removes it and recalculates
   the total. On a `buyer_paid` / `paid` invoice, the line is kept but marked
-  "refund owed" (R4-10).
+  "refund owed", following the rescind's reason code (4.3.1).
 - **The shipping option** is chosen by the buyer before "I've paid". Untracked
   options are hidden when the subtotal is over the seller's threshold ($20 free / $40 Pro, D15).
 - **When the payment deadline passes,** the seller sees "rescind and pass to next"
