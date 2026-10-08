@@ -40,6 +40,7 @@ questions are **T#**, each with a recommended default in *italics*.
 | S28 | **Cloudflare Email Service replaces Resend** for all outbound email. See section 10. |
 | S29 | **Import/export libraries:** `papaparse` 5.7.0 (CSV), `read-excel-file` 9.3.12 / `write-excel-file` 4.1.1 (XLSX), `fflate` 0.8.3 (ZIP). **Not** the npm `xlsx` package: it's frozen at 0.18.5 because SheetJS now publishes only from its own CDN, and Renovate can't track it. |
 | S30 | **Cloudflare account: AntiTcb** (`e89111551171752d4230693ae0c83ed6`). Every Worker, D1, R2, Queue, Email Service domain and Access policy lives there. |
+| S31 | **Name: ClaimSale · Domain: `claimsale.net`** (provisional, "for now"). Hostnames: `claimsale.net` (production web), `staging.claimsale.net` (staging, behind Access), `notify.claimsale.net` (Email Service sending subdomain, e.g. `no-reply@notify.claimsale.net`), and PR previews on `*.workers.dev` behind Access. The domain lives in the AntiTcb account, registered through Cloudflare Registrar if `.net` is offered there, otherwise elsewhere with nameservers pointed at Cloudflare. **Kept in config, not code:** the domain and sender addresses are `vars` in `wrangler.jsonc` per environment, so a rename is a config change. |
 
 ---
 

@@ -1,4 +1,4 @@
-# Claim Sale — Project Plan
+# ClaimSale (claimsale.net) — Project Plan
 
 A purpose-built site for running "claim sales": a seller lists many items, buyers
 claim an item at the asking price (first come, first served) or submit an offer,
@@ -698,12 +698,13 @@ end-to-end and load tests.
 
 ## 12. Open questions
 
-All planning rounds are answered (product D1–D58, stack S1–S29, testing S27).
-The one item still open:
+None. All planning rounds are answered: product D1–D58, stack S1–S31 (including the
+name **ClaimSale** and the domain **`claimsale.net`**, provisional), and testing S27.
 
-- **Name and domain.** Staging and previews can run on `workers.dev` and send email only
-  to verified addresses. **Production email requires an onboarded sending domain**
-  (TECH_STACK S28), so the domain must be decided before the pilot sale.
+**Before the pilot sale** (not blocking development):
+- Register `claimsale.net` in the AntiTcb account and onboard `notify.claimsale.net` in Email Service.
+- Search trademarks for "ClaimSale" (USPTO, online marketplace services) and claim the
+  matching Discord, Instagram, X and Facebook handles.
 
 ## 13. Proposed first milestones
 
