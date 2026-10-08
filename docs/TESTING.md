@@ -4,7 +4,8 @@
 regression test that fails without the fix.** Tests are written in the same PR as
 the code, not afterward. The tools are Vitest and Playwright.
 
-Versions checked on 2026-10-08.
+Versions checked on 2026-10-08. **Status: decided** (TECH_STACK S27). Rule IDs
+live in [`STATE_MACHINES.md` section 10](./STATE_MACHINES.md#10-rule-id-registry-for-test-traceability).
 
 ---
 

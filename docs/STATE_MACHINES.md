@@ -350,3 +350,75 @@ own SQLite storage, and copy it out to D1 through an outbox. Only the engine's s
 adapter changes; the transition functions stay the same.
 
 Every transition writes an `audit_log` row in the same batch.
+
+---
+
+## 10. Rule ID registry (for test traceability)
+
+Every rule below must have at least one test whose name contains its ID (TESTING.md
+section 2). CI reads this table and fails if any ID has no test. To add a rule,
+add a row here in the same PR as the code and the test. Never renumber; retired
+IDs stay in the table, marked ~~struck~~.
+
+| ID | Rule | Section |
+| --- | --- | --- |
+| `SM-2-publish-scheduled` | Publishing with a future `live_at` → `scheduled`; claim buttons disabled | 2 |
+| `SM-2-publish-now` | Publishing with no `live_at` → `live` | 2 |
+| `SM-2-go-live-alarm` | The alarm at `live_at` moves `scheduled → live` and notifies followers | 2 |
+| `SM-2-preview-window` | Preview opens at most 7 days before `live_at` | 2 |
+| `SM-2-max-duration` | A live sale runs at most 14 days | 2 |
+| `SM-2-free-sale-cap` | Free sellers have at most 2 sales scheduled or live | 2 |
+| `SM-2-free-item-cap` | Free sellers have at most 10 items per sale (checked on add and publish) | 2 |
+| `SM-2-lock-price-qty` | Price and quantity are locked once an item has entries | 2 |
+| `SM-2-close` | Close rejects new entries; timers keep running | 2, 4.5 |
+| `SM-3-derived-state` | Item state is derived from units, entries and deadline (all five states) | 3 |
+| `SM-3-counts-public` | Claim and offer counts are always visible | 3 |
+| `SM-3-offer-visibility` | Offer amounts are hidden in `blind` mode, and shown with anonymous labels in `visible` mode | 3 |
+| `SM-4.1-instant-win` | A claim with a free unit, no open offers, no review mode and no deadline → `won` | 4.1 |
+| `SM-4.1-deciding` | A claim with a free unit and open offers (or review mode) → `open` + decision deadline | 4.1 |
+| `SM-4.1-backup-claim` | A claim on a sold-out item → `open` (backup) | 4.1 |
+| `SM-4.1-offer-open` | An offer → `open`; never auto-wins; does not start a window | 4.1 |
+| `SM-4.1-backup-offer-toggle` | Offers on sold-out items obey the per-sale toggle | 4.1 |
+| `SM-4.1-min-offer` | A Pro seller's hidden minimum auto-declines lower offers | 4.1 |
+| `SM-4.1-one-open-entry` | One open or countered entry per buyer per item | 4.1 |
+| `SM-4.1-unit-limit` | The per-buyer unit limit is enforced | 4.1 |
+| `SM-4.1-buyer-requirements` | Blocked or unverified buyers are rejected; Pro buyers bypass the email and new-account requirements | 4.1 |
+| `SM-4.2-award` | The seller awards an open entry when a unit is free | 4.2 |
+| `SM-4.2-window-expiry` | Window expiry awards the earliest open claim(s), never an offer | 4.2 |
+| `SM-4.2-window-length` | The window is 24h for free sellers and configurable for Pro | 4.2 |
+| `SM-4.2-ranking` | Rank is amount desc, then time asc; the seller can override | 1, 4.2 |
+| `SM-4.3-seller-rescind` | Seller rescind requires a reason code and explanation | 4.3 |
+| `SM-4.3-pro-rescind` | A Pro buyer can rescind until the invoice is sent, max 5 per month | 4.3 |
+| `SM-4.3-promote-auto` | Promotion: the best backup at or above asking auto-wins | 4.3 |
+| `SM-4.3-promote-below-asking` | Promotion: below asking restarts the decision window | 4.3 |
+| `SM-4.3-rescind-withdraw` | Plain rescind (not "pass to next") withdraws the item | 4.3 |
+| `SM-4.3.1-buyer-nonpayment` | `buyer_nonpayment` / `buyer_unresponsive` → buyer `non_pay` only | 4.3.1 |
+| `SM-4.3.1-buyer-payment-reversed` | `buyer_payment_reversed` → buyer severe mark, no refund owed | 4.3.1 |
+| `SM-4.3.1-buyer-requested-after-payment` | `buyer_requested_after_payment` → buyer `takeback`, seller unaffected | 4.3.1 |
+| `SM-4.3.1-buyer-terms-violation` | `buyer_terms_violation` → buyer `violation` | 4.3.1 |
+| `SM-4.3.1-seller-fault` | `seller_item_unavailable` / `seller_listing_error` → `seller_cancel` only | 4.3.1 |
+| `SM-4.3.1-mutual` | `mutual_agreement` needs the buyer to confirm, or no response in 72h; neutral | 4.3.1 |
+| `SM-4.3.1-fraud-review` | `suspected_fraud` holds both records pending admin review | 4.3.1 |
+| `SM-4.3.1-contest` | A buyer contest within 7 days freezes the attribution until the admin resolves it | 4.3.1 |
+| `SM-4.3.1-refund-owed` | Refund owed after `buyer_paid`, except for payment reversed | 4.3.1 |
+| `SM-4.4-counter` | One counter round; accept → won if a unit is free, else open at the counter amount | 4.4 |
+| `SM-4.4-counter-expiry` | A counter expires after 24h → declined | 4.4 |
+| `SM-4.4-withdraw-offer` | A buyer can withdraw a pending offer until it's accepted | 4.4 |
+| `SM-4.4-leave-backup` | A buyer can leave the backup queue until promoted | 4 |
+| `SM-4.5-close-offers-lapse` | Offers still pending at close lapse after 24h | 4.5 |
+| `SM-4.5-close-unsold` | Items with no entries become `unsold` at close | 4.5 |
+| `SM-4.5-backups-lost` | Backups become `lost` once every unit of their item is paid | 4.5 |
+| `SM-5-takeback-request` | Take-back: one pending per entry, the claim stays won, filed until paid | 5 |
+| `SM-5-takeback-decide` | Approve → released + promote; deny → no refiling | 5 |
+| `SM-6-send-after-close` | Invoices are sent only after the sale closes (manual or auto-send) | 6 |
+| `SM-6-late-wins-new-invoice` | Wins after an invoice is sent go to a new draft | 6 |
+| `SM-6-shipping-threshold` | Untracked shipping is hidden above $20 for free sellers and $40 for Pro | 6 |
+| `SM-6-payment-deadline` | Due 48h after sending (Pro sellers can set 24h) → `overdue`; optional auto-rescind | 6 |
+| `SM-6-paid-flow` | buyer_paid → paid → shipped (tracking above the threshold) → completed | 6 |
+| `SM-6-autocomplete` | Auto-complete 14 days after shipping; feedback opens | 6 |
+| `SM-6-rescind-line` | Rescinding a line before payment recalculates the total; after payment it's marked refund owed | 6 |
+| `SM-6-gmv` | `gmv_cents` is recorded when an invoice becomes `paid` | 6 |
+| `SM-7-single-alarm` | The DO keeps one alarm at the earliest due timer and processes everything due | 7 |
+| `SM-8-permissions` | Each action in the section 8 matrix is rejected for unauthorized actors | 8 |
+| `SM-9-serialized-writes` | Concurrent commands on one item are serialized; no double award | 9 |
+| `SM-9-audit` | Every transition writes an audit row in the same batch | 9 |

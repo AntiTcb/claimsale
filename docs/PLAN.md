@@ -593,26 +593,13 @@ See [`TESTING.md`](./TESTING.md). Every feature and bug fix ships with tests
 (TECH_STACK S25). The layers are unit, browser (component), Workers integration,
 end-to-end and load tests.
 
-## 12. Open questions — round 7 (testing)
+## 12. Open questions
 
-Each has a recommended default in *italics*. Details are in [`TESTING.md`](./TESTING.md).
+All planning rounds are answered (product D1–D56, stack S1–S26, testing S27).
+The one item still open:
 
-1. **Two Vitest versions for now.** Should Workers integration tests run on Vitest 4.1
-   (the Cloudflare pool doesn't support 5 yet), with everything else on Vitest 5 and
-   one version once the pool catches up? *Yes.*
-2. **Coverage thresholds and the ratchet:** core 95/95, server 85/80, components
-   70/60, never decreasing on `dev`. *As written.*
-3. **Nightly mutation testing** (Stryker) on `packages/core`, with an 80% score floor. *Yes.*
-4. **Visual snapshots** for a curated set of components in both themes, with
-   baselines generated in CI only. *Yes.*
-5. **Browser matrix:** Chromium for everything; WebKit iPhone + Pixel for critical
-   paths on every PR; Firefox nightly. *Yes.*
-6. **Test-only engine endpoints** (time travel, seeding), present only in test and
-   preview, behind a secret, with a test proving they're absent in production. *Yes.*
-7. **The "tests-with-changes" CI guard,** overridable with a labelled justification. *Yes.*
-8. **Coverage reporting:** a GitHub job summary and a PR comment only, or a
-   third-party service (Codecov)? *GitHub only.*
-9. **Spec traceability check:** each `STATE_MACHINES.md` rule ID must have at least one test. *Yes.*
+- **Name and domain.** Not needed until production domains, email sending domains
+  and OAuth app registration. Staging and previews can run on `workers.dev` until then.
 
 ## 13. Proposed first milestones
 
