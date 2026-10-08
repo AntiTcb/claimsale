@@ -13,7 +13,7 @@ questions are **T#**, each with a recommended default in *italics*.
 | S1 | **Two Workers in a pnpm monorepo:** `web` (SvelteKit) and `engine` (Durable Objects, Queue consumer, cron). See section 2. |
 | S2 | **SvelteKit remote functions** (`query` / `form` / `command`), enabled via `kit.experimental.remoteFunctions` and wrapped in one thin layer of our own. |
 | S3 | The web Worker calls the engine through **Workers RPC** (`WorkerEntrypoint` methods). |
-| S4 | **Zod** for validation, *but see T24*: adopting Effect 4 (S20) reopens this. |
+| S4 | ~~Zod~~ → **Effect Schema** (superseded by S26/T24). |
 | S5 | **Drizzle** for schema and migrations (query layer: T25). |
 | S6 | **D1 FTS5** for search at launch. |
 | S7 | Environments: **local, per-PR preview, staging, production**, with staging from day one. How previews work: T30. |
@@ -34,6 +34,8 @@ questions are **T#**, each with a recommended default in *italics*.
 | S22 | **Renovate** for dependency updates. See section 6. |
 | S23 | **Doppler** for secrets in every environment. See section 5. |
 | S24 | **Git flow: feature PRs → `dev`; `dev` is batched into releases → `main`; `main` is always production.** Conventional commits, CI required, proprietary. See section 7. |
+| S25 | **Full test suite: unit, browser, Workers integration and E2E (Vitest + Playwright). Every feature and bug fix ships with tests.** See [`TESTING.md`](./TESTING.md). |
+| S26 | Round 6 defaults, all accepted: Effect Schema replaces Zod (T24); Drizzle for queries inside an Effect service (T25); Effect is server + core only, except Schema in the client with a bundle budget (T26); the domain core is pure functions (T27); the tracing bridge with a Phase 0 spike (T28); the logging policy (T29); a full Worker pair + D1 per PR (T30); seed data (T31); Cloudflare Access on non-production (T32); CalVer + git-cliff, releases on demand (T33); expand/contract migrations with approval and a Time Travel bookmark (T34); the Renovate policy (T35); the Doppler layout (T36); svelte-check + type-aware oxlint + the `{@html}` guard (T37). |
 
 ---
 
@@ -230,7 +232,7 @@ hotfix/*  ──PR──► main ──► production, then an automatic back-me
 | Framework | `@sveltejs/kit` / `svelte` / `vite` | 3.0.1 / 5.57.2 / 8.x |
 | Adapter / CLI | `@sveltejs/adapter-cloudflare` / `wrangler` | 8.0.0 / 4.148.0 (Previews need ≥ 4.135) |
 | App framework | `effect`, `@effect/sql-d1`, `@effect/vitest`, `@effect/language-service` | 4.0.2 / 4.0.2 / 4.0.2 / 0.87.4 |
-| Validation | `zod` *or* `effect/Schema` (T24) | 4.6.5 / built in |
+| Validation | `effect/Schema` (Standard Schema) | built in |
 | ORM | `drizzle-orm` / `drizzle-kit` | 0.45.3 / 0.31.11 |
 | Auth | `better-auth` | 1.7.7 |
 | Email / SMS | `resend` / Twilio Verify REST | 6.32.1 / — |
@@ -243,81 +245,15 @@ hotfix/*  ──PR──► main ──► production, then an automatic back-me
 | IDs | `uuidv7` | 1.2.1 |
 | Bot check | `svelte-turnstile` | 0.11.0 |
 | Errors | `@sentry/sveltekit`, `@sentry/cloudflare` | 11.6.0 |
-| Tests | `vitest`, `@cloudflare/vitest-pool-workers`, `fast-check`, `@playwright/test` | 5.0.3 / 0.23.0 / — / 1.64.0 |
+| Tests | `vitest` 5 (+ `@vitest/browser-playwright`, `vitest-browser-svelte`, `@vitest/coverage-v8`), `@effect/vitest`, `fast-check`, `msw`, `@playwright/test`, `@axe-core/playwright`, `@stryker-mutator/core` | 5.0.3 / 3.1.0 / 4.0.2 / 4.10.2 / 3.0.2 / 1.64.0 / 4.13.0 / 10.0.0 |
+| Workers tests | `vitest` **4.1** + `@cloudflare/vitest-pool-workers` (the pool doesn't support Vitest 5 yet) | 4.1.11 / 0.23.0 |
 | Lint / format / types | `oxlint`, `oxfmt`, `svelte-check` | 1.87.0 / 0.72.0 / — |
 | Secrets | Doppler CLI (in CI and locally) | — |
 | Deps | Renovate (GitHub App) | — |
 
 ---
 
-## 9. Questions (round 6)
+## 9. Questions
 
-### Effect 4
-- **T24. Zod or Effect Schema?** You chose Zod before Effect was in the picture.
-  Effect Schema comes with Effect, implements Standard Schema (so remote functions
-  accept it), and is what Effect SQL, RPC, config and errors use. Zod alongside it
-  means two schema systems and conversions at the boundaries. *Switch to Effect Schema;
-  Zod stays only where a library needs it internally.*
-- **T25. Database queries with Effect 4.** The official Drizzle bridge is Effect-3-only.
-  - (a) Keep Drizzle for schema, migrations **and** queries, wrapped in a small
-    `Database` Effect service (`Effect.tryPromise` + tagged errors + spans).
-  - (b) Drizzle for schema and migrations only; queries via `@effect/sql-d1` with
-    Effect Schema models.
-  - (c) Drop Drizzle; plain SQL migrations + Effect SQL.
-  - Better Auth needs the Drizzle (or Kysely) adapter either way.
-  - *(a): one query layer, typed queries, and Better Auth shares the same schema.*
-- **T26. Where does Effect run?** *The server side (web server code and engine) plus
-  `packages/core`. Client bundles stay Effect-free except `effect/Schema` for shared
-  form validation, with a bundle budget enforced in CI (e.g. ≤ 30 kB gzipped for
-  that chunk).*
-- **T27. Domain core style.** Should the state-machine transitions be Effect programs,
-  or plain pure functions returning Effect data types (`Data.TaggedError`, `Result`)?
-  *Plain pure functions: no runtime needed, easy to property-test with fast-check.
-  The engine composes them in Effect.*
-
-### Observability
-- **T28. Tracing design.** The bridge into Cloudflare's tracing, exported to Sentry over
-  OTLP (section 4), with the Sentry SDK for errors only? Or Effect's OTLP exporter
-  straight to Sentry? *The bridge, confirmed by the Phase 0 spike.*
-- **T29. Logging policy.** The required fields, PII rules and sampling in section 4.
-  Retention: Workers Logs default + Sentry plan default. *As written.*
-
-### Environments and deploys
-- **T30. PR previews with two Workers.** Cloudflare's newer **Workers Previews**
-  (`wrangler preview`) isolate Durable Objects per branch, but **service bindings
-  from a preview call the other Worker's *production* deployment**, and previews
-  can't consume Queues or run crons. That doesn't work for web + engine. Options:
-  - (a) **CI deploys a full named pair per PR** (`claimsale-web-pr-123` +
-    `claimsale-engine-pr-123`), each with its own Queue and its **own D1 created,
-    migrated and seeded by CI**, sharing a preview R2 bucket with a `pr-123/` prefix.
-    Everything is deleted when the PR closes.
-  - (b) Preview only the **web** Worker (Cloudflare Previews), pointing at the
-    **staging** engine and data. Simpler, but engine changes can't be previewed and
-    data is shared.
-  - *(a). It's more CI scripting, but it's the only option that tests the real system per PR.*
-- **T31. Seed data.** Should previews and staging get a seed script (fake sellers, a
-  live sale, a closed sale with invoices, YGO card cache)? *Yes. Previews are
-  reseeded on every deploy; staging is seeded once and then keeps its data.*
-- **T32. Lock down non-production.** Put Cloudflare Access (free for up to 50 users)
-  in front of staging and all previews? *Yes.*
-- **T33. Release mechanics.**
-  - Versioning: CalVer tags (`2026.10.1`) or SemVer? Changelog generated by
-    `git-cliff` from conventional commits, or by Changesets?
-  - Release cadence: on demand or weekly?
-  - *CalVer + git-cliff, releases on demand.*
-- **T34. Migration safety.** Expand/contract only. CI applies migrations before
-  deploying code. Production migrations require approval. Plus a pre-deploy D1
-  Time Travel bookmark recorded for rollback. *Yes.*
-
-### Tooling
-- **T35. Renovate policy** (section 6): weekly, 3-day minimum release age, grouped,
-  automerge of minor/patch devDependencies and patch runtime dependencies, majors
-  manual. *As written.*
-- **T36. Doppler layout** (section 5): configs `dev / prv / stg / prd`, a service
-  token per GitHub Environment (OIDC if available), deploy with `--secrets-file`,
-  per-Worker allowlists, and a manual "Sync secrets" workflow. *As written.*
-- **T37. Svelte lint gap.** oxlint lints `<script>` blocks but has **no Svelte template
-  rules** (eslint-plugin-svelte doesn't run under it). Fill the gap with `svelte-check`
-  in CI (types + compiler and a11y warnings, warnings treated as errors), oxlint's
-  type-aware mode, and a CI check that bans `{@html}` outside one sanitizer component?
-  *Yes.*
+Round 6 (T24–T37) is answered; see S26. The open questions are now about testing,
+in [`TESTING.md`](./TESTING.md) and in `PLAN.md` section 12.

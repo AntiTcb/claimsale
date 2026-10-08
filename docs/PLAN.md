@@ -589,24 +589,35 @@ that should cover early usage. Durable Objects need the paid plan. Watch for:
 
 ## 11. Testing strategy
 
-- **Unit tests:** pricing, shipping and invoice math, plus the claim, offer and
-  invoice state machines as pure functions.
-- **Integration tests** (`vitest-pool-workers` against local D1 and DOs): the claim
-  race. Fire 100 concurrent claims at one item and assert exactly one #1 and
-  contiguous backups. Also release → promote → notify.
-- **End-to-end tests** (Playwright): a seller creates a sale and goes live, two
-  buyers race for an item, an invoice is sent, the buyer marks it paid.
-- **Load test** before the first real sale: simulate the go-live rush with k6 or
-  `autocannon` against a preview deployment.
+See [`TESTING.md`](./TESTING.md). Every feature and bug fix ships with tests
+(TECH_STACK S25). The layers are unit, browser (component), Workers integration,
+end-to-end and load tests.
 
-## 12. Open questions — round 5 (tech stack)
+## 12. Open questions — round 7 (testing)
 
-The product rules are settled through D56. The open questions are now about
-packages and tooling, and live in [`TECH_STACK.md`](./TECH_STACK.md) section "Questions".
+Each has a recommended default in *italics*. Details are in [`TESTING.md`](./TESTING.md).
+
+1. **Two Vitest versions for now.** Should Workers integration tests run on Vitest 4.1
+   (the Cloudflare pool doesn't support 5 yet), with everything else on Vitest 5 and
+   one version once the pool catches up? *Yes.*
+2. **Coverage thresholds and the ratchet:** core 95/95, server 85/80, components
+   70/60, never decreasing on `dev`. *As written.*
+3. **Nightly mutation testing** (Stryker) on `packages/core`, with an 80% score floor. *Yes.*
+4. **Visual snapshots** for a curated set of components in both themes, with
+   baselines generated in CI only. *Yes.*
+5. **Browser matrix:** Chromium for everything; WebKit iPhone + Pixel for critical
+   paths on every PR; Firefox nightly. *Yes.*
+6. **Test-only engine endpoints** (time travel, seeding), present only in test and
+   preview, behind a secret, with a test proving they're absent in production. *Yes.*
+7. **The "tests-with-changes" CI guard,** overridable with a labelled justification. *Yes.*
+8. **Coverage reporting:** a GitHub job summary and a PR comment only, or a
+   third-party service (Codecov)? *GitHub only.*
+9. **Spec traceability check:** each `STATE_MACHINES.md` rule ID must have at least one test. *Yes.*
 
 ## 13. Proposed first milestones
 
-0. **Foundations:**
+0. **Foundations** (including the test infrastructure: Vitest 5 + 4.1 workspaces,
+   Browser Mode, Playwright, MSW, factories, coverage gates, CI pipeline from TESTING.md section 7):
    - The pnpm monorepo (`apps/web`, `apps/engine`, `packages/*`), with oxlint, oxfmt,
      svelte-check, Renovate and Doppler wired in.
    - Wrangler environments for preview, staging and production; D1, R2, Queues
@@ -617,7 +628,7 @@ packages and tooling, and live in [`TECH_STACK.md`](./TECH_STACK.md) section "Qu
    Queue → email) visible in Sentry with correlated logs and a linked error
    (TECH_STACK section 4). This decides T28 before feature work starts.
 2. **Domain core:** state machines from `STATE_MACHINES.md` as pure functions, with
-   unit and property tests. No UI yet.
+   spec IDs, unit tests and property tests. No UI yet.
 3. **Auth:** Better Auth (email + password, magic link, Discord), email and phone
    verification, age attestation, profiles and handles.
 4. **Sales and items:** CRUD, item types and attributes, image upload to R2, and the
