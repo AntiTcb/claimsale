@@ -422,3 +422,18 @@ IDs stay in the table, marked ~~struck~~.
 | `SM-8-permissions` | Each action in the section 8 matrix is rejected for unauthorized actors | 8 |
 | `SM-9-serialized-writes` | Concurrent commands on one item are serialized; no double award | 9 |
 | `SM-9-audit` | Every transition writes an audit row in the same batch | 9 |
+| `IO-import-target` | Item import only into `draft` / `scheduled` sales; rejected for live and closed | PLAN 3c.1 |
+| `IO-import-upsert` | Rows match by `sku` / `item_id` → update; others → create; unlisted items kept unless opted in | PLAN 3c.1 |
+| `IO-import-cap` | Free-tier item cap enforced on import, with the count that fits reported | PLAN 3c.1 |
+| `IO-import-validate` | The server re-validates every row with the shared schema; invalid rows never apply | PLAN 3c.4 |
+| `IO-import-idempotent` | A re-sent batch (same `import_id` + row) is a no-op | PLAN 3c.4 |
+| `IO-import-photos` | ZIP photos go through resize + EXIF strip; URL photos are rejected | PLAN 3c.1 |
+| `IO-export-roundtrip` | Exporting items and re-importing them unchanged produces no changes | PLAN 3c.2 |
+| `IO-export-privacy` | Order exports contain only handle, display name and address for won items; never email or phone | PLAN 3c.2 |
+| `IO-export-formula-escape` | Cells starting with `= + - @ \t \r` are escaped | PLAN 3c.2 |
+| `IO-export-expiry` | Export links expire after 24h; every export is audit-logged | PLAN 3c.2 |
+| `IO-tracking-match` | Tracking rows match by invoice number, then the shipping-tool reference, else unmatched | PLAN 3c.3 |
+| `IO-tracking-transition` | Only `paid` invoices move to `shipped`; others are rejected with a reason | PLAN 3c.3, SM 6 |
+| `IO-tracking-replace` | Replacing an existing tracking number needs confirmation and is logged | PLAN 3c.3 |
+| `IO-tracking-carrier` | The carrier is detected from the tracking number format when blank; ambiguous ones are flagged | PLAN 3c.3 |
+

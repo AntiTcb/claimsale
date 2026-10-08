@@ -38,6 +38,7 @@ questions are **T#**, each with a recommended default in *italics*.
 | S26 | Round 6 defaults, all accepted: Effect Schema replaces Zod (T24); Drizzle for queries inside an Effect service (T25); Effect is server + core only, except Schema in the client with a bundle budget (T26); the domain core is pure functions (T27); the tracing bridge with a Phase 0 spike (T28); the logging policy (T29); a full Worker pair + D1 per PR (T30); seed data (T31); Cloudflare Access on non-production (T32); CalVer + git-cliff, releases on demand (T33); expand/contract migrations with approval and a Time Travel bookmark (T34); the Renovate policy (T35); the Doppler layout (T36); svelte-check + type-aware oxlint + the `{@html}` guard (T37). |
 | S27 | Testing round 7 defaults, all accepted: Vitest 4.1 for Workers tests and 5 elsewhere until the pool supports 5; coverage thresholds + ratchet; nightly Stryker on core (≥ 80%); CI-generated visual baselines; the browser matrix; guarded test-only engine endpoints; the tests-with-changes guard; GitHub-only coverage reporting; the spec traceability check against STATE_MACHINES section 10. |
 | S28 | **Cloudflare Email Service replaces Resend** for all outbound email. See section 10. |
+| S29 | **Import/export libraries:** `papaparse` 5.7.0 (CSV), `read-excel-file` 9.3.12 / `write-excel-file` 4.1.1 (XLSX), `fflate` 0.8.3 (ZIP). **Not** the npm `xlsx` package: it's frozen at 0.18.5 because SheetJS now publishes only from its own CDN, and Renovate can't track it. |
 
 ---
 

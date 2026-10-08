@@ -67,6 +67,7 @@ one giant post where every item is a photo and every claim is a comment.
 | D54 | Seller analytics: basic counts are free; detailed analytics are Pro. | 2026-10-08 |
 | D55 | **Sellers must be 18+ and verify email and phone. Pro sellers skip phone verification.** | 2026-10-08 |
 | D56 | Browse and search include public sales only (not unlisted). | 2026-10-08 |
+| D57 | **Import/export tools ship at launch:** bulk import of sale data, export of sales and buyer/order info, and re-import of shipping tracking numbers. See section 3c. | 2026-10-08 |
 
 The detailed behavior spec for claims, offers, take-backs and invoices lives in
 [`STATE_MACHINES.md`](./STATE_MACHINES.md).
@@ -188,6 +189,9 @@ Any account can be both a buyer and a seller.
   next backup".
 - The seller can adjust lines, add a discount or custom shipping, then **send** it.
 - Status: `draft → sent → paid → shipped (tracking #) → complete`.
+- **Shipping address:** buyers keep an address book. Choosing an address (with
+  the shipping option) is part of "I've paid". The seller sees that address only
+  on that buyer's invoices; it also appears in order exports (section 3c).
 - **Payment happens off-platform** (PayPal G&S, Venmo, etc.). The invoice shows the
   seller's handles, and the buyer clicks "I've paid" with an optional reference. The
   seller confirms. We never touch money in the MVP: no PCI scope and no
@@ -301,6 +305,83 @@ Portal + webhooks into D1).
 - Add a `plans` / `entitlements` check layer (e.g. `can(user, 'private_sale')`),
   so limits can be turned on without refactoring.
 - Design invoices so a "Pay with card" button can be added later.
+
+## 3c. Import and export (D57)
+
+Three seller tools, all built on the same pipeline: **upload → parse → validate →
+preview with row-level results → confirm → apply**. Nothing is written until the
+seller confirms, and every apply is recorded in the audit log.
+
+### 3c.1 Import sale data
+- **Target:** a sale in `draft` or `scheduled`. A live sale can't be imported into,
+  because price and quantity lock once items have entries (D40). An import can also
+  create a new draft sale.
+- **Formats:** CSV and XLSX, plus an optional ZIP of photos (Q-IO-5).
+- **Templates:** a downloadable template per item type. Columns come from the item
+  type's attribute schema (section 3, "Item types"), and include one example row and
+  a `template_version`.
+- **Core columns:** `sku` (seller's own ID, optional), `item_type`, `title`,
+  `description`, `price`, `quantity`, `condition`, `offers` (off / on / min),
+  `min_offer` (Pro only), `shipping_override`, `photos` (file names in the ZIP,
+  `;`-separated). Then the attribute columns for the type (`set_code`, `rarity`,
+  `edition`, `language`, `grader`, `grade`, `cert_number`…).
+- **Yu-Gi-Oh help:** if `set_code` is present, the card name and rarity options
+  are filled in from the YGOPRODeck cache. A rarity that doesn't exist for that
+  printing is flagged; a missing card name is filled in automatically.
+- **Re-import updates, it doesn't duplicate:** rows match existing items by `sku`
+  (or by the exported `item_id`). Matched rows update, new rows create, and items
+  missing from the file are left alone unless the seller ticks "remove items not in file".
+- **Limits:** the free-tier cap of 10 items per sale still applies (an import that
+  would exceed it shows how many rows fit). Max 2,000 rows and 200 MB of photos per import.
+- **Photos:** the ZIP is unpacked **in the browser** (`fflate`), and each image goes
+  through the same resize, re-encode and EXIF-stripping path as manual uploads. No
+  server-side fetching of image URLs (that's an SSRF risk); photo URLs in a file are
+  rejected with a clear message.
+
+### 3c.2 Export
+| Export | Contents | Formats |
+| --- | --- | --- |
+| **Sale items** | Every item with all its attributes, `item_id`, `sku`, status, winner handle, final price. Uses the same columns as the import template, so it can be re-imported (e.g. to relist unsold items). | CSV, XLSX |
+| **Orders / buyers** | One row per invoice line: invoice number, buyer handle and display name, **shipping name and address**, item, price, shipping option, totals, status, paid / shipped dates, carrier, tracking. | CSV, XLSX |
+| **Shipping-tool preset** | The same order data in the column layout a shipping tool expects, so the seller can make labels in bulk (Q-IO-3). | CSV |
+| **Full account export** | Everything the seller owns: sales, items, entries, invoices, messages, feedback. This is for data portability. | JSON (zipped) |
+
+- **Generated in the background:** export jobs run on a Queue, write to R2, and give a
+  download link that expires after 24h. Large sales never time out a request.
+- **Privacy:** buyer data in exports is limited to what the seller needs to fulfil
+  orders: handle, display name and shipping address for won items. **No buyer
+  emails or phone numbers** (Q-IO-1). Every export is audit-logged (who, when, which sale).
+- **Spreadsheet formula injection:** any cell starting with `=`, `+`, `-`, `@`, tab or
+  CR is prefixed with `'` on export. Buyer-controlled text (names, addresses, notes)
+  could otherwise run as a formula in Excel.
+
+### 3c.3 Tracking re-import
+- **Input:** CSV or XLSX with `invoice_number` (from the orders export) **or** an
+  order reference the shipping tool echoes back, plus `tracking_number` and an
+  optional `carrier`.
+- **Matching:**
+  - by `invoice_number` first;
+  - then by the shipping-tool order reference;
+  - otherwise the row is unmatched and the seller can match it by hand in the preview.
+- **Carrier detection:** if `carrier` is blank, it's detected from the tracking
+  number's format (USPS, UPS, FedEx, DHL). Anything ambiguous is flagged.
+- **Apply:** each matched invoice goes through the normal `paid → shipped` transition
+  (STATE_MACHINES section 6). Rows for invoices that aren't `paid` are rejected with
+  the reason. Buyers get the normal "shipped" notification, batched per buyer.
+- **Corrections:** re-importing a different tracking number for an already-shipped
+  invoice requires a "replace" confirmation and is logged.
+
+### 3c.4 Shared mechanics
+- **Parsing in the browser:** `papaparse` (CSV) and `read-excel-file` (XLSX) give an
+  instant preview. Rows are validated with the **same Effect Schema** on the client
+  and the server. The server **re-validates** every batch; the client is never trusted.
+- **Applying in batches:** in chunks of 100 rows through an engine command, so items
+  in a scheduled sale go through the sale's DO lock. The result is idempotent: a
+  re-sent batch with the same `import_id` + row number is a no-op.
+- **Results:** each row ends as `created`, `updated`, `skipped` or `error` (with the
+  field and message), and the results can be downloaded as a CSV with an added `result` column.
+- **Encoding:** UTF-8 with a BOM on CSV export (so Excel opens it correctly). Imports
+  accept UTF-8 and Windows-1252, and auto-detect `,` or `;` delimiters.
 
 ## 3b. Buyer and seller reputation
 
@@ -504,6 +585,19 @@ notifications    id, user_id, type, payload JSON, read_at, created_at
 push_subscriptions  id, user_id, endpoint, keys JSON
 audit_log        id, sale_id, item_id, actor_id, action, data JSON, created_at
 
+-- added for import/export (D57)
+addresses        id, user_id, name, line1, line2, city, region, postal_code, country,
+                 is_default, created_at, deleted_at
+                 -- invoices gain: shipping_address JSON (snapshot at payment), carrier,
+                 --   tracking_number, invoice_number (human-readable, per seller)
+                 -- items gain: sku (UNIQUE per sale when set)
+io_jobs          id, seller_id, sale_id, kind ('item_import'|'tracking_import'|
+                 'export_items'|'export_orders'|'export_shipping'|'export_account'),
+                 status ('parsed'|'applying'|'done'|'failed'|'expired'), format,
+                 file_key, result_key, row_count, created, updated, skipped, errors,
+                 created_at, finished_at, expires_at
+io_job_rows      job_id, row_number, outcome, target_id, message   -- idempotency + results
+
 -- added in round 2
 sale_access      sale_id PK, password_hash, allowlist_enabled
 sale_allowlist   sale_id, email, invited_at, accepted_user_id
@@ -546,6 +640,10 @@ Indexes: `items(sale_id, sort_order)`, `entries(item_id, status, amount_cents, c
 /sell/[saleId]/manage           live control room: per-item queues, offers inbox, activity feed
 /sell/[saleId]/buyers           per-buyer rollup → invoices
 /sell/[saleId]/invoices/[id]    edit and send an invoice
+/sell/[saleId]/import           item import: upload, preview, confirm, results
+/sell/[saleId]/tracking-import  tracking re-import: upload, match, confirm
+/sell/exports                   export jobs and download links (24h)
+/me/addresses                   buyer address book
 
 /api/sales/[id]/live            WebSocket upgrade → SaleRoom DO
 /api/uploads                    presign or receive image uploads
@@ -595,12 +693,29 @@ end-to-end and load tests.
 
 ## 12. Open questions
 
-All planning rounds are answered (product D1–D56, stack S1–S26, testing S27).
-The one item still open:
+**Import/export (D57).** Each has a recommended default in *italics*.
+- **Q-IO-1. Buyer data in exports.** The plan never collected shipping addresses,
+  and sellers need them to ship. Buyers would keep an address book, and the address
+  would be shared with the seller only for won items. Should exports include only the
+  handle, display name and address, never email or phone? *Yes.*
+- **Q-IO-2. Formats.** CSV + XLSX for import and export, plus a JSON full-account
+  export? *Yes.*
+- **Q-IO-3. Shipping tools.** Which do you or your sellers use (Pirate Ship, ShipStation,
+  eBay labels, USPS Click-N-Ship)? *Pirate Ship preset + a generic CSV at launch;
+  others on request.*
+- **Q-IO-4. Collection-app imports.** Should we import directly from collection or
+  inventory apps' exports (TCGplayer, Collectr, Dragon Shield Card Manager) by
+  mapping their columns? *The generic template at launch, plus a column-mapping
+  step (pick which of your columns is "price", etc.) so any CSV works. Named presets in v1.*
+- **Q-IO-5. Photos.** ZIP upload matched by file name? *Yes. Image URLs are not accepted.*
+- **Q-IO-6. Free vs Pro.** Are import, export and tracking re-import free for everyone
+  (the 10-item cap still applies to free imports)? *Yes, all free. Data portability
+  builds trust, and the item cap already separates the tiers.*
+- **Q-IO-7. Import targets.** Draft and scheduled sales only; re-imports update by
+  `sku` / `item_id`; "remove items not in file" is opt-in. *Yes.*
 
-- **Name and domain.** Staging and previews can run on `workers.dev` and send email only
-  to verified addresses. **Production email requires an onboarded sending domain**
-  (TECH_STACK S28), so the domain must be decided before the pilot sale.
+**Still open from before:** name and domain. Production email needs an onboarded
+sending domain (TECH_STACK S28), so it must be decided before the pilot sale.
 
 ## 13. Proposed first milestones
 
@@ -619,14 +734,16 @@ The one item still open:
    spec IDs, unit tests and property tests. No UI yet.
 3. **Auth:** Better Auth (email + password, magic link, Discord), email and phone
    verification, age attestation, profiles and handles.
-4. **Sales and items:** CRUD, item types and attributes, image upload to R2, and the
+4. **Sales and items:** CRUD, item types and attributes, image upload to R2, **CSV/XLSX
+   item import with templates and ZIP photos**, and the
    YGOPRODeck card cache.
 5. **The engine:** the SaleEngine DO (per-item locks, alarms), entries, offers,
    awards, promotion, plus the claim race test and a load test.
 6. **The live grid:** WebSocket updates, the claim and offer UI, and the buyer's running total.
 7. **The seller control room:** deciding, take-backs, rescinds with reason codes,
    and the admin dispute queue.
-8. **Invoices after close:** shipping menu, payment deadlines, completion.
+8. **Invoices after close:** shipping menu, buyer addresses, payment deadlines,
+   completion, **order and item exports, the shipping-tool preset, and tracking re-import**.
 9. **Notifications and messaging:** Queue → Cloudflare Email Service / web push; on-site messages.
 10. **Discovery:** browse and search (FTS5), follows, share cards, text export →
     pilot sale.

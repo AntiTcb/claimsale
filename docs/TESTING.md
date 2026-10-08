@@ -42,6 +42,7 @@ live in [`STATE_MACHINES.md` section 10](./STATE_MACHINES.md#10-rule-id-registry
 | A DB migration | A Workers integration test that applies all migrations to an empty DB **and** to a DB seeded at the previous schema (expand/contract safety). |
 | An external integration (Twilio, Stripe, YGOPRODeck, Discord) | Unit/integration tests with **MSW** (`msw@3`) handlers for success, error and timeout. A staging smoke test with the provider's test mode. |
 | Email (Cloudflare Email Service binding) | Unit: in-memory `Mailer`. Workers integration: assert on the simulated `send_email` binding. E2E: read the `CapturingMailer` outbox through the test-only endpoint. Staging smoke: one real send to a verified address. |
+| Import / export | Unit: parsers and schemas against a fixture library of real-world files (Excel-saved CSV with BOM, `;` delimiters, Windows-1252, blank rows, 2,000 rows, malicious formula cells). Property test: export → import round-trip makes no changes (`IO-export-roundtrip`). Workers integration: batch apply, idempotency, tracking transitions. E2E: import with a photo ZIP → preview → confirm → live grid; orders export download; tracking re-import marks invoices shipped. |
 | **A bug fix** | A regression test at the **lowest layer that reproduces the bug**, committed so that it fails on the parent commit. The PR description links the test. |
 
 ### Domain invariants (property tests on `packages/core`)
