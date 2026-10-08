@@ -30,10 +30,32 @@ one giant post where every item is a photo and every claim is a comment.
 | D17 | Communities: v1/v2, but the data model is designed for them now. | 2026-10-08 |
 | D18 | **Buyer↔seller messaging on-site.** | 2026-10-08 |
 | D19 | Discord webhooks are a **Pro seller** feature. | 2026-10-08 |
-| D20 | Email verification is required; **Pro buyers bypass** it (exact meaning: Q-R3-2). | 2026-10-08 |
+| D20 | Email verification is required; **Pro buyers bypass** it (see D29). | 2026-10-08 |
 | D21 | **Proxies, orica and counterfeits are banned.** | 2026-10-08 |
 | D22 | While payment is off-site, the platform's role in disputes is reputation, reports and bans only. | 2026-10-08 |
 | D23 | The owner is the solo builder and sole admin. No target date or pilot group yet; the name is undecided. | 2026-10-08 |
+| D24 | Pro buyer rescind: allowed **until the invoice is sent, max 5 per month**. It counts on the record as a "rescind". Sellers can't opt out but see buyers' rescind rates. | 2026-10-08 |
+| D25 | Decision window (full-price claim vs offers): **24h for free sellers, configurable by Pro sellers**. When it expires, the earliest full-price claim wins. | 2026-10-08 |
+| D26 | **Offer counts are always public.** Offer **amounts** are per-sale: `blind` (only the seller sees them) or `visible` (everyone sees them). | 2026-10-08 |
+| D27 | The hidden minimum offer (auto-decline) is a **Pro seller** feature. | 2026-10-08 |
+| D28 | **Public browse and search from day one.** | 2026-10-08 |
+| D29 | Pro buyers skip email verification and sellers' new-account requirements; sellers can still block individuals. | 2026-10-08 |
+| D30 | Free sellers: max **2** sales scheduled or live at once. | 2026-10-08 |
+| D31 | Private sales (password / allowlist) are **Pro**; unlisted is free. | 2026-10-08 |
+| D32 | Lots count as one item. | 2026-10-08 |
+| D33 | Photos per item: **free 4, Pro 12**. | 2026-10-08 |
+| D34 | With no pending offers, a full-price claim wins instantly. Sellers can turn on "review every claim" per sale. | 2026-10-08 |
+| D35 | Offers above asking are allowed. | 2026-10-08 |
+| D36 | Pro pricing (starting point): Seller Pro about $8/month, Buyer Pro about $4/month, a bundle, 20% off annual; early adopters get free Pro for a period. | 2026-10-08 |
+| D37 | On-site checkout fee (later): 3% free / 1.5% Pro; Stripe's processing fee is passed to the seller. | 2026-10-08 |
+| D38 | Age: **13+ to buy** (parental-consent checkbox under 18), **18+ to sell**. | 2026-10-08 |
+| D39 | Warn about F&F / Zelle / Cash App; show an "Accepts G&S" badge. Not required. | 2026-10-08 |
+| D40 | Once an item has entries: title and photos are editable (logged); price and quantity are locked. | 2026-10-08 |
+| D41 | Follow a seller and get notified of new sales, in the MVP. | 2026-10-08 |
+| D42 | Sales run live for at most 14 days; the preview can open at most 7 days before go-live. | 2026-10-08 |
+
+The detailed behavior spec for claims, offers, take-backs and invoices lives in
+[`STATE_MACHINES.md`](./STATE_MACHINES.md).
 
 ---
 
@@ -104,7 +126,7 @@ Any account can be both a buyer and a seller.
   - This mirrors the FB convention ("claim", "BU1", "BU2").
 - **Claims are binding (D6).** A free buyer cannot release one on their own.
   - **Exception: Pro buyers can rescind their own claim** without seller approval
-    (D8). The guardrails are still open (Q-R3-1).
+    (D8): until the invoice is sent, max 5 per month (D24).
   - **Take-back request:** the buyer asks to back out, with an optional reason.
     The seller sees it in the control room and **approves** (the claim is released
     and the next backup is promoted) or **denies** (the claim stands). While the
@@ -121,20 +143,23 @@ Any account can be both a buyer and a seller.
 - Optional per-sale limits: a maximum number of claims per buyer, and a maximum backups per item.
 
 ### Offer (first release, D11)
-- A buyer submits an amount below asking, with an optional note. **Offers are
+- A buyer submits an amount, with an optional note. **Offers are
   binding**: if the seller accepts, the buyer owes it.
 - The seller can **accept**, **decline**, or **counter**. If countered, the buyer
   accepts (binding) or declines.
-- **The seller has the final call** between full-price claims and offers. A full-price
-  claim does *not* automatically win. Proposed mechanics (to be confirmed in round 3):
-  - When an item has offers enabled, a full-price claim puts it in
-    **`claimed — seller deciding`** rather than final.
-  - The seller picks the winner (the claimant or an offer) or lets it auto-confirm
-    the claimant after a decision window.
-  - Everyone else on the item drops to backup, in an order the seller can adjust.
-- Offers expire after a configurable time, or when the item is finalized.
-- Offers are visible only to the seller and the offering buyer. Buyers see only
-  "N offers" (Q-R3-10). Public bidding would turn this into an auction.
+- Offers can be above asking (D35). Pro sellers can set a hidden minimum that
+  auto-declines lower offers (D27).
+- **The seller has the final call** between full-price claims and offers (D11):
+  - With no pending offers, a full-price claim wins instantly (D34).
+  - With pending offers, a full-price claim puts the item in **`deciding`**. The
+    seller awards any entry. If they haven't decided by the end of the decision
+    window (D25), the earliest full-price claim wins.
+  - Everyone else becomes a backup, ranked by amount and then time; the seller can reorder.
+- **Visibility (D26):** offer counts are always shown. Amounts are `blind` or
+  `visible` per sale. Note that `visible` amounts plus above-asking offers behave
+  like an open auction. That's fine because the seller still decides; there's no
+  auto-win for the highest bid.
+- Full rules: [`STATE_MACHINES.md`](./STATE_MACHINES.md).
 
 ### Invoice (per buyer per sale)
 - Built automatically from that buyer's winning claims and accepted offers.
@@ -212,20 +237,25 @@ The options:
 | **D. Per-sale listing fee / boosts** | Pay to run a large sale, or to feature a sale on the browse page. | Simple. | Friction at the moment a seller is deciding whether to try us. |
 | **E. Buyer fee** | A small fee added to the buyer's invoice. | Doesn't scare away sellers. | Buyers hate it, and they're the side we need most at launch. |
 
-### Free vs Pro (D8, draft; prices TBD)
+### Free vs Pro (D8 and D24–D37)
 
 | Capability | Free | Pro |
 | --- | --- | --- |
 | **Seller:** items per sale | 10 | Unlimited |
-| **Seller:** concurrent live/scheduled sales | ? (Q-R3-3) | Unlimited |
+| **Seller:** concurrent live/scheduled sales | 2 | Unlimited |
+| **Seller:** photos per item | 4 | 12 |
+| **Seller:** decision window (claim vs offers) | 24h | Configurable |
+| **Seller:** hidden minimum offer (auto-decline) | — | ✓ |
+| **Seller:** offer amounts blind or visible | ✓ | ✓ |
 | **Seller:** payment deadline | 48h | 48h or 24h |
 | **Seller:** tracking required above | $20 | $40 |
 | **Seller:** rescind and pass to the next backup | ✓ | ✓ |
-| **Seller:** private sales (password / allowlist) | ? (Q-R3-4) | ✓ |
+| **Seller:** private sales (password / allowlist) | — (unlisted only) | ✓ |
 | **Seller:** Discord webhooks | — | ✓ |
-| **Buyer:** rescind own claim without approval | — | ✓ (guardrails: Q-R3-1) |
-| **Buyer:** skip email verification / buyer requirements | — | ✓ (Q-R3-2) |
-| **On-site checkout fee** (later) | X% | Lower % ? |
+| **Buyer:** rescind own claim without approval | — | ✓ until the invoice is sent, 5/month |
+| **Buyer:** skip email verification / new-account requirements | — | ✓ |
+| **On-site checkout fee** (later) | 3% | 1.5% |
+| **Price** (starting point) | $0 | Seller about $8/mo · Buyer about $4/mo · bundle |
 
 Implementation: an `entitlements(user)` function that returns limits from the
 user's plan, checked server-side on every relevant action. There is never a
@@ -282,12 +312,15 @@ themselves from strangers.
 - Seller: create a sale, bulk upload items (drag in many photos, one item per photo
   or grouped, then fill in titles and prices in a table view), and set terms.
 - Schedule or go-live, close.
-- Buyer: browse the grid, view an item, claim, release, join the backup queue.
+- Buyer: browse the grid, view an item, claim or offer, request a take-back (or rescind as Pro), join or leave the backup queue.
 - Live updates: claimed items flip in real time for every viewer.
-- Seller dashboard: per-item queue, void and promote, per-buyer rollup.
+- Seller control room: per-item entries (claims + offers), award / decline / counter, rescind and pass to next, take-back requests, per-buyer rollup.
 - Invoices with simple shipping rules, mark paid, mark shipped.
 - Email notifications: you won / you were promoted / invoice sent / offer response.
 - An Open Graph share card, so the sale link looks good when posted in FB.
+- **Public browse and search** across public sales and items (D28), with filters by
+  category, item type attributes (set, rarity, condition…), price, and "ending soon / going live soon".
+- Follow a seller and get notified of new sales (D41).
 - "Copy as text" export of the item list for the FB post body.
 
 ### Phase 2 — v1
@@ -342,33 +375,18 @@ Browser ──HTTP──▶ Worker (SvelteKit) ──▶ D1 (source of truth)
 At go-live, dozens of people hit **Claim** on the same item within milliseconds.
 "First" must be unambiguous and the result must never show two winners.
 
-**Recommendation: D1 is the source of truth, and each claim is a single atomic statement.**
-D1 processes writes one at a time per database, so one statement cannot race with itself:
-
-```sql
-INSERT INTO claims (id, item_id, user_id, kind, position, status, created_at)
-SELECT ?1, ?2, ?3, 'claim',
-       COALESCE(MAX(position), 0) + 1, 'active', unixepoch('subsec') * 1000
-FROM claims
-WHERE item_id = ?2 AND status = 'active'
-  AND NOT EXISTS (SELECT 1 FROM claims WHERE item_id = ?2 AND user_id = ?3 AND status = 'active')
-RETURNING position;
-```
-
-Add a unique index on `(item_id, position) WHERE status = 'active'` as a backstop.
-Releasing a claim and promoting the next backup run as one `db.batch([...])`,
-which executes as a transaction. After a successful write, the Worker tells the
-sale's DO to broadcast the change. The DO is a fan-out hub only, so losing it never loses data.
-
-*Alternative if D1 write contention shows up under load:* make the SaleRoom DO
-the claim authority for live sales, using its SQLite storage to serialize claims,
-and write through to D1 asynchronously. This is faster at the moment of the rush
-but adds a second source of truth. Load-test before choosing it.
+**Updated decision (round 3):** offers, ranking, decision windows and promotion
+make every action a read → decide → write. So **each sale's Durable Object
+serializes writes, with one lock per item**. It runs pure transition functions and
+commits each result as one D1 `batch()` with a version check. D1 stays the source
+of truth, and the same DO owns the sale's timers and WebSocket broadcast. The
+fallback, if load tests miss the target, is DO-local SQLite with an outbox to D1.
+Details are in [`STATE_MACHINES.md` section 9](./STATE_MACHINES.md#9-write-path-concurrency).
 
 ### Realtime details
 - On page load, render from D1 through server-side rendering, then open a
   WebSocket to `/api/sales/:id/live`, which the Worker forwards to the DO.
-- Messages are small diffs: `{type:"item", id, status, claimCount, version}`.
+- Messages are small diffs: `{type:"item", id, status, claimCount, offerCount, version}`.
   The client ignores versions it already has, and refetches on reconnect.
 - The Hibernation API means idle sockets don't bill DO run time.
 - "Server time" is sent on connect so the go-live countdown isn't based on the
@@ -432,20 +450,19 @@ items            id, sale_id, sort_order, title, description_md, condition,
 
 item_images      id, item_id, r2_key, width, height, sort_order
 
-claims           id, item_id, user_id, kind ('claim'|'offer_accepted'),
-                 position, status ('active'|'released'|'voided'|'converted'),
-                 price_cents, created_at, ended_at, ended_reason
-                 UNIQUE(item_id, position) WHERE status='active'
-                 UNIQUE(item_id, user_id)  WHERE status='active'
-
-offers           id, item_id, user_id, amount_cents, note, status
-                 ('pending'|'accepted'|'declined'|'countered'|'expired'|'withdrawn'),
-                 counter_cents, expires_at, created_at, responded_at
+-- claims and offers unified as "entries" (see STATE_MACHINES.md section 4)
+entries          id, item_id, user_id, kind ('claim'|'offer'), amount_cents, note,
+                 status ('open'|'countered'|'won'|'declined'|'withdrawn'|'lost'|
+                         'ended'|'rescinded'|'released'|'fulfilled'),
+                 rank_override, counter_cents, counter_expires_at,
+                 won_at, ended_at, ended_reason, ended_by, created_at
+                 UNIQUE(item_id, user_id) WHERE status IN ('open','countered')
+                 -- items gain: decision_deadline, units_won (cached), state (cached)
 
 invoices         id, sale_id, buyer_id, status, subtotal_cents, shipping_cents,
                  adjustment_cents, total_cents, payment_ref, tracking,
                  sent_at, paid_at, shipped_at, due_at
-invoice_lines    id, invoice_id, claim_id, description, amount_cents
+invoice_lines    id, invoice_id, entry_id, description, amount_cents, refund_owed
 
 comments         id, item_id, user_id, parent_id, body, created_at, deleted_at
 
@@ -458,7 +475,7 @@ audit_log        id, sale_id, item_id, actor_id, action, data JSON, created_at
 -- added in round 2
 sale_access      sale_id PK, password_hash, allowlist_enabled
 sale_allowlist   sale_id, email, invited_at, accepted_user_id
-takeback_requests id, claim_id, buyer_id, reason, status ('pending'|'approved'|'denied'),
+takeback_requests id, entry_id, buyer_id, reason, status ('pending'|'approved'|'denied'),
                  created_at, decided_at
 categories       id, parent_id, slug, name, default_item_type_id
 item_types       id, slug, name, attribute_schema JSON, version
@@ -472,8 +489,8 @@ subscriptions    user_id, plan_id, stripe_customer_id, status, current_period_en
 fees             id, invoice_id, seller_id, kind, amount_cents, status, created_at
 ```
 
-Indexes: `items(sale_id, sort_order)`, `claims(item_id, status, position)`,
-`claims(user_id, status)`, `offers(item_id, status)`, `invoices(sale_id, buyer_id)` (unique),
+Indexes: `items(sale_id, sort_order)`, `entries(item_id, status, amount_cents, created_at)`,
+`entries(user_id, status)`, `invoices(sale_id, buyer_id, status)`,
 `audit_log(sale_id, created_at)`.
 
 ## 7. Routes / pages
@@ -546,85 +563,52 @@ that should cover early usage. Durable Objects need the paid plan. Watch for:
 - **Load test** before the first real sale: simulate the go-live rush with k6 or
   `autocannon` against a preview deployment.
 
-## 12. Open questions — round 3
+## 12. Open questions — round 4
 
-Rounds 1–2 are recorded as D2–D23. Each question below has a recommended default in *italics*.
+These came up while writing [`STATE_MACHINES.md`](./STATE_MACHINES.md). Each has a
+recommended default in *italics*.
 
-**Pro buyer rescind (needs guardrails, since sellers will have opinions)**
-- **Q-R3-1.** A Pro buyer can rescind without approval. When is that allowed?
-  - (a) any time until they pay, (b) only until the invoice is sent, (c) only
-    within N minutes of claiming, or (d) a monthly quota.
-  - Does a Pro rescind count on the buyer's record?
-  - Can a seller opt a sale out of Pro rescinds?
-  - *Allowed until the invoice is sent, with up to 5 per month. It counts on the
-    record as a "rescind", which is softer than a non-pay. Sellers cannot opt out,
-    otherwise the perk is worthless, but sellers do see the buyer's rescind rate before accepting.*
+**Offers and ranking**
+- **R4-1. Backup offers.** Can buyers make offers on a sold-out item, to be next in
+  line if the winner falls through? *Yes, per-sale toggle, on by default.*
+- **R4-2. Backup ranking.** Default order is amount (highest first), then time. A
+  $45 offer outranks a $40 claim as backup. Is that right? Or should claims always
+  outrank offers? *Amount, then time; the seller can reorder.*
+- **R4-3. Promotion below asking.** If a winner is removed and the best backup is an
+  offer *below* asking, should it auto-promote, or go back to the seller to decide?
+  *Back to the seller (decision window restarts). Backups at or above asking auto-promote.*
+- **R4-4. Withdrawing offers.** Can a buyer withdraw a pending offer before the seller
+  responds? *Yes, until accepted.*
+- **R4-5. Visible-offer mode.** Show who made each offer, or only amounts?
+  *Amounts with anonymous labels ("Buyer A"); the seller sees names.*
+- **R4-6. Counter-offers.** One round (seller counters, buyer accepts/declines), or
+  unlimited back-and-forth? *One round at launch.*
+- **R4-7. Offers after close.** Offers that are still pending when the sale closes:
+  should the seller get the same 24h to accept, after which they lapse? *Yes.*
 
-**Pro verification bypass**
-- **Q-R3-2.** What exactly does "Pro bypasses this" skip?
-  - The email-verified requirement, or sellers' per-sale buyer requirements (min
-    account age / completed purchases)?
-  - Paying via Stripe already verifies a card, which arguably *is* a stronger check
-    than email.
-  - We still need a working email for notifications and invoices; Stripe gives us one.
-  - *Pro skips the email-verification step and the "new account" requirements;
-    sellers can still block individuals.*
+**Invoices**
+- **R4-8. When invoices go out.** The seller sends whenever they like (mid-sale
+  for early winners is fine), and there's an optional per-sale **auto-send at close**.
+  Wins after an invoice has been sent go onto a second invoice. *Yes to all.*
+- **R4-9. Completion.** The buyer confirms receipt, or it auto-completes 14 days after
+  shipping. Feedback opens on completion. *Yes.*
+- **R4-10. Seller rescind after the buyer marked paid.** Allowed, with a
+  confirmation, flagged as "refund owed" and counted against the seller's record?
+  *Yes.*
+- **R4-11. Take-back cutoff.** Take-back requests are allowed until the buyer marks
+  paid. *Yes.*
 
-**Free-tier limits**
-- **Q-R3-3.** Free sellers get 10 items per sale. Is there also a cap on concurrent
-  sales? Without one, a seller runs five 10-item sales at once.
-  - *Max 2 concurrent live/scheduled sales on free.*
-- **Q-R3-4.** Are private sales (password / allowlist) free or Pro? Unlisted stays free.
-  *Pro.*
-- **Q-R3-5.** Lots work around the item cap ("Lot of 40 cards" is one item). Is that
-  acceptable? *Yes. Lots are legit and common.*
-- **Q-R3-6.** Photos per item? *Free: 4; Pro: 12.*
-
-**Offer mechanics (seller has the final call)**
-- **Q-R3-7.** When a full-price claim lands on an item with pending offers, it goes
-  to "seller deciding". Is that what you meant? And what happens if the seller
-  never decides?
-  - *Yes. The seller has a decision window (default 24h, seller-configurable per sale).
-    After it, the full-price claimant auto-wins.*
-- **Q-R3-8.** Can an item with *no* offers be finalized instantly by a full-price
-  claim? Or should sellers be able to hold every item for review?
-  - *Instant when there are no pending offers. "Review all claims" is a per-sale
-    option for sellers who want it.*
-- **Q-R3-9.** Can offers be **above** asking? This often happens in hot drops.
-  *Yes. It's effectively a bid, and the seller decides.*
-- **Q-R3-10.** Do buyers see the number of offers on an item, or just whether it has
-  any? *Show the count, never the amounts.*
-- **Q-R3-11.** Can sellers set a per-item **minimum offer** that auto-declines
-  offers below it? *Yes, hidden from buyers.*
-
-**Pro pricing (rough is fine)**
-- **Q-R3-12.** What are the price points? Monthly and/or annual? A free trial?
-  - *Seller Pro about $8/month, Buyer Pro about $4/month, a bundle for both, and a 20%
-    discount for annual. Let early adopters keep Pro free for the first N months.*
-- **Q-R3-13.** On-site checkout fee target? Should Pro sellers get a lower fee? Who
-  absorbs Stripe's ~2.9% + 30¢?
-  - *Platform fee 3% on free and 1.5% on Pro. The Stripe fee is passed to the seller,
-    as eBay and TCGplayer do.*
-
-**Legal, safety and age**
-- **Q-R3-14.** Minimum age? YGO skews young. COPPA rules out under-13s, and Stripe
-  requires 18+ to receive payouts.
-  - *13+ to buy (with a parental-consent checkbox for under-18), 18+ to sell.*
-- **Q-R3-15.** Should sellers be **required** to offer protected payment methods
-  (PayPal G&S) while payment is off-site, or should we just warn about F&F, Zelle and Cash App?
-  - *Warn, and show a "Accepts G&S" badge on sales. Don't require it.*
-- **Q-R3-16.** Can sellers edit an item's price or details once it has claims?
-  - *Title and photos yes, with the change noted in the audit log. Price and quantity are
-    locked once claimed.*
-
-**Discovery and growth**
-- **Q-R3-17.** Will the site have a public browse/search across all public sales
-  from day one, or start link-only (sellers bring their own buyers from FB)?
-  - *Link-only plus seller profiles at MVP. Browse/search after there's enough
-    supply to make it look alive.*
-- **Q-R3-18.** Should buyers be able to follow sellers and get notified when a new sale is scheduled? *Yes, MVP. It's how repeat buyers come back.*
-- **Q-R3-19.** Do sales have a maximum duration (e.g. 14 days)? This is needed
-  even as events-only (D10). *Max 14 days live, and the preview can open at most 7 days before go-live.*
+**Product**
+- **R4-12. Buyer cart behavior.** Should buyers see a running total across their
+  wins during a live sale ("You've won 4 items · $86")? *Yes.*
+- **R4-13. Seller analytics (Pro?).** Views, unique visitors, claim rate, sell-through
+  and time-to-sell per sale. Is this a Pro feature? *Basic counts free; details Pro.*
+- **R4-14. Seller requirements.** Should *sellers* need anything beyond 18+ and a
+  verified email to run a public sale (e.g. a verified phone, or a first sale capped
+  at N items until they have feedback)? *Phone verification to publish a public or
+  unlisted sale; no cap.*
+- **R4-15. Search scope.** Should browse/search include items from **unlisted** sales?
+  *No. Only public sales appear in browse and search.*
 
 ## 13. Proposed first milestones
 
