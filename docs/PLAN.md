@@ -380,7 +380,7 @@ themselves from strangers.
 | Realtime | **Durable Objects** (one per sale) using the WebSocket Hibernation API | Used to push updates. See the concurrency notes below. |
 | Background jobs | **Queues** (notification fan-out) + **DO alarms** / **cron triggers** | Alarms handle go-live, close, offer expiry and payment deadlines. |
 | Auth | **Better Auth** with a D1 / Drizzle adapter | Email + password, magic link, Discord; phone OTP via Twilio Verify. Sessions are stored in D1. |
-| Email | **Resend** | Transactional email only, with Svelte templates. |
+| Email | **Cloudflare Email Service** (Email Sending, public beta) via the `send_email` binding | Transactional only, Svelte templates. See TECH_STACK S28. |
 | Bot protection | **Turnstile** on sign-up, plus the Workers **Rate Limiting** binding on claim and offer endpoints | |
 | Styling | Tailwind CSS v4 + a headless component library (bits-ui / shadcn-svelte) | |
 | Testing | Vitest + `@effect/vitest` + `@cloudflare/vitest-pool-workers`, fast-check, Playwright | |
@@ -598,8 +598,9 @@ end-to-end and load tests.
 All planning rounds are answered (product D1–D56, stack S1–S26, testing S27).
 The one item still open:
 
-- **Name and domain.** Not needed until production domains, email sending domains
-  and OAuth app registration. Staging and previews can run on `workers.dev` until then.
+- **Name and domain.** Staging and previews can run on `workers.dev` and send email only
+  to verified addresses. **Production email requires an onboarded sending domain**
+  (TECH_STACK S28), so the domain must be decided before the pilot sale.
 
 ## 13. Proposed first milestones
 
@@ -626,6 +627,6 @@ The one item still open:
 7. **The seller control room:** deciding, take-backs, rescinds with reason codes,
    and the admin dispute queue.
 8. **Invoices after close:** shipping menu, payment deadlines, completion.
-9. **Notifications and messaging:** Queue → Resend / web push; on-site messages.
+9. **Notifications and messaging:** Queue → Cloudflare Email Service / web push; on-site messages.
 10. **Discovery:** browse and search (FTS5), follows, share cards, text export →
     pilot sale.

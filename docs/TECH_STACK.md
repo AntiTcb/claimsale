@@ -37,6 +37,7 @@ questions are **T#**, each with a recommended default in *italics*.
 | S25 | **Full test suite: unit, browser, Workers integration and E2E (Vitest + Playwright). Every feature and bug fix ships with tests.** See [`TESTING.md`](./TESTING.md). |
 | S26 | Round 6 defaults, all accepted: Effect Schema replaces Zod (T24); Drizzle for queries inside an Effect service (T25); Effect is server + core only, except Schema in the client with a bundle budget (T26); the domain core is pure functions (T27); the tracing bridge with a Phase 0 spike (T28); the logging policy (T29); a full Worker pair + D1 per PR (T30); seed data (T31); Cloudflare Access on non-production (T32); CalVer + git-cliff, releases on demand (T33); expand/contract migrations with approval and a Time Travel bookmark (T34); the Renovate policy (T35); the Doppler layout (T36); svelte-check + type-aware oxlint + the `{@html}` guard (T37). |
 | S27 | Testing round 7 defaults, all accepted: Vitest 4.1 for Workers tests and 5 elsewhere until the pool supports 5; coverage thresholds + ratchet; nightly Stryker on core (≥ 80%); CI-generated visual baselines; the browser matrix; guarded test-only engine endpoints; the tests-with-changes guard; GitHub-only coverage reporting; the spec traceability check against STATE_MACHINES section 10. |
+| S28 | **Cloudflare Email Service replaces Resend** for all outbound email. See section 10. |
 
 ---
 
@@ -136,7 +137,7 @@ Browser: Sentry browser SDK (errors + web vitals)
 - **Sampling:** 100% of traces in preview and staging; production starts at 100% and
   is lowered with `head_sampling_rate` as traffic grows.
 - **Phase 0 spike (before feature work):** prove one end-to-end trace through
-  browser → web → RPC → DO → D1 → Queue → consumer → Resend, visible in Sentry with
+  browser → web → RPC → DO → D1 → Queue → consumer → Cloudflare Email Service, visible in Sentry with
   correlated logs and a linked error. **Fallback** if the bridge falls short: Effect's
   built-in `OtlpTracer` exporting straight to Sentry's OTLP endpoint. That's simpler,
   but its spans would sit beside the platform spans rather than nested under them.
@@ -155,7 +156,7 @@ secret is missing.
 - **Doppler project `claimsale`**, with configs `dev` (local), `prv` (PR previews),
   `stg` (staging) and `prd` (production). Branch configs (e.g. `dev_alice`) cover
   personal overrides.
-- **What lives where:** only secrets go in Doppler (Resend, Twilio, Stripe, Better Auth
+- **What lives where:** only secrets go in Doppler (Twilio, Stripe, Better Auth
   secret, Sentry DSN, Discord OAuth, Turnstile). Non-secret config (`APP_ENV`,
   URLs, feature flags) stays in `wrangler.jsonc` per environment, reviewed in PRs.
 - **CI auth:** one Doppler service token per GitHub Environment (`preview`, `staging`,
@@ -236,7 +237,7 @@ hotfix/*  ──PR──► main ──► production, then an automatic back-me
 | Validation | `effect/Schema` (Standard Schema) | built in |
 | ORM | `drizzle-orm` / `drizzle-kit` | 0.45.3 / 0.31.11 |
 | Auth | `better-auth` | 1.7.7 |
-| Email / SMS | `resend` / Twilio Verify REST | 6.32.1 / — |
+| Email / SMS | Cloudflare Email Service (`send_email` binding, no package or API key) / Twilio Verify REST | — |
 | Payments | `stripe` | 23.0.0 |
 | UI | `tailwindcss`, `shadcn-svelte`, `bits-ui`, `@lucide/svelte` | 4.3.3 / 1.7.0 / 2.19.5 / 1.53.0 |
 | Realtime client | `partysocket` | 1.3.0 |
@@ -258,3 +259,55 @@ hotfix/*  ──PR──► main ──► production, then an automatic back-me
 
 Round 6 (T24–T37) is answered; see S26. The open questions are now about testing,
 in [`TESTING.md`](./TESTING.md) and in `PLAN.md` section 12.
+
+---
+
+## 10. Email: Cloudflare Email Service (S28)
+
+**Status (checked 2026-10-08):** Email Sending is in **public beta** and needs the
+**Workers Paid** plan, which we already need for Durable Objects. Pricing is **3,000 emails
+per month included, then $0.35 per 1,000**. It's for transactional email only; Cloudflare
+doesn't allow marketing email yet. DKIM/ARC signing, SPF/DMARC alignment, IP reputation
+and a suppression list are all managed by Cloudflare.
+
+**How we use it:**
+- **Binding, not an API key:** `"send_email": [{ "name": "EMAIL", "allowed_sender_addresses": [...] }]`
+  in each Worker that sends. Each binding is restricted to our own sender
+  addresses, so a bug can't send as an arbitrary address. There's no email secret in
+  Doppler at all.
+- **Two senders:**
+  - **web** sends auth emails directly (verification, magic link, password reset),
+    because they're latency-sensitive and the user is waiting.
+  - **engine** sends notifications (won, promoted, invoice, offer responses, follows)
+    from the Queue consumer.
+- **A sending subdomain** such as `notify.<domain>`, kept separate from the root
+  domain so notification complaints can't hurt account email.
+- **An `Mailer` Effect service** with three implementations:
+  - `CloudflareMailer`: production and staging.
+  - `CapturingMailer`: tests and previews. It writes every message to an outbox table
+    that the test-only endpoint can read, so Playwright can follow magic-link and
+    verification emails.
+  - `LogMailer`: local `wrangler dev`, where the binding is simulated and the message
+    is printed to the console and saved to a file.
+
+**Consequences:**
+- **The domain is needed earlier.** Until a sending domain is onboarded, Email Service
+  can only send to **verified destination addresses** in the account. That's fine,
+  and safe, for staging and previews: non-production can never email a real user.
+  **Production can't send to users until the name and domain are decided and the domain is onboarded.**
+- **Daily quotas start low and rise with good sending history.** Emails are spread
+  out rather than sent in bursts:
+  - Auth email is never queued behind notifications.
+  - Notifications use their own Queue, with retry and backoff on rate-limit errors.
+  - "New sale from a seller you follow" emails are batched as a digest when a
+    seller has many followers.
+  - Ask Cloudflare for a quota increase before the pilot sale.
+- **Beta risk.** The `Mailer` service is the only code that touches the binding.
+  Moving to another provider later (e.g. back to Resend or to Postmark) means
+  writing one Layer and adding a secret. Nothing else changes.
+- **Local development:** the binding is simulated by default (logs + files). Set
+  `remote: true` only when you deliberately want real sends, to verified addresses.
+- **Testing:** unit tests use an in-memory `Mailer`. Workers integration tests assert
+  on the simulated binding. E2E tests read the `CapturingMailer` outbox. A staging
+  smoke test sends one real email to a verified address after each staging deploy.
+

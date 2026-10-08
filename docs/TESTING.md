@@ -40,7 +40,8 @@ live in [`STATE_MACHINES.md` section 10](./STATE_MACHINES.md#10-rule-id-registry
 | A new UI component | A browser test: renders, main interactions, keyboard operation, and no axe violations. |
 | A new page or flow | Browser tests for its components + at least one Playwright E2E for the happy path, and E2E tests for the important failure paths. |
 | A DB migration | A Workers integration test that applies all migrations to an empty DB **and** to a DB seeded at the previous schema (expand/contract safety). |
-| An external integration (Resend, Twilio, Stripe, YGOPRODeck, Discord) | Unit/integration tests with **MSW** (`msw@3`) handlers for success, error and timeout. A staging smoke test with the provider's test mode. |
+| An external integration (Twilio, Stripe, YGOPRODeck, Discord) | Unit/integration tests with **MSW** (`msw@3`) handlers for success, error and timeout. A staging smoke test with the provider's test mode. |
+| Email (Cloudflare Email Service binding) | Unit: in-memory `Mailer`. Workers integration: assert on the simulated `send_email` binding. E2E: read the `CapturingMailer` outbox through the test-only endpoint. Staging smoke: one real send to a verified address. |
 | **A bug fix** | A regression test at the **lowest layer that reproduces the bug**, committed so that it fails on the parent commit. The PR description links the test. |
 
 ### Domain invariants (property tests on `packages/core`)
