@@ -372,18 +372,20 @@ themselves from strangers.
 
 | Concern | Choice | Notes |
 | --- | --- | --- |
-| Framework | **SvelteKit 3** (latest `3.0.x`) + **Svelte 5** (runes) | Remote functions are still behind `experimental.remoteFunctions` in 3.0.1; see TECH_STACK T2. |
+| Framework | **SvelteKit 3** (latest `3.0.x`) + **Svelte 5** (runes) | Remote functions (experimental flag), wrapped in an Effect-aware layer (TECH_STACK S2, section 3). |
+| App framework | **Effect 4** on the server side and in the domain core | TECH_STACK S20. |
 | Hosting | **Cloudflare Workers** with static assets via `@sveltejs/adapter-cloudflare` (v8) | Workers rather than Pages: Cloudflare is steering new features to Workers, and we need Durable Objects, Queues and cron in the same deployment. |
-| Database | **Cloudflare D1** (SQLite) + **Drizzle ORM** | Drizzle migrations are applied with `wrangler d1 migrations`. |
+| Database | **Cloudflare D1** (SQLite) + **Drizzle ORM** | Drizzle migrations are applied with `wrangler d1 migrations`. Query layer: TECH_STACK T25. |
 | Images | **R2** for originals + **Cloudflare Images transformations** for resizing | Thumbnails are generated on the fly from URL params and cached at the edge. |
 | Realtime | **Durable Objects** (one per sale) using the WebSocket Hibernation API | Used to push updates. See the concurrency notes below. |
 | Background jobs | **Queues** (notification fan-out) + **DO alarms** / **cron triggers** | Alarms handle go-live, close, offer expiry and payment deadlines. |
-| Auth | **Better Auth** with a D1 / Drizzle adapter | Supports magic links, Google and Facebook sign-in. Sessions are stored in D1. |
-| Email | Cloudflare Email Sending if it's available on the account, otherwise **Resend** | Transactional email only. |
+| Auth | **Better Auth** with a D1 / Drizzle adapter | Email + password, magic link, Discord; phone OTP via Twilio Verify. Sessions are stored in D1. |
+| Email | **Resend** | Transactional email only, with Svelte templates. |
 | Bot protection | **Turnstile** on sign-up, plus the Workers **Rate Limiting** binding on claim and offer endpoints | |
 | Styling | Tailwind CSS v4 + a headless component library (bits-ui / shadcn-svelte) | |
-| Testing | Vitest (unit tests, plus `@cloudflare/vitest-pool-workers` for tests against D1 and DOs) and Playwright for end-to-end tests | |
-| Tooling | pnpm, TypeScript strict mode, ESLint, Prettier, GitHub Actions → `wrangler deploy` | |
+| Testing | Vitest + `@effect/vitest` + `@cloudflare/vitest-pool-workers`, fast-check, Playwright | |
+| Observability | Cloudflare traces + logs → OTLP → Sentry; Sentry SDK for errors; structured JSON logs | TECH_STACK section 4. |
+| Tooling | pnpm monorepo, TypeScript strict, oxlint + oxfmt + svelte-check, GitHub Actions, Doppler, Renovate | `dev` → `main` release flow (TECH_STACK section 7). |
 
 ### Request flow
 ```
@@ -426,7 +428,7 @@ Details are in [`STATE_MACHINES.md` section 9](./STATE_MACHINES.md#9-write-path-
 - Still strip EXIF server-side as a fallback if a raw upload path is ever added.
 
 ### Auth and identity
-- **Sign-in:** an email magic link, plus Google and Facebook OAuth.
+- **Sign-in (S9):** email + password, email magic link, and Discord OAuth.
 - **Facebook trust:** FB Login doesn't give you the user's profile URL without app
   review (the `user_link` permission). The MVP lets users paste their FB profile URL
   on their profile. The seller sees it next to claims and can verify it themselves.
@@ -604,13 +606,28 @@ packages and tooling, and live in [`TECH_STACK.md`](./TECH_STACK.md) section "Qu
 
 ## 13. Proposed first milestones
 
-1. Scaffold: `pnpm create svelte` (SvelteKit 3), adapter-cloudflare,
-   `wrangler.jsonc` with D1, R2 and DO bindings, Drizzle schema plus the first
-   migration, and CI deploys to a preview Worker.
-2. Auth: Better Auth with magic links and Google, plus the profile page.
-3. Sales and items CRUD, plus image upload to R2.
-4. Claims (atomic insert, release, promote) with the race test.
-5. The SaleRoom DO and the live grid.
-6. Seller control room, buyer rollup, invoices.
-7. Email notifications via a Queue.
-8. Share card and text export → run a real pilot sale.
+0. **Foundations:**
+   - The pnpm monorepo (`apps/web`, `apps/engine`, `packages/*`), with oxlint, oxfmt,
+     svelte-check, Renovate and Doppler wired in.
+   - Wrangler environments for preview, staging and production; D1, R2, Queues
+     created for each.
+   - GitHub Actions: CI, per-PR preview pairs, `dev` → staging, release → production
+     (TECH_STACK sections 5–7).
+1. **Observability spike:** one end-to-end trace (browser → web → RPC → DO → D1 →
+   Queue → email) visible in Sentry with correlated logs and a linked error
+   (TECH_STACK section 4). This decides T28 before feature work starts.
+2. **Domain core:** state machines from `STATE_MACHINES.md` as pure functions, with
+   unit and property tests. No UI yet.
+3. **Auth:** Better Auth (email + password, magic link, Discord), email and phone
+   verification, age attestation, profiles and handles.
+4. **Sales and items:** CRUD, item types and attributes, image upload to R2, and the
+   YGOPRODeck card cache.
+5. **The engine:** the SaleEngine DO (per-item locks, alarms), entries, offers,
+   awards, promotion, plus the claim race test and a load test.
+6. **The live grid:** WebSocket updates, the claim and offer UI, and the buyer's running total.
+7. **The seller control room:** deciding, take-backs, rescinds with reason codes,
+   and the admin dispute queue.
+8. **Invoices after close:** shipping menu, payment deadlines, completion.
+9. **Notifications and messaging:** Queue → Resend / web push; on-site messages.
+10. **Discovery:** browse and search (FTS5), follows, share cards, text export →
+    pilot sale.
