@@ -39,6 +39,7 @@ questions are **T#**, each with a recommended default in *italics*.
 | S27 | Testing round 7 defaults, all accepted: Vitest 4.1 for Workers tests and 5 elsewhere until the pool supports 5; coverage thresholds + ratchet; nightly Stryker on core (≥ 80%); CI-generated visual baselines; the browser matrix; guarded test-only engine endpoints; the tests-with-changes guard; GitHub-only coverage reporting; the spec traceability check against STATE_MACHINES section 10. |
 | S28 | **Cloudflare Email Service replaces Resend** for all outbound email. See section 10. |
 | S29 | **Import/export libraries:** `papaparse` 5.7.0 (CSV), `read-excel-file` 9.3.12 / `write-excel-file` 4.1.1 (XLSX), `fflate` 0.8.3 (ZIP). **Not** the npm `xlsx` package: it's frozen at 0.18.5 because SheetJS now publishes only from its own CDN, and Renovate can't track it. |
+| S30 | **Cloudflare account: AntiTcb** (`e89111551171752d4230693ae0c83ed6`). Every Worker, D1, R2, Queue, Email Service domain and Access policy lives there. |
 
 ---
 
