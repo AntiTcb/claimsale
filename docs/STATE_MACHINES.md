@@ -437,9 +437,17 @@ IDs stay in the table, marked ~~struck~~.
 | `IO-tracking-replace` | Replacing an existing tracking number needs confirmation and is logged | PLAN 3c.3 |
 | `IO-tracking-carrier` | The carrier is detected from the tracking number format when blank; ambiguous ones are flagged | PLAN 3c.3 |
 | `TCG-tracked-graded-sealed` | Graded singles and sealed product always require tracked shipping, whatever the seller's threshold | PLAN 3 (TCG catalog), SM 6 |
-| `TCG-real-photo` | Singles above the threshold, and all graded and sealed items, need at least one seller photo to publish | PLAN 3 (TCG catalog) |
+| ~~`TCG-real-photo`~~ | *Retired: replaced by `IMG-required` (D63)* | — |
 | `TCG-attribute-schema` | An item's attributes validate against its game + kind schema (forms, imports and API alike) | PLAN 3 (TCG catalog) |
-| `TCG-catalog-match` | Import matching order: TCGplayer ID → game ID → set + number → fuzzy name + set; ambiguous → seller chooses | PLAN 3c.1 |
+| `TCG-catalog-match` | Import matching order: TCGplayer ID → set + number / set code → fuzzy name + set; ambiguous → seller chooses; unmatched → uncatalogued | PLAN 3c.1 |
 | `TCG-want-list-notify` | A listing in a public sale that matches a want-list entry (product, finish, condition ≥ min, price ≤ max) notifies its owner once | PLAN 3 (TCG catalog) |
-| `TCG-catalog-free` | Catalog browsing and card search never require Pro (Scryfall terms) | PLAN 3 (TCG catalog) |
+| ~~`TCG-catalog-free`~~ | *Retired: Scryfall is no longer used (D60)* | — |
+| `TCG-autofill-only` | Catalog autofill sets only game / set / number / rarity / product type / name / TCGplayer ID; seller fields are never overwritten | PLAN 3 (TCG catalog) |
+| `TCG-no-code-cards` | Digital code cards can't be listed; altered art needs the flag; repacks need the label | PLAN 9, D62 |
+| `IMG-required` | A sale can't be scheduled or published unless every item has at least one `approved` photo | PLAN 3 (Photo authenticity) |
+| `IMG-dup-reject` | A photo within the reject distance of another seller's image (any variant) is rejected without revealing the other seller | PLAN 3 (Photo authenticity) |
+| `IMG-dup-review` | A photo in the review band is held for admin review and blocks publishing until resolved | PLAN 3 (Photo authenticity) |
+| `IMG-own-reuse` | Own-photo reuse is allowed only for relisting the same item; blocked across different items | PLAN 3 (Photo authenticity) |
+| `IMG-hash-robust` | Hashes match across resize, recompress, mirror and 90° rotations (property-tested) | TECH_STACK S33 |
+| `IMG-repeat-offender` | Repeated rejected matches flag the account for admin review | PLAN 3 (Photo authenticity) |
 

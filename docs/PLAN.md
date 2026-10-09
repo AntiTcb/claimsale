@@ -72,6 +72,10 @@ one giant post where every item is a photo and every claim is a comment.
 | D57 | **Import/export tools ship at launch:** bulk import of sale data, export of sales and buyer/order info, and re-import of shipping tracking numbers. See section 3c. | 2026-10-08 |
 | D59 | **TCG-focused platform.** ClaimSale is for trading card games only (Yu-Gi-Oh, Pokémon, Magic: The Gathering, Riftbound and other TCGs): singles, graded cards, sealed product, TCG accessories, and lots. **Game** is a first-class concept, and items link to a shared **card and product catalog**. No general-purpose categories. See "TCG catalog and item model" in section 3. | 2026-10-08 |
 | D58 | Import/export defaults accepted: exports carry only handle, display name and shipping address (no email or phone); CSV + XLSX both ways plus a JSON account export; Pirate Ship preset + generic CSV at launch; a column-mapping step for any CSV, with named collection-app presets in v1; photos by ZIP only; all import/export tools free; imports only into draft or scheduled sales, upserting by `sku` / `item_id`, with removal opt-in. | 2026-10-08 |
+| D60 | **The catalog is TCGCSV only, and only for autofill.** Typing a card or product name fills in game, set, number, rarity and product type, and links the TCGplayer product ID. **The seller supplies everything else**: price, condition, finish/edition details, description and photos. No third-party images, no Scryfall / YGOPRODeck / Riftcodex, and no market prices (Q-TCG-8). | 2026-10-09 |
+| D61 | TCG round defaults accepted: full launch games YGO / Pokémon / MTG / Riftbound plus the other TCGCSV games (Q-TCG-1); want lists at launch (Q-TCG-2); Pokémon handled through TCGCSV like every other game (Q-TCG-4); TCGplayer + ManaBox import presets at launch (Q-TCG-7). Q-TCG-3 (market price for buyers) is moot under D60 unless Q-TCG-8 brings prices back. | 2026-10-09 |
+| D62 | **No digital code cards** (PTCGL, Arena or any other redeemable code). Altered art is allowed with a required "altered" flag. Repacks are allowed only if labelled "repack, not factory sealed". | 2026-10-09 |
+| D63 | **Every item in a sale needs at least one real seller photo**, for every kind and price. **Duplicate images are detected and prohibited:** a photo that matches an image already used in another seller's sale is rejected. Sellers must provide their own unique photos. See "Photo authenticity" in section 3. | 2026-10-09 |
 
 The detailed behavior spec for claims, offers, take-backs and invoices lives in
 [`STATE_MACHINES.md`](./STATE_MACHINES.md).
@@ -221,57 +225,96 @@ Any account can be both a buyer and a seller.
 - A threaded comment area per item. The seller's answers are highlighted.
 - Separate from claims, so "is this still available?" never counts as a claim.
 
-### TCG catalog and item model (D59)
+### TCG catalog and item model (D59, D60)
 
-**Games.** A `games` table drives navigation, filters, attribute schemas and catalog
-sources. Each game has a slug, display name, its condition scale (all use the
-TCGplayer-style scale), finish options, language options and an enabled flag.
-**Launch games: Q-TCG-1.** Adding a game is a data change plus an attribute schema,
-not a code change. Games without full catalog support still work as
-"uncatalogued" listings.
+**Games.** A `games` table drives navigation, filters and attribute schemas. Each
+game has a slug, display name, its condition scale (all use the TCGplayer-style
+scale), finish options, language options, its TCGplayer category ID and an enabled flag.
+**Launch games (D61):** Yu-Gi-Oh, Pokémon, MTG and Riftbound, plus the other games
+TCGCSV covers (One Piece, Lorcana, Flesh and Blood, Star Wars: Unlimited, Digimon,
+Gundam…). Adding a game is a data change plus an attribute schema.
 
-**Item kinds and their attributes:**
+**Item kinds and their attributes.** Everything except the catalog-filled fields is
+entered by the seller.
 
-| Kind | Shared attributes | Game-specific attributes |
+| Kind | Autofilled from the catalog | Entered by the seller |
 | --- | --- | --- |
-| **Single** | game, catalog printing (set + collector number), name, rarity, language, **condition** (NM / LP / MP / HP / DMG), finish, quantity | **Yu-Gi-Oh:** set code (`LOB-EN001`), edition (1st / Unlimited / Limited), print region (TCG / OCG / Asian-English). **Pokémon:** number (`025/165`), finish (holo / reverse holo / non-holo), 1st Edition / Shadowless, promo stamp. **MTG:** collector number, finish (non-foil / foil / etched), treatment (showcase / borderless / extended art …), Reserved List (informational). **Riftbound:** collector number, finish (foil / non-foil), variant (alt art / signature / overnumbered). |
-| **Graded single** | the single's attributes + grader (PSA / BGS / CGC / SGC / TAG / ACE / other), grade, subgrades (BGS), autograph grade, **cert number** with a link to the grader's verification page | — |
-| **Sealed** | game, catalog product, product type (booster box, case, pack, ETB, booster bundle, collector box, display, starter / structure deck, tin, collection box), language, seal notes | — |
-| **Accessory** | type (playmat, sleeves, deck box, binder, storage / toploaders, dice / counters, other), brand, optional game, condition, event / official vs custom (playmats) | — |
-| **Lot / bulk** | game, card count, description, optional card list (imported or typed) | — |
+| **Single** | game, set, collector number / set code, name, rarity, TCGplayer product ID | **condition** (NM / LP / MP / HP / DMG), language, finish and game-specific details, price, quantity, description, photos. **Yu-Gi-Oh:** edition (1st / Unlimited / Limited), print region. **Pokémon:** holo / reverse holo / non-holo, 1st Edition / Shadowless, promo stamp. **MTG:** non-foil / foil / etched, treatment (showcase, borderless, extended art…). **Riftbound:** foil / non-foil, variant (alt art, signature, overnumbered). **Any game:** "altered" flag (D62). |
+| **Graded single** | as Single | grader (PSA / BGS / CGC / SGC / TAG / ACE / other), grade, subgrades, autograph grade, **cert number** (shown as a link to the grader's own verification page), price, photos of the actual slab |
+| **Sealed** | game, set, product name, product type, TCGplayer product ID | language, seal notes, "repack" flag (D62), price, photos |
+| **Accessory** | — (not in the catalog) | type (playmat, sleeves, deck box, binder, storage / toploaders, dice / counters, other), brand, optional game, condition, price, photos |
+| **Lot / bulk** | — | game, card count, description, optional card list, price, photos |
 
-The attribute schemas live in `packages/core` as Effect Schemas, one per game per
-kind. The same schemas validate forms, imports and the API, and generate the
-import templates.
+- **Uncatalogued items always work.** If a card isn't in TCGCSV (a brand-new set,
+  an OCG print, a misprint), the seller types the details by hand.
+- **Autofill UX:** a type-ahead over catalog names. Picking a result fills in the
+  fields; the seller can still edit them, and the listing keeps the TCGplayer ID link
+  for search, want lists and "who has this card?".
+- **Attribute schemas** live in `packages/core` as Effect Schemas, one per game per
+  kind. The same schemas validate forms, imports and the API, and generate the
+  import templates.
+- **Legal:** game names are used only to describe products (no official logos), and
+  every page footer says ClaimSale isn't affiliated with Konami, The Pokémon Company,
+  Wizards of the Coast, Riot Games and so on. TCGCSV / TCGplayer attribution is shown
+  where catalog data appears, if their terms ask for it (to be checked at ingestion
+  build time).
 
-**Catalog sources.** Everything is ingested nightly into our own D1 + R2. We never
-call a third party while a user is waiting.
-
-| Source | Role | Notes |
-| --- | --- | --- |
-| **TCGCSV** (free daily mirror of TCGplayer's catalog) | **Backbone for every game:** categories → games, groups → sets, products (singles **and** sealed), and daily market prices | Gives a **TCGplayer product ID** on everything, which is also the key most collection-app exports use. No per-condition prices. It's an unofficial mirror, so we cache everything and an outage only pauses updates. |
-| **Scryfall** (MTG) | Card details, high-quality images | Free under WotC's Fan Content Policy: card data must stay free to access (catalog browsing is never Pro-gated), images must not be cropped or watermarked, use bulk data files, and send a User-Agent. |
-| **YGOPRODeck** (Yu-Gi-Oh) | Card details, set codes, rarities, images | Images must be downloaded and served from our own storage (R2), not hotlinked. ~20 req/s limit. |
-| **Pokémon** | Card details, images | pokemontcg.io is being folded into **Scrydex** (paid, also covers Lorcana, One Piece, Gundam, MTG and Riftbound). Use TCGCSV alone at launch, and evaluate Scrydex pricing (Q-TCG-4). |
-| **Riftcodex** (Riftbound) | Card details, images | Free, unofficial fan project; includes TCGplayer IDs. |
-
-- **Reference images are labelled "Reference image".** Seller photos are always
-  primary, and **at least one real photo is required for singles over $Q-TCG-6.**
-- **Market price hint:** the TCGplayer market price from TCGCSV is shown to the seller
-  while listing ("Market ≈ $12.40, updated daily"). Showing it to buyers: Q-TCG-3.
-- **Legal:** game names are used only to describe products (no official logos). Every
-  page footer says "not affiliated with Konami, The Pokémon Company, Wizards of the
-  Coast, Riot Games…". Each source's attribution requirement is shown where its data appears.
-
-**TCG-specific features this unlocks:**
+**TCG features the catalog enables:**
 - **Browse by game first** (`/g/pokemon`), then set, rarity, condition, graded or raw,
   language, finish, price.
 - **"Who has this card?":** search a card or product and see every live listing of it
-  across public sales, grouped by catalog printing.
-- **Want lists** (Q-TCG-2): buyers save cards with a max price and minimum condition,
-  and get notified when a match is listed in a public sale.
+  across public sales, grouped by catalog product.
+- **Want lists (launch, D61):** buyers save catalog products with a max price,
+  minimum condition, finish and language, and get an email digest + web push when a
+  match is listed in a public sale.
 - **Shipping rule:** graded cards and sealed product always need tracked shipping,
   whatever the seller's threshold. Raw singles under the threshold can ship by PWE.
+
+### Photo authenticity (D63)
+
+**Rules:**
+- **Every item needs at least one seller photo.** A sale can't be scheduled or
+  published until every item has one that has passed verification.
+- **A photo that matches another seller's image is rejected,** in any sale, past or present.
+- **Reusing your own photo:**
+  - allowed when relisting the same item (the relist flow carries the photos over);
+  - blocked for a *different* item in the same sale, since each item needs its own photo (Q-IMG-1).
+- **No stock images:** there is no catalog image to fall back on, and uploads are
+  only accepted from the seller's device (no URLs).
+
+**How detection works:**
+1. **Upload:** the client resizes and strips EXIF as before. The photo is stored in
+   R2 with status `pending`.
+2. **Verify (engine Queue job):**
+   - Decode the image in WASM (`@jsquash/webp` / `@jsquash/jpeg`), downscale it, and
+     compute two 64-bit **perceptual hashes**: dHash and pHash.
+   - Do the same for the **mirrored and 90°/180°/270° rotated** versions, so that
+     simple flips and rotations don't evade detection.
+   - These hashes survive resizing, recompression and small colour or brightness edits.
+3. **Look for near matches:** the hash index stores each 64-bit hash as 4 × 16-bit
+   bands. A candidate is any stored image sharing at least one band (an indexed
+   lookup), and the Hamming distance is then computed only on those candidates
+   (multi-index hashing). This stays fast at millions of images on D1.
+4. **Decide:**
+
+   | Closest match from another seller | Result |
+   | --- | --- |
+   | Distance ≤ 6 on both hashes | **Rejected.** The seller sees "This photo matches an image already used on ClaimSale. Please upload your own photo." The match is logged, and the other seller's identity is never revealed. |
+   | Distance 7–12 | **Held for admin review.** It can't publish until approved or replaced. |
+   | Otherwise | **Approved.** Its hashes are added to the index. |
+
+   *(The thresholds are starting points, tuned on a test set before launch.)*
+5. **Repeat offenders:** an account with several rejected matches is flagged in `/admin`.
+
+**Limits, stated honestly:**
+- Heavy crops, collages, or a photo of a screen can evade hashing.
+- Two sellers photographing **different copies of the same graded card** on plain
+  backgrounds can produce near-identical images (same slab label layout, same art).
+  That's why the middle band goes to review rather than being blocked automatically.
+- The report button ("this photo isn't theirs") and admin review back up the hashing.
+- **Optional extra: timestamp photos** (Q-IMG-2). A photo of the cards with a
+  handwritten note showing the seller's handle and the date is a familiar norm in
+  trading communities and is hard to fake.
 
 ## 3a. Monetization (D4)
 
@@ -352,8 +395,8 @@ seller confirms, and every apply is recorded in the audit log.
 - **Formats:** CSV and XLSX, plus an optional ZIP of photos (D58).
 - **Column mapping:** if the headers don't match a template, the seller maps their
   columns to ours (the mapping is remembered per seller), so exports from any
-  collection or inventory app work. Named presets for TCGplayer, Collectr and Dragon
-  Shield come in v1.
+  collection or inventory app work. Named presets for **TCGplayer and ManaBox exports
+  ship at launch** (D61); Collectr, Dragon Shield and others come in v1.
 - **Templates:** a downloadable template per item type. Columns come from the item
   type's attribute schema (section 3, "Item types"), and include one example row and
   a `template_version`.
@@ -363,11 +406,13 @@ seller confirms, and every apply is recorded in the audit log.
   `;`-separated). Then `game`, `kind` and the attribute columns for that game and
   kind (`set_code`, `number`, `rarity`, `finish`, `edition`, `language`, `grader`,
   `grade`, `cert_number`…).
-- **Catalog matching:** rows match the catalog by `tcgplayer_product_id`, then a
-  game ID (`scryfall_id`, YGO set code, etc.), then set + collector number, then
-  fuzzy name + set. The preview shows the matched printing with its reference image.
-  Ambiguous matches (several printings) and rarities that don't exist for that
-  printing are flagged for the seller to choose.
+- **Catalog matching (autofill only):** rows match the catalog by
+  `tcgplayer_product_id`, then set + collector number / set code, then fuzzy name +
+  set. Ambiguous matches are flagged for the seller to choose; unmatched rows import
+  as uncatalogued items.
+- **Photos are required (D63):** rows without a photo import as items that are
+  marked "needs photo", and the sale can't be published until each has one. Imported
+  photos go through the same duplicate check.
 - **Re-import updates, it doesn't duplicate:** rows match existing items by `sku`
   (or by the exported `item_id`). Matched rows update, new rows create, and items
   missing from the file are left alone unless the seller ticks "remove items not in file".
@@ -601,7 +646,12 @@ items            id, sale_id, sort_order, title, description_md, condition,
                  price_cents, quantity, offers_mode, min_offer_cents,
                  shipping_override_cents, status, version, created_at, updated_at
 
-item_images      id, item_id, r2_key, width, height, sort_order
+item_images      id, item_id, seller_id, r2_key, width, height, sort_order,
+                 status ('pending'|'approved'|'review'|'rejected'), match_image_id,
+                 match_distance, verified_at
+image_hashes     image_id, seller_id, kind ('dhash'|'phash'), variant ('orig'|'mirror'|
+                 'r90'|'r180'|'r270'), hash (64-bit), band0, band1, band2, band3
+                 -- one index per band column; candidate lookup = any band equal
 
 -- claims and offers unified as "entries" (see STATE_MACHINES.md section 4)
 entries          id, item_id, user_id, kind ('claim'|'offer'), amount_cents, note,
@@ -648,12 +698,8 @@ games            id, slug, name, condition_scale JSON, finishes JSON, languages 
                  tcgplayer_category_id, enabled, sort_order
 catalog_sets     id, game_id, code, name, release_date, tcgplayer_group_id, external_ids JSON
 catalog_products id, game_id, set_id, kind ('single'|'sealed'), name, number, rarity,
-                 product_type, finishes JSON, tcgplayer_product_id UNIQUE,
-                 external_ids JSON (scryfall_id, ygoprodeck_id, riftcodex_id …),
-                 image_key (R2), source_attribution, updated_at
-                 -- FTS5 virtual table over name, set name, number, set code
-market_prices    product_id, finish, market_cents, low_cents, mid_cents, as_of
-                 -- latest only; daily history kept in R2 if ever needed
+                 product_type, tcgplayer_product_id UNIQUE, updated_at
+                 -- FTS5 virtual table over name, set name, number; no images, no prices (D60)
 want_list_items  id, user_id, product_id, finish, max_price_cents, min_condition,
                  language, created_at
                  -- items gain: game_id, kind, catalog_product_id, finish, language,
@@ -724,8 +770,9 @@ Indexes: `items(sale_id, sort_order)`, `entries(item_id, status, amount_cents, c
 - Report sale / report user, going to an admin queue.
 - Audit log visible to the seller, and the relevant entries to an affected buyer.
 - Prohibited items policy and terms of service: proxies, counterfeits, orica,
-  "replica" or custom cards that imitate real cards (D21). Q-TCG-5 covers altered art
-  and digital code cards. Check the policy against payment-provider rules if Stripe is added later.
+  "replica" or custom cards that imitate real cards (D21), and digital code cards (D62).
+  Altered art needs the "altered" flag, and repacks need the "repack" label.
+- Photos: every item needs its own photo, and duplicate images are rejected (D63). Check the policy against payment-provider rules if Stripe is added later.
 
 ## 10. Cost and limits (rough)
 
@@ -742,31 +789,23 @@ See [`TESTING.md`](./TESTING.md). Every feature and bug fix ships with tests
 (TECH_STACK S25). The layers are unit, browser (component), Workers integration,
 end-to-end and load tests.
 
-## 12. Open questions — TCG focus (D59)
+## 12. Open questions
 
 Each has a recommended default in *italics*.
 
-- **Q-TCG-1. Launch games.** Which games are enabled at launch? Full catalog support for
-  YGO, Pokémon, MTG and Riftbound, plus TCGCSV-only support (names, sets, prices, no
-  extra enrichment) for One Piece, Lorcana, Flesh and Blood, Star Wars: Unlimited,
-  Digimon and Gundam? *Yes. Every game TCGplayer lists is cheap to enable.*
-- **Q-TCG-2. Want lists.** At launch or v1? It's a strong reason for buyers to sign up
-  and come back. *Launch, notifying by email digest + web push.*
-- **Q-TCG-3. Market price for buyers.** Show the TCGplayer market price next to the
-  asking price? Buyers like it; some sellers won't. *Seller-only by default, with a
-  per-sale "show market prices" toggle.*
-- **Q-TCG-4. Pokémon data.** TCGCSV-only at launch, and evaluate Scrydex (paid;
-  pokemontcg.io's successor) after launch? *Yes.*
-- **Q-TCG-5. Policy edge cases.** Altered-art cards (allowed if disclosed?), digital
-  code cards (PTCGL / Arena codes), and resealed or "repack" product?
-  *Altered art allowed with a required "altered" flag; code cards allowed as
-  accessories; repacks allowed only if clearly labelled "repack, not factory sealed".*
-- **Q-TCG-6. Real-photo requirement.** At least one real photo (not a reference image)
-  for singles above a price? *$25, and always for graded and sealed.*
-- **Q-TCG-7. Collection-app import presets.** D58 put named presets in v1. With the TCG
-  focus, bring the **TCGplayer** and **ManaBox / Moxfield** (MTG) export presets to
-  launch, since they include TCGplayer / Scryfall IDs and match the catalog exactly?
-  *Yes for TCGplayer + ManaBox; others in v1.*
+- **Q-TCG-8. Market prices.** D60 makes the catalog autofill-only, which drops the
+  TCGplayer market price hint (seller-only, per the earlier Q-TCG-3 default).
+  TCGCSV includes prices for free, so keeping a hint just for sellers while they
+  type their price is cheap. Drop it, or keep it? *Drop it, as D60 says; it's easy to add later.*
+- **Q-IMG-1. Reusing your own photos.** Allow reuse only when relisting the same item,
+  and block it across different items (even your own)? *Yes.*
+- **Q-IMG-2. Timestamp photos.** Should sellers be able to add a "timestamp" photo
+  (handle + date handwritten) per sale, shown with a "Timestamped" badge? And should
+  it be required for public sales? *Optional at launch, with the badge; consider
+  requiring it for new sellers (fewer than N completed sales).*
+- **Q-IMG-3. Thresholds and enforcement.** Reject at distance ≤ 6, review at 7–12,
+  then tune on a test set. After 3 rejected matches in 30 days, flag the account for
+  admin review. *Yes.*
 
 **Before the pilot sale** (not blocking development):
 - Register `claimsale.net` in the AntiTcb account and onboard `notify.claimsale.net` in Email Service.
@@ -791,9 +830,9 @@ Each has a recommended default in *italics*.
    verification, age attestation, profiles and handles.
 4. **Sales and items:** CRUD, item types and attributes, image upload to R2, **CSV/XLSX
    item import with templates and ZIP photos**.
-4b. **TCG catalog:** nightly ingestion (TCGCSV for every game + Scryfall / YGOPRODeck
-   / Riftcodex enrichment), reference images in R2, FTS search, market price hints,
-   and the catalog picker used by the listing form and imports.
+4b. **TCG catalog and photo authenticity:** nightly TCGCSV ingestion (games, sets,
+   products), FTS autofill, the catalog picker for the listing form and imports, and
+   the image verification pipeline (perceptual hashes, banded index, admin review queue).
 5. **The engine:** the SaleEngine DO (per-item locks, alarms), entries, offers,
    awards, promotion, plus the claim race test and a load test.
 6. **The live grid:** WebSocket updates, the claim and offer UI, and the buyer's running total.
