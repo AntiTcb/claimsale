@@ -72,10 +72,13 @@ one giant post where every item is a photo and every claim is a comment.
 | D57 | **Import/export tools ship at launch:** bulk import of sale data, export of sales and buyer/order info, and re-import of shipping tracking numbers. See section 3c. | 2026-10-08 |
 | D59 | **TCG-focused platform.** ClaimSale is for trading card games only (Yu-Gi-Oh, Pokémon, Magic: The Gathering, Riftbound and other TCGs): singles, graded cards, sealed product, TCG accessories, and lots. **Game** is a first-class concept, and items link to a shared **card and product catalog**. No general-purpose categories. See "TCG catalog and item model" in section 3. | 2026-10-08 |
 | D58 | Import/export defaults accepted: exports carry only handle, display name and shipping address (no email or phone); CSV + XLSX both ways plus a JSON account export; Pirate Ship preset + generic CSV at launch; a column-mapping step for any CSV, with named collection-app presets in v1; photos by ZIP only; all import/export tools free; imports only into draft or scheduled sales, upserting by `sku` / `item_id`, with removal opt-in. | 2026-10-08 |
-| D60 | **The catalog is TCGCSV only, and only for autofill.** Typing a card or product name fills in game, set, number, rarity and product type, and links the TCGplayer product ID. **The seller supplies everything else**: price, condition, finish/edition details, description and photos. No third-party images, no Scryfall / YGOPRODeck / Riftcodex, and no market prices (Q-TCG-8). | 2026-10-09 |
-| D61 | TCG round defaults accepted: full launch games YGO / Pokémon / MTG / Riftbound plus the other TCGCSV games (Q-TCG-1); want lists at launch (Q-TCG-2); Pokémon handled through TCGCSV like every other game (Q-TCG-4); TCGplayer + ManaBox import presets at launch (Q-TCG-7). Q-TCG-3 (market price for buyers) is moot under D60 unless Q-TCG-8 brings prices back. | 2026-10-09 |
+| D60 | **The catalog is TCGCSV only, and only for autofill.** Typing a card or product name fills in game, set, number, rarity and product type, and links the TCGplayer product ID. **The seller supplies everything else**: price, condition, finish/edition details, description and photos. No third-party images and no Scryfall / YGOPRODeck / Riftcodex. The TCGplayer market price is used only as a listing aid for sellers (D64). | 2026-10-09 |
+| D61 | TCG round defaults accepted: full launch games YGO / Pokémon / MTG / Riftbound plus the other TCGCSV games (Q-TCG-1); want lists at launch (Q-TCG-2); Pokémon handled through TCGCSV like every other game (Q-TCG-4); TCGplayer + ManaBox import presets at launch (Q-TCG-7). Market prices are never shown to buyers (D64). | 2026-10-09 |
 | D62 | **No digital code cards** (PTCGL, Arena or any other redeemable code). Altered art is allowed with a required "altered" flag. Repacks are allowed only if labelled "repack, not factory sealed". | 2026-10-09 |
 | D63 | **Every item in a sale needs at least one real seller photo**, for every kind and price. **Duplicate images are detected and prohibited:** a photo that matches an image already used in another seller's sale is rejected. Sellers must provide their own unique photos. See "Photo authenticity" in section 3. | 2026-10-09 |
+| D64 | **Market price as a seller listing aid.** The price input shows the TCGplayer market price (from TCGCSV) as its **placeholder**, with **quick buttons for a % of market** (e.g. 70 / 75 / 80 / 85 / 90 / 100%, where 80% is the common choice). The seller always sets the final price; nothing is filled in until they click. **Never shown to buyers.** | 2026-10-09 |
+| D65 | Photo rules confirmed: own-photo reuse only when relisting the same item; reject at distance ≤ 6, review at 7–12 (tuned before launch); an account is flagged after 3 rejected matches in 30 days. | 2026-10-09 |
+| D66 | **A timestamp photo is required for newer sellers** (fewer than 5 completed sales) on every sale they publish. It's optional for everyone else, and any sale with one gets a "Timestamped" badge. | 2026-10-09 |
 
 The detailed behavior spec for claims, offers, take-backs and invoices lives in
 [`STATE_MACHINES.md`](./STATE_MACHINES.md).
@@ -250,6 +253,19 @@ entered by the seller.
 - **Autofill UX:** a type-ahead over catalog names. Picking a result fills in the
   fields; the seller can still edit them, and the listing keeps the TCGplayer ID link
   for search, want lists and "who has this card?".
+- **Market price aid (D64):**
+  - Once a catalog product and finish are chosen, the price field's **placeholder**
+    shows the TCGplayer market price, e.g. "Market $12.40 · updated Oct 8".
+  - **Buttons below the field: 70% · 75% · 80% · 85% · 90% · 100%.** Clicking one fills
+    the price; the seller can still edit it. Prices are rounded down to the nearest
+    $0.05 under $5, and to the nearest $0.25 at $5 and above.
+  - Sellers can save a **default %** in their settings, and that button is highlighted.
+  - **Bulk editor and imports:** "Set all selected / blank prices to N% of market",
+    always previewed before applying.
+  - **Caveats shown inline:** TCGplayer market is roughly a near-mint price for that
+    product and finish (TCGCSV has no per-condition prices), so the seller should
+    adjust for condition. Graded, accessory, lot and uncatalogued items have no hint.
+  - **Seller-only:** buyers never see market prices, and the prices aren't exported in buyer-facing data.
 - **Attribute schemas** live in `packages/core` as Effect Schemas, one per game per
   kind. The same schemas validate forms, imports and the API, and generate the
   import templates.
@@ -312,9 +328,16 @@ entered by the seller.
   backgrounds can produce near-identical images (same slab label layout, same art).
   That's why the middle band goes to review rather than being blocked automatically.
 - The report button ("this photo isn't theirs") and admin review back up the hashing.
-- **Optional extra: timestamp photos** (Q-IMG-2). A photo of the cards with a
-  handwritten note showing the seller's handle and the date is a familiar norm in
-  trading communities and is hard to fake.
+- **Timestamp photos (D66):** a photo of the sale's cards beside a handwritten note
+  with the seller's handle and the date.
+  - **Required** for sellers with **fewer than 5 completed sales**; the sale can't be
+    published without one. **Optional** for everyone else.
+  - Any sale with one shows a **"Timestamped"** badge, and the photo appears in the
+    sale header.
+  - It goes through the same duplicate check, so reusing an old timestamp photo
+    (even your own) is rejected; it must be new for each sale.
+  - The handwriting itself isn't machine-checked. Buyers and the report button act on
+    obvious fakes, and admins can reject one from the review queue.
 
 ## 3a. Monetization (D4)
 
@@ -699,7 +722,12 @@ games            id, slug, name, condition_scale JSON, finishes JSON, languages 
 catalog_sets     id, game_id, code, name, release_date, tcgplayer_group_id, external_ids JSON
 catalog_products id, game_id, set_id, kind ('single'|'sealed'), name, number, rarity,
                  product_type, tcgplayer_product_id UNIQUE, updated_at
-                 -- FTS5 virtual table over name, set name, number; no images, no prices (D60)
+                 -- FTS5 virtual table over name, set name, number; no images (D60)
+market_prices    product_id, subtype ('Normal'|'Foil'|'Holofoil'|'Reverse Holofoil'|
+                 '1st Edition'…, as TCGCSV names them), market_cents, as_of
+                 -- latest only; seller listing aid (D64), never exposed to buyers
+                 -- seller_profiles gains: default_market_pct
+                 -- sales gain: timestamp_image_id
 want_list_items  id, user_id, product_id, finish, max_price_cents, min_condition,
                  language, created_at
                  -- items gain: game_id, kind, catalog_product_id, finish, language,
@@ -791,25 +819,10 @@ end-to-end and load tests.
 
 ## 12. Open questions
 
-Each has a recommended default in *italics*.
-
-- **Q-TCG-8. Market prices.** D60 makes the catalog autofill-only, which drops the
-  TCGplayer market price hint (seller-only, per the earlier Q-TCG-3 default).
-  TCGCSV includes prices for free, so keeping a hint just for sellers while they
-  type their price is cheap. Drop it, or keep it? *Drop it, as D60 says; it's easy to add later.*
-- **Q-IMG-1. Reusing your own photos.** Allow reuse only when relisting the same item,
-  and block it across different items (even your own)? *Yes.*
-- **Q-IMG-2. Timestamp photos.** Should sellers be able to add a "timestamp" photo
-  (handle + date handwritten) per sale, shown with a "Timestamped" badge? And should
-  it be required for public sales? *Optional at launch, with the badge; consider
-  requiring it for new sellers (fewer than N completed sales).*
-- **Q-IMG-3. Thresholds and enforcement.** Reject at distance ≤ 6, review at 7–12,
-  then tune on a test set. After 3 rejected matches in 30 days, flag the account for
-  admin review. *Yes.*
-
-**Before the pilot sale** (not blocking development):
+None. Everything is decided through D66. **Before the pilot sale** (not blocking development):
 - Register `claimsale.net` in the AntiTcb account and onboard `notify.claimsale.net` in Email Service.
 - Search trademarks for "ClaimSale" and claim the matching social handles.
+- Check TCGCSV's terms and attribution requirements before building the catalog ingestion.
 
 ## 13. Proposed first milestones
 
@@ -831,7 +844,8 @@ Each has a recommended default in *italics*.
 4. **Sales and items:** CRUD, item types and attributes, image upload to R2, **CSV/XLSX
    item import with templates and ZIP photos**.
 4b. **TCG catalog and photo authenticity:** nightly TCGCSV ingestion (games, sets,
-   products), FTS autofill, the catalog picker for the listing form and imports, and
+   products, market prices), FTS autofill, the catalog picker for the listing form and
+   imports, the price placeholder and % of market buttons, timestamp photos, and
    the image verification pipeline (perceptual hashes, banded index, admin review queue).
 5. **The engine:** the SaleEngine DO (per-item locks, alarms), entries, offers,
    awards, promotion, plus the claim race test and a load test.

@@ -450,4 +450,7 @@ IDs stay in the table, marked ~~struck~~.
 | `IMG-own-reuse` | Own-photo reuse is allowed only for relisting the same item; blocked across different items | PLAN 3 (Photo authenticity) |
 | `IMG-hash-robust` | Hashes match across resize, recompress, mirror and 90° rotations (property-tested) | TECH_STACK S33 |
 | `IMG-repeat-offender` | Repeated rejected matches flag the account for admin review | PLAN 3 (Photo authenticity) |
+| `TCG-market-placeholder` | The market price appears only as a placeholder and hint for the item's seller; the price is never set without a seller action; market prices are never in buyer-facing responses | PLAN 3, D64 |
+| `TCG-market-pct` | % buttons compute price = market × pct, rounded down ($0.05 under $5, $0.25 from $5); bulk apply is previewed first | PLAN 3, D64 |
+| `IMG-timestamp-required` | Sellers with fewer than 5 completed sales can't publish a sale without an approved, new timestamp photo; "Timestamped" badge when present | PLAN 3 (Photo authenticity), D66 |
 
