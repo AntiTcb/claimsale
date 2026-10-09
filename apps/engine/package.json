@@ -1,0 +1,26 @@
+{
+	"name": "@claimsale/engine",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"dev": "wrangler dev --port 8788",
+		"cf-typegen": "wrangler types --strict-vars=false src/worker-configuration.d.ts",
+		"typecheck": "tsc --noEmit && tsc -p test --noEmit",
+		"test": "vitest run",
+		"db:migrate:local": "wrangler d1 migrations apply DB --local"
+	},
+	"dependencies": {
+		"@claimsale/db": "workspace:*",
+		"@claimsale/observability": "workspace:*",
+		"effect": "catalog:"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-plugin": "catalog:workers-test",
+		"typescript": "catalog:",
+		"vitest": "catalog:workers-test",
+		"wrangler": "catalog:"
+	}
+}

@@ -1,0 +1,14 @@
+{
+	"extends": "$app/tsconfig",
+	"compilerOptions": {
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": true,
+		"verbatimModuleSyntax": true,
+		"allowImportingTsExtensions": true,
+		"skipLibCheck": true,
+		"types": ["$app/types", "@vitest/browser-playwright"]
+	},
+	"include": ["src", "test", "e2e", "*"],
+	"exclude": ["src/service-worker"]
+}

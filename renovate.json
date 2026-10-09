@@ -1,0 +1,40 @@
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": ["config:recommended", "helpers:pinGitHubActionDigests", ":semanticCommits"],
+	"baseBranches": ["dev"],
+	"schedule": ["before 6am on monday"],
+	"timezone": "America/New_York",
+	"minimumReleaseAge": "3 days",
+	"dependencyDashboard": true,
+	"lockFileMaintenance": { "enabled": true, "schedule": ["before 6am on monday"] },
+	"packageRules": [
+		{ "groupName": "effect", "matchPackageNames": ["effect", "@effect/**"] },
+		{ "groupName": "svelte", "matchPackageNames": ["svelte", "svelte-check", "@sveltejs/**", "vite"] },
+		{ "groupName": "cloudflare", "matchPackageNames": ["wrangler", "@cloudflare/**"] },
+		{ "groupName": "oxc", "matchPackageNames": ["oxlint", "oxlint-tsgolint", "oxfmt"] },
+		{ "groupName": "sentry", "matchPackageNames": ["@sentry/**"] },
+		{ "groupName": "drizzle", "matchPackageNames": ["drizzle-orm", "drizzle-kit"] },
+		{
+			"groupName": "vitest",
+			"matchPackageNames": ["vitest", "@vitest/**", "vitest-browser-svelte", "@effect/vitest"]
+		},
+		{ "groupName": "github-actions", "matchManagers": ["github-actions"] },
+		{
+			"description": "Auto-merge low-risk updates once CI is green",
+			"matchDepTypes": ["devDependencies"],
+			"matchUpdateTypes": ["minor", "patch"],
+			"automerge": true
+		},
+		{
+			"matchDepTypes": ["dependencies"],
+			"matchUpdateTypes": ["patch"],
+			"automerge": true
+		},
+		{
+			"description": "Always reviewed by a person",
+			"matchPackageNames": ["effect", "@effect/**", "better-auth", "wrangler", "@sveltejs/kit"],
+			"matchUpdateTypes": ["minor", "major"],
+			"automerge": false
+		}
+	]
+}

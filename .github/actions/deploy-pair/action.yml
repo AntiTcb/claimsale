@@ -1,0 +1,51 @@
+name: Deploy Worker pair
+description: >
+  Applies D1 migrations, then deploys the engine and web Workers with secrets from
+  Doppler (TECH_STACK §5). Each Worker only receives the secrets its wrangler config
+  lists in secrets.required.
+inputs:
+  wrangler-env:
+    description: Wrangler environment (staging, production) or empty when using config-file.
+    default: ""
+  config-file:
+    description: Wrangler config file name inside each app (wrangler.jsonc or wrangler.preview.jsonc).
+    default: wrangler.jsonc
+  doppler-config:
+    description: Doppler config to pull secrets from (prv, stg, prd).
+    required: true
+  doppler-token:
+    description: Doppler service token scoped to that config.
+    required: true
+  version:
+    description: Value for the VERSION var (git SHA).
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: dopplerhq/cli-action@v3
+    - name: Download secrets
+      shell: bash
+      env:
+        DOPPLER_TOKEN: ${{ inputs.doppler-token }}
+      run: doppler secrets download --no-file --format json --config "${{ inputs.doppler-config }}" > "$RUNNER_TEMP/doppler.json"
+    - name: Build web
+      shell: bash
+      run: pnpm --filter @claimsale/web build
+    - name: Apply D1 migrations
+      shell: bash
+      working-directory: apps/engine
+      run: pnpm exec wrangler d1 migrations apply DB --remote -c "${{ inputs.config-file }}" ${{ inputs.wrangler-env && format('--env {0}', inputs.wrangler-env) || '' }}
+    - name: Deploy engine, then web
+      shell: bash
+      run: |
+        set -euo pipefail
+        envflag="${{ inputs.wrangler-env && format('--env {0}', inputs.wrangler-env) || '' }}"
+        for app in engine web; do
+          node scripts/secrets-for.ts "apps/$app/${{ inputs.config-file }}" ${{ inputs.wrangler-env }} < "$RUNNER_TEMP/doppler.json" > "$RUNNER_TEMP/$app-secrets.json"
+          (cd "apps/$app" && pnpm exec wrangler deploy -c "${{ inputs.config-file }}" $envflag \
+            --var "VERSION:${{ inputs.version }}" --secrets-file "$RUNNER_TEMP/$app-secrets.json")
+        done
+    - name: Remove secret files
+      if: always()
+      shell: bash
+      run: rm -f "$RUNNER_TEMP"/doppler.json "$RUNNER_TEMP"/*-secrets.json

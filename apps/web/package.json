@@ -1,0 +1,39 @@
+{
+	"name": "@claimsale/web",
+	"private": true,
+	"type": "module",
+	"imports": {
+		"#lib/*": "./src/lib/*"
+	},
+	"scripts": {
+		"dev": "vite build && (vite build --watch & wrangler dev -c wrangler.jsonc -c ../engine/wrangler.jsonc --port 8787 --persist-to ../../.wrangler/dev)",
+		"dev:ui": "vite dev",
+		"build": "vite build",
+		"cf-typegen": "wrangler types --strict-vars=false -c wrangler.jsonc -c ../engine/wrangler.jsonc src/worker-configuration.d.ts",
+		"typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+		"test:e2e": "playwright test"
+	},
+	"dependencies": {
+		"@claimsale/core": "workspace:*",
+		"@claimsale/observability": "workspace:*",
+		"effect": "catalog:"
+	},
+	"devDependencies": {
+		"@axe-core/playwright": "catalog:",
+		"@claimsale/engine": "workspace:*",
+		"@playwright/test": "catalog:",
+		"@sveltejs/adapter-cloudflare": "catalog:",
+		"@sveltejs/kit": "catalog:",
+		"@sveltejs/vite-plugin-svelte": "catalog:",
+		"@tailwindcss/vite": "catalog:",
+		"@vitest/browser-playwright": "catalog:",
+		"svelte": "catalog:",
+		"svelte-check": "catalog:",
+		"tailwindcss": "catalog:",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:",
+		"vitest-browser-svelte": "catalog:",
+		"wrangler": "catalog:"
+	}
+}

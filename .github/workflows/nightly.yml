@@ -1,0 +1,24 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e-all-browsers:
+    name: E2E, all browsers incl. Firefox
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+      - uses: ./.github/actions/setup
+      - run: pnpm --filter @claimsale/web exec playwright install --with-deps chromium webkit firefox
+      - run: pnpm test:e2e
+        env:
+          CI: "true"
+          E2E_ALL_BROWSERS: "true"

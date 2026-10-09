@@ -1,0 +1,76 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	// Top level = local development and tests. Deployed environments are under "env".
+	"name": "claimsale-engine",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-10-01",
+	"compatibility_flags": ["nodejs_compat"],
+	"workers_dev": false,
+	"observability": {
+		"logs": { "enabled": true },
+		"traces": { "enabled": true },
+	},
+	"vars": {
+		"APP_ENV": "local",
+		"VERSION": "dev",
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "claimsale-local",
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "../../packages/db/migrations",
+		},
+	],
+	"durable_objects": {
+		"bindings": [{ "name": "SALE_ENGINE", "class_name": "SaleEngine" }],
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["SaleEngine"] }],
+	"queues": {
+		"producers": [{ "binding": "NOTIFICATIONS", "queue": "claimsale-notifications-local" }],
+		"consumers": [{ "queue": "claimsale-notifications-local", "max_batch_size": 25, "max_retries": 5 }],
+	},
+	"triggers": { "crons": ["*/5 * * * *"] },
+	"env": {
+		"staging": {
+			"name": "claimsale-engine-staging",
+			"vars": { "APP_ENV": "staging", "VERSION": "set-by-ci" },
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "claimsale-staging",
+					"database_id": "e4d69871-204b-4634-9c23-069b3374d585",
+					"migrations_dir": "../../packages/db/migrations",
+				},
+			],
+			"durable_objects": {
+				"bindings": [{ "name": "SALE_ENGINE", "class_name": "SaleEngine" }],
+			},
+			"queues": {
+				"producers": [{ "binding": "NOTIFICATIONS", "queue": "claimsale-notifications-staging" }],
+				"consumers": [{ "queue": "claimsale-notifications-staging", "max_batch_size": 25, "max_retries": 5 }],
+			},
+			"triggers": { "crons": ["*/5 * * * *"] },
+		},
+		"production": {
+			"name": "claimsale-engine",
+			"vars": { "APP_ENV": "production", "VERSION": "set-by-ci" },
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "claimsale-production",
+					"database_id": "5506c6e8-0aa3-4bea-953e-f5a82995717c",
+					"migrations_dir": "../../packages/db/migrations",
+				},
+			],
+			"durable_objects": {
+				"bindings": [{ "name": "SALE_ENGINE", "class_name": "SaleEngine" }],
+			},
+			"queues": {
+				"producers": [{ "binding": "NOTIFICATIONS", "queue": "claimsale-notifications" }],
+				"consumers": [{ "queue": "claimsale-notifications", "max_batch_size": 25, "max_retries": 5 }],
+			},
+			"triggers": { "crons": ["*/5 * * * *"] },
+		},
+	},
+}

@@ -1,0 +1,38 @@
+{
+	"name": "claimsale",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "pnpm --filter @claimsale/web dev",
+		"dev:ui": "pnpm --filter @claimsale/web dev:ui",
+		"build": "pnpm -r build",
+		"lint": "oxlint --type-aware",
+		"format": "oxfmt",
+		"format:check": "oxfmt --check",
+		"typecheck": "pnpm -r typecheck && tsc -p scripts",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"test:workers": "pnpm --filter @claimsale/engine test",
+		"test:all": "pnpm test && pnpm test:workers && pnpm test:e2e",
+		"test:e2e": "pnpm --filter @claimsale/web test:e2e",
+		"check:tests-with-changes": "node scripts/check-tests-with-changes.ts",
+		"check:spec-traceability": "node scripts/check-spec-traceability.ts",
+		"check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm check:spec-traceability"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/browser-playwright": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"oxfmt": "catalog:",
+		"oxlint": "catalog:",
+		"oxlint-tsgolint": "catalog:",
+		"svelte": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	},
+	"engines": {
+		"node": ">=24"
+	},
+	"packageManager": "pnpm@12.10.1"
+}

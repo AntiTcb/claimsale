@@ -1,0 +1,63 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": ["typescript", "unicorn", "import", "promise", "vitest"],
+	"categories": {
+		"correctness": "error",
+		"suspicious": "error",
+		"perf": "warn"
+	},
+	"rules": {
+		"typescript/no-floating-promises": "error",
+		"typescript/no-misused-promises": "error",
+		"typescript/await-thenable": "error",
+		"typescript/no-explicit-any": "error",
+		"no-console": [
+			"error",
+			{
+				"allow": []
+			}
+		],
+		"import/no-cycle": "error",
+		"vitest/no-focused-tests": "error",
+		"vitest/no-disabled-tests": "error",
+		"no-underscore-dangle": "off",
+		"import/no-named-as-default-member": "off",
+		"import/no-named-as-default": "off",
+		"unicorn/require-module-specifiers": "off",
+		"import/no-unassigned-import": [
+			"error",
+			{
+				"allow": ["**/*.css"]
+			}
+		],
+		"vitest/no-standalone-expect": [
+			"error",
+			{
+				"additionalTestBlockFunctions": ["it.effect", "it.scoped", "it.live"]
+			}
+		]
+	},
+	"overrides": [
+		{
+			"files": ["packages/observability/src/logger.ts"],
+			"rules": {
+				"no-console": "off"
+			}
+		},
+		{
+			"files": ["**/*.test.ts", "**/*.spec.ts", "**/e2e/**", "**/test/**", "scripts/**", "*.config.ts"],
+			"rules": {
+				"no-console": "off",
+				"typescript/no-unsafe-type-assertion": "off"
+			}
+		}
+	],
+	"ignorePatterns": [
+		"**/worker-configuration.d.ts",
+		"**/.svelte-kit/**",
+		"**/.wrangler/**",
+		"**/node_modules/**",
+		"**/playwright-report/**",
+		"**/test-results/**"
+	]
+}

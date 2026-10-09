@@ -1,0 +1,33 @@
+{
+	"$schema": "../../node_modules/wrangler/config-schema.json",
+	// Top level = local development and tests. Deployed environments are under "env".
+	// "main" must be the adapter's output path: adapter-cloudflare writes the Worker there.
+	"name": "claimsale-web",
+	"main": ".svelte-kit/cloudflare/_worker.js",
+	"compatibility_date": "2026-10-01",
+	"compatibility_flags": ["nodejs_compat"],
+	"assets": { "binding": "ASSETS", "directory": ".svelte-kit/cloudflare" },
+	"observability": {
+		"logs": { "enabled": true },
+		"traces": { "enabled": true },
+	},
+	"vars": {
+		"APP_ENV": "local",
+		"VERSION": "dev",
+	},
+	"services": [{ "binding": "ENGINE", "service": "claimsale-engine" }],
+	"env": {
+		"staging": {
+			"name": "claimsale-web-staging",
+			"vars": { "APP_ENV": "staging", "VERSION": "set-by-ci" },
+			"services": [{ "binding": "ENGINE", "service": "claimsale-engine-staging" }],
+		},
+		"production": {
+			"name": "claimsale-web",
+			"workers_dev": false,
+			"vars": { "APP_ENV": "production", "VERSION": "set-by-ci" },
+			"services": [{ "binding": "ENGINE", "service": "claimsale-engine" }],
+			// Custom domain (claimsale.net) is added once the domain is registered in the account.
+		},
+	},
+}

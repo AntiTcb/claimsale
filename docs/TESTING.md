@@ -15,19 +15,21 @@ live in [`STATE_MACHINES.md` section 10](./STATE_MACHINES.md#10-rule-id-registry
 | --- | --- | --- | --- | --- |
 | **Unit** | Vitest 5 (`@effect/vitest`, `fast-check`) | Node | `packages/core` state machines, ranking, money, entitlements, rescind attribution; Effect services with test Layers; validation schemas; utilities | `*.test.ts` next to the source |
 | **Browser (component)** | Vitest 5 Browser Mode + `@vitest/browser-playwright` + `vitest-browser-svelte` | Real Chromium | Svelte components and pages in isolation: rendering, interaction, form validation, accessibility, visual snapshots | `*.svelte.test.ts` |
-| **Workers integration** | Vitest 4.1 + `@cloudflare/vitest-pool-workers` | workerd (the real runtime) with local D1 / R2 / Queues / DOs | SaleEngine DO (locks, alarms, WebSockets), D1 queries and migrations, Queue consumer, RPC entrypoints, Better Auth flows, remote functions against real bindings | `*.workers.test.ts` |
+| **Workers integration** | Vitest 4.1 + `@cloudflare/vitest-plugin` (for now, see below) | workerd (the real runtime) with local D1 / R2 / Queues / DOs | SaleEngine DO (locks, alarms, WebSockets), D1 queries and migrations, Queue consumer, RPC entrypoints, Better Auth flows, remote functions against real bindings | `*.workers.test.ts` |
 | **End-to-end** | Playwright 1.64 (`@axe-core/playwright`) | The full stack: web + engine running locally, or a deployed preview / staging | User journeys across both Workers, multiple users at once, real time, mobile viewports | `e2e/**/*.spec.ts` |
 | **Load** | k6 | Staging | Go-live claim rush (target from STATE_MACHINES section 9: p95 < 300 ms at 200 claims/s on one sale) | `load/*.js` |
 
-### Why two Vitest versions (until the pool catches up)
-- `@effect/vitest@4.0.2` needs **Vitest ≥ 5**.
-- `@cloudflare/vitest-pool-workers@0.23.0` (released 2026-10-07) still needs **Vitest ^4.1**.
-- So in the monorepo:
-  - **Workers integration tests** live in their own Vitest 4.1 projects (`apps/engine`,
-    `apps/web` server tests, `packages/db`). They run Effect programs through a small
-    `runTest(effect, layer)` helper instead of `@effect/vitest`.
-  - **Everything else** runs on Vitest 5.
-- Renovate watches for a Vitest 5-compatible pool release, and then they merge into one version.
+### Why two Vitest versions (temporarily)
+- `@effect/vitest@4` needs **Vitest ≥ 5**.
+- The Workers integration package was renamed **`@cloudflare/vitest-plugin`**. Its first
+  Vitest 5 release (1.4.0, 2026-10-08) is newer than the 3-day release-age guard allows
+  and depends on an alpha Miniflare.
+- So **Workers integration tests** (`apps/engine`) run on **Vitest 4.1 + plugin 1.3.6**
+  (pnpm catalog `workers-test`) through `pnpm test:workers`. They run Effect programs with
+  `Effect.runPromise` instead of `@effect/vitest`.
+- **Everything else** runs on Vitest 5 through the root `vitest.config.ts` projects.
+- Once plugin ≥ 1.4 is old enough, Renovate's update moves the engine to the default
+  catalog and the split disappears.
 
 ---
 

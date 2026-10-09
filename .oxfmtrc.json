@@ -1,0 +1,16 @@
+{
+	"$schema": "./node_modules/oxfmt/configuration_schema.json",
+	"useTabs": true,
+	"printWidth": 110,
+	"svelte": true,
+	"ignorePatterns": [
+		"docs/**",
+		"**/worker-configuration.d.ts",
+		"packages/db/migrations/meta/**",
+		"pnpm-lock.yaml",
+		"**/.svelte-kit/**",
+		"**/.wrangler/**",
+		"**/playwright-report/**",
+		"**/test-results/**"
+	]
+}

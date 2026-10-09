@@ -43,6 +43,7 @@ questions are **T#**, each with a recommended default in *italics*.
 | S31 | **Name: ClaimSale · Domain: `claimsale.net`** (provisional, "for now"). Hostnames: `claimsale.net` (production web), `staging.claimsale.net` (staging, behind Access), `notify.claimsale.net` (Email Service sending subdomain, e.g. `no-reply@notify.claimsale.net`), and PR previews on `*.workers.dev` behind Access. The domain lives in the AntiTcb account, registered through Cloudflare Registrar if `.net` is offered there, otherwise elsewhere with nameservers pointed at Cloudflare. **Kept in config, not code:** the domain and sender addresses are `vars` in `wrangler.jsonc` per environment, so a rename is a config change. |
 | S32 | **TCG catalog ingestion (TCGCSV only, D60):** an engine cron (daily, after TCGCSV's ~20:00 UTC refresh) enqueues one job per game and set. Consumers upsert `games` / `catalog_sets` / `catalog_products` and the latest `market_prices` (per product + subtype) in D1, with an FTS5 index for autofill. No images are ingested. Prices are a seller-only listing aid (D64). `TcgCsvSource` is an Effect service with rate limiting, a descriptive `User-Agent`, retries and MSW fixtures. The ingestion is idempotent and resumable, and its progress is visible in `/admin`. The source's terms and attribution are checked before the build. |
 | S33 | **Photo authenticity (D63):** an engine Queue job decodes each upload in WASM (`@jsquash/webp` 1.5.0, `@jsquash/jpeg` 1.6.0; `@jsquash/resize` 2.1.1 for downscaling) and computes dHash and pHash (our own small implementation in `packages/core`, property-tested), for the original, mirrored and rotated versions. Near-duplicates are found through a D1 index of 4 × 16-bit bands (multi-index hashing) followed by a Hamming-distance check. This avoids the Cloudflare Images binding, which needs a separate Images Paid subscription. |
+| S34 | **Milestone 0 findings (2026-10-09):** (1) `@cloudflare/vitest-pool-workers` is renamed **`@cloudflare/vitest-plugin`** (`cloudflareTest()` Vite plugin). Its first Vitest 5 release (1.4.0) is 1 day old and depends on an alpha Miniflare, so the engine stays on Vitest 4.1 + plugin 1.3.6 until it clears the 3-day release-age window. (2) SvelteKit 3 moved config into `sveltekit({...})` in `vite.config.ts` and replaced `$lib` with `#lib` subpath imports. (3) adapter-cloudflare 8 no longer passes `platform`; bindings come from `cloudflare:workers`. (4) Two `wrangler dev` processes crash each other in some environments, so local dev and E2E run **both Workers in one process** (`wrangler dev -c web -c engine`). (5) TypeScript is pinned to **6.0.x**, because SvelteKit 3 and svelte-check don't support TypeScript 7 yet. (6) pnpm's `minimumReleaseAge` (3 days) is enforced at install time. |
 
 ---
 
@@ -315,4 +316,25 @@ and a suppression list are all managed by Cloudflare.
 - **Testing:** unit tests use an in-memory `Mailer`. Workers integration tests assert
   on the simulated binding. E2E tests read the `CapturingMailer` outbox. A staging
   smoke test sends one real email to a verified address after each staging deploy.
+
+---
+
+## 11. Milestone 0 setup checklist
+
+Done in the repository and the AntiTcb account:
+- [x] D1 databases `claimsale-staging` (`e4d69871-…`) and `claimsale-production` (`5506c6e8-…`), East US.
+- [x] Wrangler configs for local, preview (generated per PR), staging and production.
+- [x] CI (`.github/workflows/ci.yml`), PR previews + cleanup, staging deploy, release PR, production deploy, nightly.
+
+Needed from the owner (one time):
+1. **Branches:** create `dev` from the current work and make it the default branch; protect `dev` and `main` (PRs only, CI required); `main` accepts PRs only from `dev` and `hotfix/*`.
+2. **GitHub Environments** `preview`, `staging`, `production` (production with required reviewers), each with:
+   - secret `CLOUDFLARE_API_TOKEN` (Workers Scripts, D1, Queues edit on the AntiTcb account)
+   - secret `DOPPLER_TOKEN` (service token for `prv` / `stg` / `prd`)
+   - secrets `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET` (Cloudflare Access service token; preview and staging)
+   - variables `CLOUDFLARE_ACCOUNT_ID` (`e89111551171752d4230693ae0c83ed6`), `WORKERS_SUBDOMAIN`, `STAGING_URL`, `PRODUCTION_URL`
+3. **Doppler:** project `claimsale` with configs `dev`, `prv`, `stg`, `prd`. There are no required secrets yet; they arrive with auth (milestone 3).
+4. **Cloudflare Access:** protect `*.workers.dev` previews and staging, and allow the CI service token.
+5. **Renovate:** install the GitHub App on the repository.
+6. **Observability destinations:** add Sentry OTLP traces and logs destinations in the Cloudflare dashboard (milestone 1 wires them into the Wrangler configs).
 
