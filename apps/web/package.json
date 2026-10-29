@@ -6,6 +6,7 @@
 		"#lib/*": "./src/lib/*"
 	},
 	"scripts": {
+		"prepare": "svelte-kit sync",
 		"dev": "vite build && (vite build --watch & wrangler dev -c wrangler.jsonc -c ../engine/wrangler.jsonc --port 8787 --persist-to ../../.wrangler/dev)",
 		"dev:ui": "vite dev",
 		"build": "vite build",
