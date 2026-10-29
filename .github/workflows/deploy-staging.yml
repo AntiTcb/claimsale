@@ -26,9 +26,12 @@ jobs:
       - name: Ensure the staging queue exists (cf)
         run: scripts/cf-resources.sh ensure-queue claimsale-notifications-staging
       - uses: ./.github/actions/deploy-pair
+        # Worker secrets go here by name, one per name in each wrangler config's
+        # secrets.required (TECH_STACK S35); none yet. Never pass the whole secrets context.
+        #   env:
+        #     FOO: ${{ secrets.FOO }}
         with:
           wrangler-env: staging
-          secrets-json: ${{ toJSON(secrets) }}
           version: ${{ github.sha }}
       - name: Smoke test (@critical) against staging
         run: |

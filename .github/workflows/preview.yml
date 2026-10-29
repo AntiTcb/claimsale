@@ -35,9 +35,12 @@ jobs:
           scripts/cf-resources.sh ensure-queue "claimsale-notifications-pr-$PR"
       - run: node scripts/preview-config.ts --pr "$PR" --d1-id "${{ steps.resources.outputs.d1_id }}" --version "${{ github.sha }}"
       - uses: ./.github/actions/deploy-pair
+        # Worker secrets go here by name, one per name in each wrangler config's
+        # secrets.required (TECH_STACK S35); none yet. Never pass the whole secrets context.
+        #   env:
+        #     FOO: ${{ secrets.FOO }}
         with:
           config-file: wrangler.preview.jsonc
-          secrets-json: ${{ toJSON(secrets) }}
           version: ${{ github.sha }}
       - name: Smoke test (@critical) against the preview
         run: |
