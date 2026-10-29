@@ -18,6 +18,15 @@ pnpm dev          # http://localhost:8787, health at /api/health
 pnpm check && pnpm test && pnpm test:workers && pnpm test:e2e
 ```
 
-## One-time setup outside the repo
+## One-time setup
 
-See "Milestone 0 setup" in [docs/TECH_STACK.md](docs/TECH_STACK.md#11-milestone-0-setup-checklist).
+Run the guided wizard from the repository root on your own machine (it uses `gh` and the
+Cloudflare CLI `cf` as you):
+
+```sh
+scripts/setup.sh
+```
+
+It sets the default branch and protections, GitHub environments, the Cloudflare API token
+and Access service token (as GitHub secrets), queues, the `workers.dev` variables, Renovate,
+and runs the first staging deploy. Details: [docs/TECH_STACK.md §11](docs/TECH_STACK.md#11-milestone-0-setup-checklist).
