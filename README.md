@@ -13,7 +13,7 @@ Cloudflare Workers, D1, Durable Objects and Queues.
 ## Quick start
 
 ```sh
-pnpm install
+pnpm install      # Windows on ARM: pnpm install --cpu=x64 (see CLAUDE.md)
 pnpm dev          # http://localhost:8787, health at /api/health
 pnpm check && pnpm test && pnpm test:workers && pnpm test:e2e
 ```

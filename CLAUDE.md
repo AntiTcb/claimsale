@@ -44,7 +44,8 @@ packages/db             Drizzle schema + D1 migrations
 
 ```
 pnpm install            # pnpm 12 (packageManager); Node 24 (.nvmrc)
-pnpm dev                # both Workers in one wrangler process on http://localhost:8787
+pnpm dev                # both Workers in one wrangler process on http://localhost:8787;
+                        # applies local migrations, rebuilds and restarts on source changes
 pnpm dev:ui             # vite dev with HMR (engine-backed features show as degraded)
 pnpm check              # format check, lint, typecheck, spec traceability
 pnpm test               # unit + browser tests (Vitest 5)
@@ -62,6 +63,12 @@ deploys and local dev use wrangler. First-time owner setup: `scripts/setup.sh`.
 
 Locally, set `CHROMIUM_EXECUTABLE` to use an already-installed Chromium for browser and
 E2E tests; otherwise run `pnpm --filter @claimsale/web exec playwright install chromium`.
+
+Windows on ARM: workerd has no ARM64 Windows build, so use x64 Node. If pnpm itself is an
+ARM64 binary (e.g. installed by mise), it installs ARM64 native packages that x64 Node can't
+load ("Cannot find native binding", wrangler can't find workerd). Install with
+`pnpm install --cpu=x64` instead. pnpm runs scripts with cmd.exe on Windows; that is fine for
+this repo's scripts, which use no shell operators beyond `&&`.
 
 ## Git
 

@@ -6,9 +6,9 @@
  * Usage: node scripts/check-spec-traceability.ts
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 
-const root = new URL("..", import.meta.url).pathname;
+const root = resolve(import.meta.dirname, "..");
 const SKIP = new Set(["node_modules", ".svelte-kit", ".wrangler", "dist", "build", "coverage", ".git"]);
 const ID = /[A-Z]+(?:-[A-Za-z0-9.]+)+/;
 

@@ -15,7 +15,7 @@ export default defineConfig({
 				test: {
 					name: "web-server",
 					root: "./apps/web",
-					include: ["src/**/*.test.ts"],
+					include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
 					exclude: ["src/**/*.svelte.test.ts"],
 					environment: "node",
 				},

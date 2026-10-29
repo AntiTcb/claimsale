@@ -45,7 +45,7 @@
 			}
 		},
 		{
-			"files": ["**/*.test.ts", "**/*.spec.ts", "**/e2e/**", "**/test/**", "scripts/**", "*.config.ts"],
+			"files": ["**/*.test.ts", "**/*.spec.ts", "**/e2e/**", "**/test/**", "**/scripts/**", "*.config.ts"],
 			"rules": {
 				"no-console": "off",
 				"typescript/no-unsafe-type-assertion": "off"
