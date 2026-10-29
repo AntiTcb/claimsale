@@ -3,6 +3,8 @@ name: Deploy staging
 on:
   push:
     branches: [dev]
+  # Manual runs: the setup wizard's first deploy, and secret rotation (TECH_STACK §5).
+  workflow_dispatch:
 
 concurrency:
   group: deploy-staging
