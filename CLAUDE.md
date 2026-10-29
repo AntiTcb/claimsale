@@ -56,6 +56,10 @@ pnpm --filter @claimsale/engine cf-typegen   # after changing a wrangler.jsonc (
 pnpm --filter @claimsale/db db:generate      # after changing the Drizzle schema
 ```
 
+Secrets: GitHub Environment secrets in CI; `apps/<app>/.dev.vars` locally (gitignored).
+Provisioning (D1, queues, Access) uses the Cloudflare CLI `cf` via `scripts/cf-resources.sh`;
+deploys and local dev use wrangler. First-time owner setup: `scripts/setup.sh`.
+
 Locally, set `CHROMIUM_EXECUTABLE` to use an already-installed Chromium for browser and
 E2E tests; otherwise run `pnpm --filter @claimsale/web exec playwright install chromium`.
 

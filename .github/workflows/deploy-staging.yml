@@ -21,14 +21,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      - name: Ensure the staging queue exists
-        working-directory: apps/engine
-        run: pnpm exec wrangler queues info claimsale-notifications-staging > /dev/null 2>&1 || pnpm exec wrangler queues create claimsale-notifications-staging
+      - name: Ensure the staging queue exists (cf)
+        run: scripts/cf-resources.sh ensure-queue claimsale-notifications-staging
       - uses: ./.github/actions/deploy-pair
         with:
           wrangler-env: staging
-          doppler-config: stg
-          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          secrets-json: ${{ toJSON(secrets) }}
           version: ${{ github.sha }}
       - name: Smoke test (@critical) against staging
         run: |

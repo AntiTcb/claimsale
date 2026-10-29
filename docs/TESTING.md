@@ -170,7 +170,7 @@ PR → dev
  ├─ workers integration (Vitest 4.1) ┘
  ├─ e2e full (Playwright, local stack, sharded ×4)
  ├─ coverage gates · spec-traceability check · tests-with-changes guard
- ├─ deploy the PR preview pair (Doppler prv) → e2e @critical against the preview
+ ├─ deploy the PR preview pair (secrets from the GitHub preview environment) → e2e @critical against the preview
  └─ all green → mergeable
 
 dev → staging deploy → e2e @critical against staging

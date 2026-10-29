@@ -32,10 +32,10 @@ questions are **T#**, each with a recommended default in *italics*.
 | S20 | **Effect 4** (`effect@4.0.2`) as the server-side application framework. See section 3. |
 | S21 | **Deep structured logging and clean OpenTelemetry** through to Sentry and Cloudflare. See section 4. |
 | S22 | **Renovate** for dependency updates. See section 6. |
-| S23 | **Doppler** for secrets in every environment. See section 5. |
+| S23 | ~~Doppler for secrets~~ → **superseded by S35** (2026-10-29). |
 | S24 | **Git flow: feature PRs → `dev`; `dev` is batched into releases → `main`; `main` is always production.** Conventional commits, CI required, proprietary. See section 7. |
 | S25 | **Full test suite: unit, browser, Workers integration and E2E (Vitest + Playwright). Every feature and bug fix ships with tests.** See [`TESTING.md`](./TESTING.md). |
-| S26 | Round 6 defaults, all accepted: Effect Schema replaces Zod (T24); Drizzle for queries inside an Effect service (T25); Effect is server + core only, except Schema in the client with a bundle budget (T26); the domain core is pure functions (T27); the tracing bridge with a Phase 0 spike (T28); the logging policy (T29); a full Worker pair + D1 per PR (T30); seed data (T31); Cloudflare Access on non-production (T32); CalVer + git-cliff, releases on demand (T33); expand/contract migrations with approval and a Time Travel bookmark (T34); the Renovate policy (T35); the Doppler layout (T36); svelte-check + type-aware oxlint + the `{@html}` guard (T37). |
+| S26 | Round 6 defaults, all accepted: Effect Schema replaces Zod (T24); Drizzle for queries inside an Effect service (T25); Effect is server + core only, except Schema in the client with a bundle budget (T26); the domain core is pure functions (T27); the tracing bridge with a Phase 0 spike (T28); the logging policy (T29); a full Worker pair + D1 per PR (T30); seed data (T31); Cloudflare Access on non-production (T32); CalVer + git-cliff, releases on demand (T33); expand/contract migrations with approval and a Time Travel bookmark (T34); the Renovate policy (T35); the Doppler layout (T36, later superseded by S35); svelte-check + type-aware oxlint + the `{@html}` guard (T37). |
 | S27 | Testing round 7 defaults, all accepted: Vitest 4.1 for Workers tests and 5 elsewhere until the pool supports 5; coverage thresholds + ratchet; nightly Stryker on core (≥ 80%); CI-generated visual baselines; the browser matrix; guarded test-only engine endpoints; the tests-with-changes guard; GitHub-only coverage reporting; the spec traceability check against STATE_MACHINES section 10. |
 | S28 | **Cloudflare Email Service replaces Resend** for all outbound email. See section 10. |
 | S29 | **Import/export libraries:** `papaparse` 5.7.0 (CSV), `read-excel-file` 9.3.12 / `write-excel-file` 4.1.1 (XLSX), `fflate` 0.8.3 (ZIP). **Not** the npm `xlsx` package: it's frozen at 0.18.5 because SheetJS now publishes only from its own CDN, and Renovate can't track it. |
@@ -44,6 +44,8 @@ questions are **T#**, each with a recommended default in *italics*.
 | S32 | **TCG catalog ingestion (TCGCSV only, D60):** an engine cron (daily, after TCGCSV's ~20:00 UTC refresh) enqueues one job per game and set. Consumers upsert `games` / `catalog_sets` / `catalog_products` and the latest `market_prices` (per product + subtype) in D1, with an FTS5 index for autofill. No images are ingested. Prices are a seller-only listing aid (D64). `TcgCsvSource` is an Effect service with rate limiting, a descriptive `User-Agent`, retries and MSW fixtures. The ingestion is idempotent and resumable, and its progress is visible in `/admin`. The source's terms and attribution are checked before the build. |
 | S33 | **Photo authenticity (D63):** an engine Queue job decodes each upload in WASM (`@jsquash/webp` 1.5.0, `@jsquash/jpeg` 1.6.0; `@jsquash/resize` 2.1.1 for downscaling) and computes dHash and pHash (our own small implementation in `packages/core`, property-tested), for the original, mirrored and rotated versions. Near-duplicates are found through a D1 index of 4 × 16-bit bands (multi-index hashing) followed by a Hamming-distance check. This avoids the Cloudflare Images binding, which needs a separate Images Paid subscription. |
 | S34 | **Milestone 0 findings (2026-10-09):** (1) `@cloudflare/vitest-pool-workers` is renamed **`@cloudflare/vitest-plugin`** (`cloudflareTest()` Vite plugin). Its first Vitest 5 release (1.4.0) is 1 day old and depends on an alpha Miniflare, so the engine stays on Vitest 4.1 + plugin 1.3.6 until it clears the 3-day release-age window. (2) SvelteKit 3 moved config into `sveltekit({...})` in `vite.config.ts` and replaced `$lib` with `#lib` subpath imports. (3) adapter-cloudflare 8 no longer passes `platform`; bindings come from `cloudflare:workers`. (4) Two `wrangler dev` processes crash each other in some environments, so local dev and E2E run **both Workers in one process** (`wrangler dev -c web -c engine`). (5) TypeScript is pinned to **6.0.x**, because SvelteKit 3 and svelte-check don't support TypeScript 7 yet. (6) pnpm's `minimumReleaseAge` (3 days) is enforced at install time. |
+| S35 | **No Doppler for now (2026-10-29).** Secrets live as **GitHub Environment secrets** (`preview`, `staging`, `production`). CI passes `toJSON(secrets)` to `scripts/secrets-for.ts`, which keeps only the names in each Worker's `secrets.required`, and wrangler uploads them with `--secrets-file`. Locally, secrets go in each app's `.dev.vars` (gitignored). Doppler can be reintroduced later behind the same `secrets-for.ts` step. |
+| S36 | **Cloudflare CLI (`cf`, beta, pinned `1.0.0-beta.21`) for provisioning (2026-10-29).** D1, queues, Worker deletion, D1 Time Travel bookmarks and **remote D1 migrations** (`cf d1 migrations apply`, which uses the same tracking table as wrangler) run through `cf`, via `scripts/cf-resources.sh` and the setup wizard. **Deploys, local dev and type generation stay on wrangler**, because adapter-cloudflare builds against `wrangler.jsonc` and moving to `cloudflare.config.ts` (`cf migrate`) waits for `cf` to leave beta. `cf` needs Node ≥ 22.23 / 24.22. |
 
 ---
 
@@ -150,43 +152,20 @@ Browser: Sentry browser SDK (errors + web vitals)
 
 ---
 
-## 5. Secrets with Doppler (S23) — answer to "Can I use Doppler?"
+## 5. Secrets (S35; Doppler removed)
 
-**Yes.** It fits well, because Wrangler 4 now supports
-`wrangler deploy --secrets-file <json|.env>` (and the same flag on `versions upload`).
-So CI can pull secrets from Doppler and ship them **in the same operation** as the
-code. Add `secrets.required` in each `wrangler.jsonc`, and a deploy **fails** if any
-secret is missing.
-
-**Setup:**
-- **Doppler project `claimsale`**, with configs `dev` (local), `prv` (PR previews),
-  `stg` (staging) and `prd` (production). Branch configs (e.g. `dev_alice`) cover
-  personal overrides.
-- **What lives where:** only secrets go in Doppler (Twilio, Stripe, Better Auth
-  secret, Sentry DSN, Discord OAuth, Turnstile). Non-secret config (`APP_ENV`,
-  URLs, feature flags) stays in `wrangler.jsonc` per environment, reviewed in PRs.
-- **CI auth:** one Doppler service token per GitHub Environment (`preview`, `staging`,
-  `production`), each scoped to its config. Use Doppler's OIDC service-account
-  identity instead of tokens if your plan includes it.
-- **Deploy step:**
-  ```sh
-  doppler secrets download --no-file --format json --config "$DOPPLER_CONFIG" > "$RUNNER_TEMP/secrets.json"
-  pnpm --filter engine exec wrangler deploy --env "$ENV" --secrets-file "$RUNNER_TEMP/secrets.json"
-  pnpm --filter web    exec wrangler deploy --env "$ENV" --secrets-file "$RUNNER_TEMP/secrets.json"
-  rm "$RUNNER_TEMP/secrets.json"
-  ```
-  The file only lives on the runner for the duration of the job. Never `cat` or upload it.
-- **Local:** `doppler run --config dev -- pnpm dev`. Wrangler and Vite read
-  `process.env` for names in `secrets.required`, so no `.dev.vars` file is written to disk.
-- **Rotation:** a secret changed in Doppler takes effect on the next deploy. A manual
-  "Sync secrets" workflow (`wrangler secret bulk` per Worker) applies it without a code
-  release. *Optional:* a Doppler webhook → `repository_dispatch` to run that automatically.
-- **Don't** also use Doppler's own push-sync to Cloudflare. That would give two writers
-  for the same secrets.
-- **Each Worker gets only the secrets it needs:** the download step filters by an
-  allowlist per Worker (web doesn't need Twilio, engine doesn't need the Better Auth secret).
-
----
+- **Where secrets live:** GitHub Environment secrets on `preview`, `staging` and
+  `production`. Non-secret config stays in `wrangler.jsonc` `vars`.
+- **Each Worker declares** the secret names it needs in `secrets.required`. `wrangler deploy`
+  then fails if one is missing, and `wrangler types` generates typed bindings for them.
+- **Deploy step** (`.github/actions/deploy-pair`): `toJSON(secrets)` → `scripts/secrets-for.ts`
+  (keeps only that Worker's names) → `wrangler deploy --secrets-file`. The temporary
+  files are deleted when the job ends, whatever the outcome.
+- **Local:** put values in `apps/<app>/.dev.vars` (gitignored). Wrangler and Vite read
+  it for the names in `secrets.required`.
+- **Rotation:** update the GitHub secret, then re-run the environment's deploy workflow.
+- **Coming back to Doppler later:** replace the "Collect secrets" step with a Doppler
+  download; nothing else changes.
 
 ## 6. Renovate (S22)
 
@@ -256,7 +235,7 @@ hotfix/*  ──PR──► main ──► production, then an automatic back-me
 | Tests | `vitest` 5 (+ `@vitest/browser-playwright`, `vitest-browser-svelte`, `@vitest/coverage-v8`), `@effect/vitest`, `fast-check`, `msw`, `@playwright/test`, `@axe-core/playwright`, `@stryker-mutator/core` | 5.0.3 / 3.1.0 / 4.0.2 / 4.10.2 / 3.0.2 / 1.64.0 / 4.13.0 / 10.0.0 |
 | Workers tests | `vitest` **4.1** + `@cloudflare/vitest-pool-workers` (the pool doesn't support Vitest 5 yet) | 4.1.11 / 0.23.0 |
 | Lint / format / types | `oxlint`, `oxfmt`, `svelte-check` | 1.87.0 / 0.72.0 / — |
-| Secrets | Doppler CLI (in CI and locally) | — |
+| Secrets / provisioning | GitHub Environment secrets; `cf` (Cloudflare CLI, beta) | 1.0.0-beta.21 |
 | Deps | Renovate (GitHub App) | — |
 
 ---
@@ -279,8 +258,8 @@ and a suppression list are all managed by Cloudflare.
 **How we use it:**
 - **Binding, not an API key:** `"send_email": [{ "name": "EMAIL", "allowed_sender_addresses": [...] }]`
   in each Worker that sends. Each binding is restricted to our own sender
-  addresses, so a bug can't send as an arbitrary address. There's no email secret in
-  Doppler at all.
+  addresses, so a bug can't send as an arbitrary address. There's no email secret at
+  all.
 - **Two senders:**
   - **web** sends auth emails directly (verification, magic link, password reset),
     because they're latency-sensitive and the user is waiting.
@@ -325,16 +304,9 @@ Done in the repository and the AntiTcb account:
 - [x] D1 databases `claimsale-staging` (`e4d69871-…`) and `claimsale-production` (`5506c6e8-…`), East US.
 - [x] Wrangler configs for local, preview (generated per PR), staging and production.
 - [x] CI (`.github/workflows/ci.yml`), PR previews + cleanup, staging deploy, release PR, production deploy, nightly.
+- [x] `dev` branch pushed.
 
-Needed from the owner (one time):
-1. **Branches:** create `dev` from the current work and make it the default branch; protect `dev` and `main` (PRs only, CI required); `main` accepts PRs only from `dev` and `hotfix/*`.
-2. **GitHub Environments** `preview`, `staging`, `production` (production with required reviewers), each with:
-   - secret `CLOUDFLARE_API_TOKEN` (Workers Scripts, D1, Queues edit on the AntiTcb account)
-   - secret `DOPPLER_TOKEN` (service token for `prv` / `stg` / `prd`)
-   - secrets `ACCESS_CLIENT_ID` / `ACCESS_CLIENT_SECRET` (Cloudflare Access service token; preview and staging)
-   - variables `CLOUDFLARE_ACCOUNT_ID` (`e89111551171752d4230693ae0c83ed6`), `WORKERS_SUBDOMAIN`, `STAGING_URL`, `PRODUCTION_URL`
-3. **Doppler:** project `claimsale` with configs `dev`, `prv`, `stg`, `prd`. There are no required secrets yet; they arrive with auth (milestone 3).
-4. **Cloudflare Access:** protect `*.workers.dev` previews and staging, and allow the CI service token.
-5. **Renovate:** install the GitHub App on the repository.
-6. **Observability destinations:** add Sentry OTLP traces and logs destinations in the Cloudflare dashboard (milestone 1 wires them into the Wrangler configs).
-
+Owner steps are scripted in **`scripts/setup.sh`** (a guided wizard run on your own
+machine, using `cf` and `gh`). It covers: default branch and protections, GitHub
+Environments with their secrets and variables, the Cloudflare API token, queues, the
+`workers.dev` subdomain, Cloudflare Access for previews and staging, and Renovate.

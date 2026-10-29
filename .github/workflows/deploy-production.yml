@@ -26,17 +26,14 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup
-      - name: Record a D1 Time Travel bookmark before migrating (rollback point)
-        working-directory: apps/engine
-        run: pnpm exec wrangler d1 time-travel info claimsale-production --json | tee "$RUNNER_TEMP/d1-bookmark.json"
-      - name: Ensure the production queue exists
-        working-directory: apps/engine
-        run: pnpm exec wrangler queues info claimsale-notifications > /dev/null 2>&1 || pnpm exec wrangler queues create claimsale-notifications
+      - name: Record a D1 Time Travel bookmark before migrating (rollback point, cf)
+        run: pnpm exec cf d1 time-travel get-bookmark "$(node scripts/d1-id.ts apps/engine/wrangler.jsonc production 2>/dev/null)"
+      - name: Ensure the production queue exists (cf)
+        run: scripts/cf-resources.sh ensure-queue claimsale-notifications
       - uses: ./.github/actions/deploy-pair
         with:
           wrangler-env: production
-          doppler-config: prd
-          doppler-token: ${{ secrets.DOPPLER_TOKEN }}
+          secrets-json: ${{ toJSON(secrets) }}
           version: ${{ github.sha }}
       - name: Smoke test (@critical) against production
         run: |

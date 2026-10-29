@@ -574,7 +574,7 @@ themselves from strangers.
 | Styling | Tailwind CSS v4 + a headless component library (bits-ui / shadcn-svelte) | |
 | Testing | Vitest + `@effect/vitest` + `@cloudflare/vitest-pool-workers`, fast-check, Playwright | |
 | Observability | Cloudflare traces + logs → OTLP → Sentry; Sentry SDK for errors; structured JSON logs | TECH_STACK section 4. |
-| Tooling | pnpm monorepo, TypeScript strict, oxlint + oxfmt + svelte-check, GitHub Actions, Doppler, Renovate | `dev` → `main` release flow (TECH_STACK section 7). |
+| Tooling | pnpm monorepo, TypeScript strict, oxlint + oxfmt + svelte-check, GitHub Actions, Cloudflare CLI (`cf`), Renovate | `dev` → `main` release flow (TECH_STACK section 7). |
 
 ### Request flow
 ```
@@ -829,7 +829,7 @@ None. Everything is decided through D66. **Before the pilot sale** (not blocking
 0. **Foundations** (including the test infrastructure: Vitest 5 + 4.1 workspaces,
    Browser Mode, Playwright, MSW, factories, coverage gates, CI pipeline from TESTING.md section 7):
    - The pnpm monorepo (`apps/web`, `apps/engine`, `packages/*`), with oxlint, oxfmt,
-     svelte-check, Renovate and Doppler wired in.
+     svelte-check and Renovate wired in.
    - Wrangler environments for preview, staging and production; D1, R2, Queues
      created for each.
    - GitHub Actions: CI, per-PR preview pairs, `dev` → staging, release → production
