@@ -44,7 +44,7 @@ questions are **T#**, each with a recommended default in *italics*.
 | S32 | **TCG catalog ingestion (TCGCSV only, D60):** an engine cron (daily, after TCGCSV's ~20:00 UTC refresh) enqueues one job per game and set. Consumers upsert `games` / `catalog_sets` / `catalog_products` and the latest `market_prices` (per product + subtype) in D1, with an FTS5 index for autofill. No images are ingested. Prices are a seller-only listing aid (D64). `TcgCsvSource` is an Effect service with rate limiting, a descriptive `User-Agent`, retries and MSW fixtures. The ingestion is idempotent and resumable, and its progress is visible in `/admin`. The source's terms and attribution are checked before the build. |
 | S33 | **Photo authenticity (D63):** an engine Queue job decodes each upload in WASM (`@jsquash/webp` 1.5.0, `@jsquash/jpeg` 1.6.0; `@jsquash/resize` 2.1.1 for downscaling) and computes dHash and pHash (our own small implementation in `packages/core`, property-tested), for the original, mirrored and rotated versions. Near-duplicates are found through a D1 index of 4 × 16-bit bands (multi-index hashing) followed by a Hamming-distance check. This avoids the Cloudflare Images binding, which needs a separate Images Paid subscription. |
 | S34 | **Milestone 0 findings (2026-10-09):** (1) `@cloudflare/vitest-pool-workers` is renamed **`@cloudflare/vitest-plugin`** (`cloudflareTest()` Vite plugin). Its first Vitest 5 release (1.4.0) is 1 day old and depends on an alpha Miniflare, so the engine stays on Vitest 4.1 + plugin 1.3.6 until it clears the 3-day release-age window. (2) SvelteKit 3 moved config into `sveltekit({...})` in `vite.config.ts` and replaced `$lib` with `#lib` subpath imports. (3) adapter-cloudflare 8 no longer passes `platform`; bindings come from `cloudflare:workers`. (4) Two `wrangler dev` processes crash each other in some environments, so local dev and E2E run **both Workers in one process** (`wrangler dev -c web -c engine`). (5) TypeScript is pinned to **6.0.x**, because SvelteKit 3 and svelte-check don't support TypeScript 7 yet. (6) pnpm's `minimumReleaseAge` (3 days) is enforced at install time. |
-| S35 | **No Doppler for now (2026-10-29).** Secrets live as **GitHub Environment secrets** (`preview`, `staging`, `production`). CI passes `toJSON(secrets)` to `scripts/secrets-for.ts`, which keeps only the names in each Worker's `secrets.required`, and wrangler uploads them with `--secrets-file`. Locally, secrets go in each app's `.dev.vars` (gitignored). Doppler can be reintroduced later behind the same `secrets-for.ts` step. |
+| S35 | **No Doppler for now (2026-10-29).** Secrets live as **GitHub Environment secrets** (`preview`, `staging`, `production`). CI passes each Worker secret **by name** as an environment variable on the deploy step (never `toJSON(secrets)`, which GitHub flags as possibly malicious and holds for approval), and `scripts/secrets-for.ts` collects the names in each Worker's `secrets.required`, and wrangler uploads them with `--secrets-file`. Locally, secrets go in each app's `.dev.vars` (gitignored). Doppler can be reintroduced later behind the same `secrets-for.ts` step. |
 | S36 | **Cloudflare CLI (`cf`, beta, pinned `1.0.0-beta.21`) for provisioning (2026-10-29).** D1, queues, Worker deletion, D1 Time Travel bookmarks and **remote D1 migrations** (`cf d1 migrations apply`, which uses the same tracking table as wrangler) run through `cf`, via `scripts/cf-resources.sh` and the setup wizard. **Deploys, local dev and type generation stay on wrangler**, because adapter-cloudflare builds against `wrangler.jsonc` and moving to `cloudflare.config.ts` (`cf migrate`) waits for `cf` to leave beta. `cf` needs Node ≥ 22.23 / 24.22. |
 
 ---
@@ -158,14 +158,17 @@ Browser: Sentry browser SDK (errors + web vitals)
   `production`. Non-secret config stays in `wrangler.jsonc` `vars`.
 - **Each Worker declares** the secret names it needs in `secrets.required`. `wrangler deploy`
   then fails if one is missing, and `wrangler types` generates typed bindings for them.
-- **Deploy step** (`.github/actions/deploy-pair`): `toJSON(secrets)` → `scripts/secrets-for.ts`
-  (keeps only that Worker's names) → `wrangler deploy --secrets-file`. The temporary
-  files are deleted when the job ends, whatever the outcome.
+- **Deploy step** (`.github/actions/deploy-pair`): the calling workflow step's `env:` lists
+  each secret **by name** (`FOO: ${{ secrets.FOO }}`) → `scripts/secrets-for.ts` (that
+  Worker's names only; fails if one is missing) → `wrangler deploy --secrets-file`. The
+  temporary files are deleted when the job ends, whatever the outcome.
+- **Never pass `toJSON(secrets)`** to a step or action: GitHub flags such workflows as
+  possibly malicious and holds every run until someone approves it.
 - **Local:** put values in `apps/<app>/.dev.vars` (gitignored). Wrangler and Vite read
   it for the names in `secrets.required`.
 - **Rotation:** update the GitHub secret, then re-run the environment's deploy workflow.
-- **Coming back to Doppler later:** replace the "Collect secrets" step with a Doppler
-  download; nothing else changes.
+- **Coming back to Doppler later:** have Doppler set those environment variables before
+  `secrets-for.ts` runs; nothing else changes.
 
 ## 6. Renovate (S22)
 
