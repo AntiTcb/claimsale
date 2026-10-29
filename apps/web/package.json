@@ -7,7 +7,7 @@
 	},
 	"scripts": {
 		"prepare": "svelte-kit sync",
-		"dev": "vite build && (vite build --watch & wrangler dev -c wrangler.jsonc -c ../engine/wrangler.jsonc --port 8787 --persist-to ../../.wrangler/dev)",
+		"dev": "node scripts/dev.ts",
 		"dev:ui": "vite dev",
 		"build": "vite build",
 		"cf-typegen": "wrangler types --strict-vars=false -c wrangler.jsonc -c ../engine/wrangler.jsonc src/worker-configuration.d.ts",
