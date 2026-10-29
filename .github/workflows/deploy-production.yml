@@ -5,6 +5,8 @@ name: Deploy production
 on:
   push:
     branches: [main]
+  # Manual runs for secret rotation (TECH_STACK §5); still main-only and needs approval.
+  workflow_dispatch:
 
 concurrency:
   group: deploy-production
