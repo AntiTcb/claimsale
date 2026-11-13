@@ -40,9 +40,4 @@ jobs:
             fi
           fi
       - name: Delete the preview pair, its queue and its database (cf)
-        run: |
-          # Web first (it binds to the engine), then the engine, queue and D1.
-          scripts/cf-resources.sh delete-worker "claimsale-web-pr-$PR"
-          scripts/cf-resources.sh delete-worker "claimsale-engine-pr-$PR"
-          scripts/cf-resources.sh delete-queue "claimsale-notifications-pr-$PR"
-          scripts/cf-resources.sh delete-d1 "claimsale-pr-$PR"
+        run: scripts/cf-resources.sh delete-preview-pair "$PR"
