@@ -47,6 +47,7 @@ questions are **T#**, each with a recommended default in *italics*.
 | S35 | **No Doppler for now (2026-10-29).** Secrets live as **GitHub Environment secrets** (`preview`, `staging`, `production`). CI passes each Worker secret **by name** as an environment variable on the deploy step (never `toJSON(secrets)`, which GitHub flags as possibly malicious and holds for approval), and `scripts/secrets-for.ts` collects the names in each Worker's `secrets.required`, and wrangler uploads them with `--secrets-file`. Locally, secrets go in each app's `.dev.vars` (gitignored). Doppler can be reintroduced later behind the same `secrets-for.ts` step. |
 | S36 | **Cloudflare CLI (`cf`, beta, pinned `1.0.0-beta.29` since 2026-11-13) for provisioning (2026-10-29).** D1, queues, Worker deletion, D1 Time Travel bookmarks and **remote D1 migrations** (`cf d1 migrations apply`, which uses the same tracking table as wrangler) run through `cf`, via `scripts/cf-resources.sh` and the setup wizard. **Deploys, local dev and type generation stay on wrangler**, because adapter-cloudflare builds against `wrangler.jsonc` and moving to `cloudflare.config.ts` (`cf migrate`) waits for `cf` to leave beta. `cf` needs Node ≥ 22.23 / 24.22. Note: `cf` ≥ 1.0.0-beta.31 requires wrangler ≥ 4.161.0 for the commands that build (`cf dev`, `cf build`, `cf deploy`); provisioning commands don't build, so bump both together when Renovate offers it. |
 | S37 | **Cloudflare Worker Previews for web-only PRs (2026-11-13).** Worker Previews (`wrangler preview`, open beta, wrangler ≥ 4.135) create a Preview of an existing Worker with its own URL, config and Durable Object namespace. Three limits rule them out as a full replacement for the per-PR pair (T30): a Preview's service binding reaches the bound Worker's **deployed** version, never another Worker's Preview; Previews don't consume queues; and crons don't run in them. So: **`scripts/preview-kind.ts`** gives a PR a **Worker Preview** of `claimsale-web-staging` (`--name pr-<n>`, URL `pr-<n>-claimsale-web-staging.<subdomain>.workers.dev`) when every changed file is under `apps/web/`, `docs/` or a root `*.md`. Its `ENGINE` binding points at `claimsale-engine-staging`, so it reads and writes **staging data**. Every other PR keeps the isolated pair. Preview settings live in `env.staging.previews` in `apps/web/wrangler.jsonc`, and Previews inherit nothing from the Worker's own settings. **Production has no `previews` block on purpose**: without one, `wrangler preview` refuses to run, which keeps any Preview off the production engine. Never accept wrangler's offer to generate one there. Preview secrets are listed in `previews.secrets.required` and passed with `scripts/secrets-for.ts --previews` (S35). Locally, `pnpm preview` builds and creates a Preview named after the current git branch. Cleanup deletes the PR's Worker Preview and its pair, whichever exist. Revisit when Previews can bind to a matching Preview of another Worker. |
+| S38 | **Observability spike outcome, T28 (2026-11-13): keep the bridge; report server errors without the Sentry SDK.** `CloudflareTracer` maps Effect spans onto Workers custom spans, nests them with `tracing.withActiveSpan()` and uses `span.spanContext()` IDs in log lines. It feature-detects both, because the workerd used by the Workers test pool (1.20261001) lacks them; wrangler 4.160's local runtime has them. **Server errors go to Sentry through our own envelope reporter** (`packages/observability/src/sentry.ts`, ~150 lines, `fetch` only), not `@sentry/cloudflare` / `@sentry/sveltekit`: the SDKs wrap handlers and Durable Object classes in proxies, own their own async-context scopes, and adapter-cloudflare 8 offers no entry point to wrap; we only need "defect → issue tagged with `trace_id`", which `contexts.trace` gives. Reports come from the root span of the Worker where the defect happens. **RPC methods return `RpcResult` data instead of throwing** (one bug, one Sentry issue; a throwing Durable Object call also logs an uncaught exception). The browser Sentry SDK and the `OtelApiShim` for SvelteKit's own spans are deferred until there are real pages (milestone 3+). Details: section 4, "Spike outcome". |
 
 ---
 
@@ -151,6 +152,41 @@ Browser: Sentry browser SDK (errors + web vitals)
   built-in `OtlpTracer` exporting straight to Sentry's OTLP endpoint. That's simpler,
   but its spans would sit beside the platform spans rather than nested under them.
 
+### Spike outcome (T28, S38)
+
+**Built** (one request through every hop, available everywhere except production):
+`POST /api/debug/trace-probe` (and the page `/debug/trace`) → web span `web.trace_probe` →
+engine RPC `traceProbe` → `SaleEngine` Durable Object → D1 query → message on the
+notifications queue with `traceparent` → consumer span `engine.notifications.trace_probe`
+linked to the producer → Email Service (only when the `TRACE_PROBE_TO` secret is set).
+`{"fail": true}` makes the Durable Object hit a defect after its D1 query. The E2E suite
+runs the probe locally, on previews and on staging after each deploy.
+
+**Verified locally** (`wrangler dev`, wrangler 4.160):
+- Web, engine and the Durable Object share **one trace ID across Workers RPC** with no work
+  on our side, and every log line carries the matching `trace_id` / `span_id`.
+- The local runtime has `span.spanContext()` and `tracing.withActiveSpan()`, so Effect
+  spans nest and platform spans (D1, queue send) nest under them.
+- **The queue consumer starts a new trace.** The consumer span records the producer's
+  IDs as `link.0.trace_id` / `link.0.span_id` (Workers spans have no links API yet).
+- A defect is reported once, by the Worker where it happened, with `trace_id` as a tag
+  and in `contexts.trace`; callers receive it as an `RpcResult` failure.
+
+**Still to verify on staging** (needs the owner steps in section 11): that the spans
+arrive in Sentry nested the same way, that logs arrive correlated, and that the issue
+from "Run probe with a deliberate error" links to its trace. If nesting fails in
+production, the fallback above (Effect's `OtlpTracer`) still applies.
+
+**Rules that came out of it:**
+- Every Worker entry point runs its Effect program through `run(env, "domain.action", …)`
+  (engine) or `runExit("domain.action", …)` (web), which adds the root span, logger, tracer
+  and reporter.
+- RPC methods (Worker and Durable Object) return `RpcResult<A>`; the caller maps a failed
+  result to a typed failure, never to a defect.
+- Queue messages carry `traceparent`; consumers link to it.
+- The redaction pattern for phone numbers no longer matches digits inside IDs and
+  timestamps (it used to mask part of UUIDs).
+
 ---
 
 ## 5. Secrets (S35; Doppler removed)
@@ -235,7 +271,7 @@ hotfix/*  ──PR──► main ──► production, then an automatic back-me
 | Markdown | `marked` + an allowlist sanitizer | 18.1.0 |
 | IDs | `uuidv7` | 1.2.1 |
 | Bot check | `svelte-turnstile` | 0.11.0 |
-| Errors | `@sentry/sveltekit`, `@sentry/cloudflare` | 11.6.0 |
+| Errors | Server: our own envelope reporter (S38). Browser: `@sentry/svelte` when the first real pages land | — |
 | Tests | `vitest` 5 (+ `@vitest/browser-playwright`, `vitest-browser-svelte`, `@vitest/coverage-v8`), `@effect/vitest`, `fast-check`, `msw`, `@playwright/test`, `@axe-core/playwright`, `@stryker-mutator/core` | 5.0.3 / 3.1.0 / 4.0.2 / 4.10.2 / 3.0.2 / 1.64.0 / 4.13.0 / 10.0.0 |
 | Workers tests | `vitest` **4.1** + `@cloudflare/vitest-pool-workers` (the pool doesn't support Vitest 5 yet) | 4.1.11 / 0.23.0 |
 | Lint / format / types | `oxlint`, `oxfmt`, `svelte-check` | 1.87.0 / 0.72.0 / — |
@@ -311,6 +347,23 @@ Done in the repository and the AntiTcb account:
 - [x] Worker Previews of `claimsale-web-staging` for web-only PRs (S37).
 - [ ] Confirm in the dashboard that the Access policy on `claimsale-web-staging` covers its **Previews** as well as production traffic (Worker-level Access offers "Previews only" or "All traffic"). Worker Previews run on staging data.
 - [x] `dev` branch pushed.
+
+Observability spike (T28, S38), owner steps before it can be checked in Sentry:
+- [ ] Create a Sentry project (platform: JavaScript). Put its DSN in `SENTRY_DSN` under
+      `env.staging.vars` in `apps/engine/wrangler.jsonc`, and under `env.staging.vars` and
+      `env.staging.previews.vars` in `apps/web/wrangler.jsonc` (PR preview pairs copy staging's
+      vars). A DSN is public by design, so it lives in config.
+- [ ] In the Cloudflare dashboard (**Observability → Destinations**), add `sentry-traces`
+      (Traces) and `sentry-logs` (Logs) with Sentry's OTLP endpoints and the
+      `x-sentry-auth: sentry sentry_key=<public key>` header. Then add
+      `"destinations": ["sentry-traces"]` / `["sentry-logs"]` to `observability.traces` /
+      `observability.logs` for staging in both Workers. (Not added yet: a deploy that names
+      a destination that doesn't exist fails.)
+- [ ] Optional, once `notify.claimsale.net` is onboarded in Email Service:
+      `wrangler secret put TRACE_PROBE_TO --env staging` (in `apps/engine`) with a verified
+      address, so the probe ends with a real email.
+- [ ] Open `https://staging.claimsale.net/debug/trace`, run both buttons, and check the
+      trace, its logs and the linked issue in Sentry. Record the result under S38.
 
 Owner steps are scripted in **`scripts/setup.sh`** (a guided wizard run on your own
 machine, using `cf` and `gh`). It covers: default branch and protections, GitHub

@@ -14,12 +14,14 @@
 	"vars": {
 		"APP_ENV": "local",
 		"VERSION": "dev",
+		// Sentry DSN (public by design); empty disables error reports (TECH_STACK S38).
+		"SENTRY_DSN": "",
 	},
 	"services": [{ "binding": "ENGINE", "service": "claimsale-engine" }],
 	"env": {
 		"staging": {
 			"name": "claimsale-web-staging",
-			"vars": { "APP_ENV": "staging", "VERSION": "set-by-ci" },
+			"vars": { "APP_ENV": "staging", "VERSION": "set-by-ci", "SENTRY_DSN": "" },
 			"services": [{ "binding": "ENGINE", "service": "claimsale-engine-staging" }],
 			// Worker Previews (TECH_STACK S37): `wrangler preview --env staging` creates a
 			// Preview of claimsale-web-staging. Previews inherit nothing from the settings
@@ -27,14 +29,14 @@
 			// version, so web Previews run against the staging engine and its data.
 			// Production (top level and env.production) has no previews block on purpose.
 			"previews": {
-				"vars": { "APP_ENV": "preview", "VERSION": "set-by-ci" },
+				"vars": { "APP_ENV": "preview", "VERSION": "set-by-ci", "SENTRY_DSN": "" },
 				"services": [{ "binding": "ENGINE", "service": "claimsale-engine-staging" }],
 			},
 		},
 		"production": {
 			"name": "claimsale-web",
 			"workers_dev": false,
-			"vars": { "APP_ENV": "production", "VERSION": "set-by-ci" },
+			"vars": { "APP_ENV": "production", "VERSION": "set-by-ci", "SENTRY_DSN": "" },
 			"services": [{ "binding": "ENGINE", "service": "claimsale-engine" }],
 			// Custom domain (claimsale.net) is added once the domain is registered in the account.
 		},

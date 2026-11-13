@@ -39,4 +39,4 @@ export const health = (env: EngineEnv): Effect.Effect<HealthReport> =>
 			version: env.VERSION,
 			checks: { d1, durableObject },
 		} as const;
-	}).pipe(Effect.withSpan("engine.health"));
+	});

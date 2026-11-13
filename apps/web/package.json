@@ -23,6 +23,7 @@
 	"devDependencies": {
 		"@axe-core/playwright": "catalog:",
 		"@claimsale/engine": "workspace:*",
+		"@effect/vitest": "catalog:",
 		"@playwright/test": "catalog:",
 		"@sveltejs/adapter-cloudflare": "catalog:",
 		"@sveltejs/kit": "catalog:",
