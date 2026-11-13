@@ -10,7 +10,10 @@
 #   scripts/cf-resources.sh delete-worker <name>
 set -euo pipefail
 
-cf() { pnpm exec cf "$@"; }
+# CF_BIN overrides the CLI (tests use a fake); by default the repo's pinned cf.
+cf() {
+	if [ -n "${CF_BIN:-}" ]; then "$CF_BIN" "$@"; else pnpm exec cf "$@"; fi
+}
 
 # cf prints JSON; accept either a bare array or an API envelope with "result".
 rows='if type == "array" then .[] else (.result // [])[] end'
@@ -43,18 +46,19 @@ case "$cmd" in
 		;;
 	delete-d1)
 		id="$(d1_id "$name")"
-		if [ -n "$id" ]; then cf d1 delete "$id" > /dev/null; fi
+		# --force: cf asks for confirmation otherwise, and aborts when nobody can answer (CI).
+		if [ -n "$id" ]; then cf d1 delete "$id" --force > /dev/null; fi
 		;;
 	ensure-queue)
 		if [ -z "$(queue_id "$name")" ]; then cf queues create --queue-name "$name" > /dev/null; fi
 		;;
 	delete-queue)
 		id="$(queue_id "$name")"
-		if [ -n "$id" ]; then cf queues delete "$id" > /dev/null; fi
+		if [ -n "$id" ]; then cf queues delete "$id" --force > /dev/null; fi
 		;;
 	delete-worker)
 		id="$(worker_id "$name")"
-		if [ -n "$id" ]; then cf workers delete "$id" > /dev/null; fi
+		if [ -n "$id" ]; then cf workers delete "$id" --force > /dev/null; fi
 		;;
 	*)
 		echo "Unknown command: $cmd" >&2
