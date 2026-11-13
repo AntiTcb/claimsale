@@ -10,6 +10,11 @@ export interface EngineEnv {
 	readonly DB: D1Database;
 	readonly SALE_ENGINE: DurableObjectNamespace<SaleEngine>;
 	readonly NOTIFICATIONS: Queue;
+	readonly EMAIL: SendEmail;
 	readonly APP_ENV: string;
 	readonly VERSION: string;
+	/** Sender for notification email (TECH_STACK S31). */
+	readonly MAIL_FROM: string;
+	/** Sentry DSN for error reports; empty disables reporting. A DSN is public by design. */
+	readonly SENTRY_DSN: string;
 }

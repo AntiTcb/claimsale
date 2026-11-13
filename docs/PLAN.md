@@ -837,6 +837,8 @@ None. Everything is decided through D66. **Before the pilot sale** (not blocking
 1. **Observability spike:** one end-to-end trace (browser → web → RPC → DO → D1 →
    Queue → email) visible in Sentry with correlated logs and a linked error
    (TECH_STACK section 4). This decides T28 before feature work starts.
+   *Built 2026-11-13 (TECH_STACK S38); the last check in Sentry waits on the owner steps in
+   TECH_STACK section 11.*
 2. **Domain core:** state machines from `STATE_MACHINES.md` as pure functions, with
    spec IDs, unit tests and property tests. No UI yet.
 3. **Auth:** Better Auth (email + password, magic link, Discord), email and phone

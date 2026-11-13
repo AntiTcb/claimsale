@@ -19,15 +19,22 @@ if (!pr || !/^\d+$/.test(pr) || !d1Id) {
 	process.exit(2);
 }
 const suffix = `pr-${pr}`;
-const vars = { APP_ENV: "preview", VERSION: values.version ?? "preview" };
+const previewVars = { APP_ENV: "preview", VERSION: values.version ?? "preview" };
+
+/** Staging's vars (e.g. SENTRY_DSN, MAIL_FROM), with the preview's own APP_ENV and VERSION. */
+function varsFrom(config: object): Record<string, unknown> {
+	const staging = (config as { env?: { staging?: { vars?: Record<string, unknown> } } }).env?.staging;
+	return { ...staging?.vars, ...previewVars };
+}
 const queue = `claimsale-notifications-${suffix}`;
 
 const engine = readWranglerConfig("apps/engine/wrangler.jsonc");
+const engineVars = varsFrom(engine);
 delete engine.env;
 Object.assign(engine, {
 	name: `claimsale-engine-${suffix}`,
 	workers_dev: true,
-	vars,
+	vars: engineVars,
 	d1_databases: [
 		{
 			binding: "DB",
@@ -45,11 +52,12 @@ Object.assign(engine, {
 });
 
 const web = readWranglerConfig("apps/web/wrangler.jsonc");
+const webVars = varsFrom(web);
 delete web.env;
 Object.assign(web, {
 	name: `claimsale-web-${suffix}`,
 	workers_dev: true,
-	vars,
+	vars: webVars,
 	services: [{ binding: "ENGINE", service: `claimsale-engine-${suffix}` }],
 });
 

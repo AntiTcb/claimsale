@@ -13,7 +13,12 @@
 	"vars": {
 		"APP_ENV": "local",
 		"VERSION": "dev",
+		"MAIL_FROM": "no-reply@notify.claimsale.net",
+		// Sentry DSN (public by design); empty disables error reports (TECH_STACK S38).
+		"SENTRY_DSN": "",
 	},
+	// Cloudflare Email Service (TECH_STACK S28). Simulated by `wrangler dev` and tests.
+	"send_email": [{ "name": "EMAIL" }],
 	"d1_databases": [
 		{
 			"binding": "DB",
@@ -34,7 +39,13 @@
 	"env": {
 		"staging": {
 			"name": "claimsale-engine-staging",
-			"vars": { "APP_ENV": "staging", "VERSION": "set-by-ci" },
+			"vars": {
+				"APP_ENV": "staging",
+				"VERSION": "set-by-ci",
+				"MAIL_FROM": "no-reply@notify.claimsale.net",
+				"SENTRY_DSN": "",
+			},
+			"send_email": [{ "name": "EMAIL" }],
 			"d1_databases": [
 				{
 					"binding": "DB",
@@ -54,7 +65,13 @@
 		},
 		"production": {
 			"name": "claimsale-engine",
-			"vars": { "APP_ENV": "production", "VERSION": "set-by-ci" },
+			"vars": {
+				"APP_ENV": "production",
+				"VERSION": "set-by-ci",
+				"MAIL_FROM": "no-reply@notify.claimsale.net",
+				"SENTRY_DSN": "",
+			},
+			"send_email": [{ "name": "EMAIL" }],
 			"d1_databases": [
 				{
 					"binding": "DB",

@@ -50,6 +50,20 @@ describe("redact", () => {
 		);
 	});
 
+	it("leaves IDs, trace IDs and timestamps intact while still masking phones", () => {
+		const ids = [
+			"152e2d6a-936e-4d93-969e-00cd4266822c",
+			"019a2b3c-4d5e-7f60-8123-4567-89abcdef0123",
+			"4820712b97592d9d800c11b4e5b7f66e",
+			"s_01934567890",
+			"2026-11-13T20:22:32.107Z",
+		];
+		for (const id of ids) expect(maskPhone(`id ${id} done`)).toBe(`id ${id} done`);
+		expect(redact({ probe_id: ids[0] })).toEqual({ probe_id: ids[0] });
+		expect(maskPhone("call 555-123-4567.")).toBe("call ***67.");
+		expect(maskPhone("(555) 123 4567")).toBe("(***67");
+	});
+
 	it("leaves short numbers alone", () => {
 		expect(maskPhone("order 12345 of 3")).toBe("order 12345 of 3");
 		expect(maskEmail("no email here")).toBe("no email here");

@@ -39,7 +39,7 @@
 	},
 	"overrides": [
 		{
-			"files": ["packages/observability/src/logger.ts"],
+			"files": ["packages/observability/src/logger.ts", "packages/observability/src/sentry.ts"],
 			"rules": {
 				"no-console": "off"
 			}

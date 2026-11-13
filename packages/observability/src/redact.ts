@@ -10,8 +10,9 @@ const PHONE_KEY = /phone|e164|msisdn/i;
 
 // Permissive on purpose: any local part RFC 5322 allows unquoted, then a dotted domain.
 const EMAIL = /[^\s@<>()[\]\\,;:"]+@([A-Z0-9-]+(?:\.[A-Z0-9-]+)+)/gi;
-// Seven or more digits, optionally separated, with an optional leading "+".
-const PHONE = /\+?\d(?:[\s().-]{0,2}\d){6,}/g;
+// Seven or more digits, optionally separated, with an optional leading "+". The
+// lookarounds stop it matching inside IDs (UUIDs, trace IDs) and timestamps.
+const PHONE = /(?<![\w+-])\+?\d(?:[\s().-]{0,2}\d){6,}(?![\w:-])/g;
 
 const MAX_DEPTH = 6;
 
