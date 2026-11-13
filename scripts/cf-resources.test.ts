@@ -11,7 +11,14 @@ const script = join(import.meta.dirname, "cf-resources.sh");
 const fakeCf = `#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$CF_LOG"
 case "$1 $2" in
-  "workers list") echo '[{"name":"claimsale-web-pr-3","id":"w-123"},{"name":"claimsale-engine-pr-3","id":"w-456"}]' ;;
+  "workers list")
+    # Paginated like the real API: page 1 holds 100 other Workers, page 2 the PR's.
+    if [ "$4" = "1" ]; then
+      seq 1 100 | jq -sc 'map({name: "other-\\(.)", id: "o-\\(.)"})'
+    else
+      echo '[{"name":"claimsale-web-pr-3","id":"w-123"},{"name":"claimsale-engine-pr-3","id":"w-456"}]'
+    fi ;;
+  "queues consumers") [ "$3" = "list" ] && echo '[{"consumer_id":"c-123","script":"claimsale-engine-pr-3"}]' || echo '{}' ;;
   "queues list")  echo '[{"queue_name":"claimsale-notifications-pr-3","queue_id":"q-123"}]' ;;
   "d1 list")      echo '[{"name":"claimsale-pr-3","uuid":"d-123"}]' ;;
   "d1 create"|"queues create") echo '{}' ;;
@@ -61,20 +68,28 @@ describe("cf-resources.sh deletes without prompting", () => {
 
 	it("does nothing when the resource doesn't exist", () => {
 		run("delete-worker", "claimsale-web-pr-999");
-		expect(calls()).toEqual(["workers list"]);
+		expect(calls()).toEqual(["workers list --page 1 --per-page 100", "workers list --page 2 --per-page 100"]);
+	});
+
+	// Regression: `cf workers list` returns one page (10 Workers by default); with more
+	// Workers in the account, a preview's Worker could be missed and never deleted.
+	it("finds a Worker beyond the first page of the list", () => {
+		run("delete-worker", "claimsale-engine-pr-3");
+		expect(calls()).toContain("workers delete w-456 --force");
 	});
 });
 
 describe("cf-resources.sh delete-preview-pair", () => {
-	// Regression: the engine consumes the PR's queue, and the API refuses to delete a
-	// Worker that is a queue consumer (10064), so the queue must go before the engine
-	// (manual cleanups of PRs #3 and #4 failed this way).
-	it("deletes web, then the queue, then the engine, then D1", () => {
+	// Regression: the engine consumes and produces to the PR's queue. The API refuses to
+	// delete a Worker that consumes a queue (10064) and a queue a Worker binds to (11005);
+	// manual cleanups of PRs #3 and #4 failed on each in turn.
+	it("deletes web, detaches the queue's consumer, then deletes engine, queue and D1", () => {
 		run("delete-preview-pair", "3");
 		expect(calls().filter((c) => c.includes(" delete "))).toEqual([
 			"workers delete w-123 --force",
-			"queues delete q-123 --force",
+			"queues consumers delete c-123 --queue-id q-123 --force",
 			"workers delete w-456 --force",
+			"queues delete q-123 --force",
 			"d1 delete d-123 --force",
 		]);
 	});

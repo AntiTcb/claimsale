@@ -27,8 +27,16 @@ queue_id() {
 	cf queues list | jq -r --arg n "$1" "$rows | select(.queue_name == \$n) | .queue_id" | head -n1
 }
 
+# `cf workers list` is paginated (10 per page by default), so read every page.
 worker_id() {
-	cf workers list | jq -r --arg n "$1" "$rows | select(.name == \$n) | .id" | head -n1
+	local page=1 out id
+	while :; do
+		out="$(cf workers list --page "$page" --per-page 100)"
+		id="$(jq -r --arg n "$1" "$rows | select(.name == \$n) | .id" <<< "$out" | head -n1)"
+		if [ -n "$id" ]; then echo "$id"; return; fi
+		if [ "$(jq "[$rows] | length" <<< "$out")" -lt 100 ]; then return; fi
+		page=$((page + 1))
+	done
 }
 
 cmd="${1:-}"
@@ -43,6 +51,14 @@ delete_d1() {
 delete_queue() {
 	local id; id="$(queue_id "$1")"
 	if [ -n "$id" ]; then cf queues delete "$id" --force > /dev/null; fi
+}
+# Detaches every consumer Worker from a queue, so that Worker can be deleted.
+detach_queue_consumers() {
+	local qid cid; qid="$(queue_id "$1")"
+	[ -n "$qid" ] || return 0
+	for cid in $(cf queues consumers list --queue-id "$qid" | jq -r "$rows | .consumer_id"); do
+		cf queues consumers delete "$cid" --queue-id "$qid" --force > /dev/null
+	done
 }
 delete_worker() {
 	local id; id="$(worker_id "$1")"
@@ -66,13 +82,15 @@ case "$cmd" in
 	delete-queue) delete_queue "$name" ;;
 	delete-worker) delete_worker "$name" ;;
 	delete-preview-pair)
-		# Order matters: web binds to the engine, and the API refuses to delete a Worker
-		# that still consumes a queue (10064), so the queue goes before the engine.
+		# Order matters. Web binds to the engine. The engine both consumes and produces to
+		# the queue: the API won't delete a Worker that consumes a queue (10064), nor a queue
+		# a Worker still binds to (11005). So: web, detach the consumer, engine, queue, D1.
 		pr="$name"
 		[[ "$pr" =~ ^[0-9]+$ ]] || { echo "delete-preview-pair needs a PR number" >&2; exit 2; }
 		delete_worker "claimsale-web-pr-$pr"
-		delete_queue "claimsale-notifications-pr-$pr"
+		detach_queue_consumers "claimsale-notifications-pr-$pr"
 		delete_worker "claimsale-engine-pr-$pr"
+		delete_queue "claimsale-notifications-pr-$pr"
 		delete_d1 "claimsale-pr-$pr"
 		;;
 	*)
