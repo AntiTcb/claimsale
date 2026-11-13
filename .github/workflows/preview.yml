@@ -56,9 +56,9 @@ jobs:
       - uses: ./.github/actions/deploy-pair
         if: steps.kind.outputs.kind == 'pair'
         # Worker secrets go here by name, one per name in each wrangler config's
-        # secrets.required (TECH_STACK S35); none yet. Never pass the whole secrets context.
-        #   env:
-        #     FOO: ${{ secrets.FOO }}
+        # secrets.required (TECH_STACK S35). Never pass the whole secrets context.
+        env:
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
         with:
           config-file: wrangler.preview.jsonc
           version: ${{ github.sha }}
@@ -77,6 +77,8 @@ jobs:
         if: steps.kind.outputs.kind == 'web'
         id: web
         # Secrets for Previews come from env.staging.previews.secrets.required, by name as above.
+        env:
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
         run: |
           set -euo pipefail
           node scripts/secrets-for.ts apps/web/wrangler.jsonc staging --previews > "$RUNNER_TEMP/web-secrets.json"
