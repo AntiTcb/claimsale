@@ -10,6 +10,7 @@ export default defineConfig({
 	test: {
 		projects: [
 			"packages/*",
+			{ test: { name: "scripts", root: "./scripts", include: ["*.test.ts"], environment: "node" } },
 			{
 				extends: "./apps/web/vite.config.ts",
 				test: {
