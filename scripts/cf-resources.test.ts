@@ -13,7 +13,7 @@ printf '%s\\n' "$*" >> "$CF_LOG"
 case "$1 $2" in
   "workers list")
     # Paginated like the real API: page 1 holds 100 other Workers, page 2 the PR's.
-    if [ "$4" = "1" ]; then
+    if [ "\${4:-1}" = "1" ]; then
       seq 1 100 | jq -sc 'map({name: "other-\\(.)", id: "o-\\(.)"})'
     else
       echo '[{"name":"claimsale-web-pr-3","id":"w-123"},{"name":"claimsale-engine-pr-3","id":"w-456"}]'
