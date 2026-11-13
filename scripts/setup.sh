@@ -298,6 +298,23 @@ printf '  %s✓%s environments preview, staging, production\n' "$GREEN" "$RESET"
 note "Production deploys wait for your approval in the Actions tab."
 pause
 
+# ── 4b ────────────────────────────────────────────────────────────────────
+stage "GitHub: Better Auth signing secrets"
+say "Each environment gets its own random BETTER_AUTH_SECRET (sign-in sessions, TECH_STACK §5)."
+say "An existing one is kept: replacing it signs everyone out."
+for env_name in preview staging production; do
+  if gh secret list --env "$env_name" --json name --jq '.[].name' 2>/dev/null | grep -qx BETTER_AUTH_SECRET; then
+    printf '  %s✓%s %s already has BETTER_AUTH_SECRET\n' "$GREEN" "$RESET" "$env_name"
+  elif openssl rand -base64 48 | tr -d '\n' | gh secret set BETTER_AUTH_SECRET --env "$env_name" >/dev/null 2>&1; then
+    WRITTEN_SECRET+=("BETTER_AUTH_SECRET ($env_name)")
+    printf '  %s✓ set%s BETTER_AUTH_SECRET for %s\n' "$GREEN" "$RESET" "$env_name"
+  else
+    SKIPPED+=("BETTER_AUTH_SECRET for $env_name (openssl rand -base64 48 | gh secret set BETTER_AUTH_SECRET --env $env_name)")
+    warn "skipped BETTER_AUTH_SECRET for $env_name"
+  fi
+done
+pause
+
 # ── 5 ─────────────────────────────────────────────────────────────────────
 stage "Cloudflare: API token for CI"
 say "CI deploys with wrangler and provisions with cf using one API token."

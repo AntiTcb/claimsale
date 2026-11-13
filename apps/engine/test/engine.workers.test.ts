@@ -235,3 +235,39 @@ describe("cron sweep", () => {
 		await expect(Effect.runPromise(handleScheduled(controller))).resolves.toBeUndefined();
 	});
 });
+
+describe("D1 migrations (expand/contract)", () => {
+	const authTables = ["users", "sessions", "auth_accounts", "verifications", "rate_limits", "email_outbox"];
+
+	it("apply to an empty database: every auth table exists", async () => {
+		const { results } = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all<{
+			name: string;
+		}>();
+		expect(results.map((r) => r.name)).toEqual(expect.arrayContaining(["app_meta", ...authTables]));
+	});
+
+	it("apply on top of the previous schema without touching existing data", async () => {
+		const [first, ...rest] = env.TEST_MIGRATIONS;
+		expect(first?.name).toMatch(/^0000_/);
+		const stub = env.SALE_ENGINE.get(env.SALE_ENGINE.idFromName("migration-check"));
+		await runInDurableObject(stub, (_instance, state) => {
+			const sql = state.storage.sql;
+			for (const query of first!.queries) sql.exec(query);
+			sql.exec("INSERT INTO app_meta (key, value, updated_at) VALUES ('seeded', 'yes', 1)");
+			for (const migration of rest) for (const query of migration.queries) sql.exec(query);
+			expect(sql.exec("SELECT value FROM app_meta WHERE key = 'seeded'").one()).toEqual({ value: "yes" });
+			const tables = sql
+				.exec("SELECT name FROM sqlite_master WHERE type = 'table'")
+				.toArray()
+				.map((r) => r["name"]);
+			expect(tables).toEqual(expect.arrayContaining(authTables));
+		});
+	});
+
+	it("0001_auth only adds tables and indexes (expand step)", () => {
+		const auth = env.TEST_MIGRATIONS.find((m) => m.name.startsWith("0001_"));
+		const statements = auth!.queries.map((q) => q.replace(/^--.*$/gm, "").trim()).filter(Boolean);
+		expect(statements.length).toBeGreaterThan(0);
+		for (const statement of statements) expect(statement).toMatch(/^CREATE (UNIQUE )?(TABLE|INDEX) /i);
+	});
+});
