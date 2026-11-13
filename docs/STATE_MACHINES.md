@@ -353,6 +353,34 @@ Every transition writes an `audit_log` row in the same batch.
 
 ---
 
+## 9a. Clarifications from the domain core (2026-11-13)
+
+`packages/core` implements sections 2–8 as pure functions. Where this spec left a
+case open, the code does the following; change the spec and the code together.
+
+- **Pending** means `open` or `countered`. A countered offer blocks an instant win
+  (4.1) and counts as the buyer's one pending entry on the item.
+- **A claim waiting on a free unit is binding.** Buyers can withdraw an offer (D46) or
+  leave the backup queue (D14), but not a claim that is being decided.
+- **Hidden-minimum offers** are stored as `declined` with `ended_reason = below_minimum`
+  and `ended_by = system`, so they appear in the audit log; the buyer only sees
+  "Offer not accepted".
+- **Accepting a counter on a sold-out item** reopens the entry at the counter amount
+  and keeps the counter on record, so the seller can't counter it a second time (D48).
+- **Withdrawing an item** ends its pending entries; existing winners stay `won` and
+  are rescinded one by one if needed.
+- **Ranking ties** (same amount, same millisecond) are broken by entry ID, so the
+  order is total. Entries the seller reordered come first, in the seller's order.
+- **After close,** pending offers on items with free units lapse after one decision
+  window of the seller (24h for free sellers), as 4.5 says; backup offers on sold-out
+  items don't lapse until every unit is paid.
+- **A Pro seller's decision window** can be any positive duration; D25 sets no bounds.
+- **Re-attribution by the admin:** if the admin moves a rescind to buyer fault but its
+  reason code has no buyer mark (a seller code), the buyer gets `violation`.
+- **A disputed mutual agreement** goes to the admin queue like a contest.
+
+---
+
 ## 10. Rule ID registry (for test traceability)
 
 Every rule below must have at least one test whose name contains its ID (TESTING.md

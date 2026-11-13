@@ -841,6 +841,8 @@ None. Everything is decided through D66. **Before the pilot sale** (not blocking
    TECH_STACK section 11.*
 2. **Domain core:** state machines from `STATE_MACHINES.md` as pure functions, with
    spec IDs, unit tests and property tests. No UI yet.
+   *Built 2026-11-13 in `packages/core` (sections 2–8; clarifications in STATE_MACHINES 9a).
+   The write-path rules (`SM-9-*`) and audit replay come with the engine in milestone 5.*
 3. **Auth:** Better Auth (email + password, magic link, Discord), email and phone
    verification, age attestation, profiles and handles.
 4. **Sales and items:** CRUD, item types and attributes, image upload to R2, **CSV/XLSX
