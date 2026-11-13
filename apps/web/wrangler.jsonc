@@ -1,5 +1,5 @@
 {
-	"$schema": "../../node_modules/wrangler/config-schema.json",
+	"$schema": "./node_modules/wrangler/config-schema.json",
 	// Top level = local development and tests. Deployed environments are under "env".
 	// "main" must be the adapter's output path: adapter-cloudflare writes the Worker there.
 	"name": "claimsale-web",
@@ -21,6 +21,15 @@
 			"name": "claimsale-web-staging",
 			"vars": { "APP_ENV": "staging", "VERSION": "set-by-ci" },
 			"services": [{ "binding": "ENGINE", "service": "claimsale-engine-staging" }],
+			// Worker Previews (TECH_STACK S37): `wrangler preview --env staging` creates a
+			// Preview of claimsale-web-staging. Previews inherit nothing from the settings
+			// above, and a Preview's service binding reaches the bound Worker's deployed
+			// version, so web Previews run against the staging engine and its data.
+			// Production (top level and env.production) has no previews block on purpose.
+			"previews": {
+				"vars": { "APP_ENV": "preview", "VERSION": "set-by-ci" },
+				"services": [{ "binding": "ENGINE", "service": "claimsale-engine-staging" }],
+			},
 		},
 		"production": {
 			"name": "claimsale-web",

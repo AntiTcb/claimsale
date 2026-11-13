@@ -10,6 +10,7 @@
 		"dev": "node scripts/dev.ts",
 		"dev:ui": "vite dev",
 		"build": "vite build",
+		"preview": "vite build && wrangler preview --env staging",
 		"cf-typegen": "wrangler types --strict-vars=false -c wrangler.jsonc -c ../engine/wrangler.jsonc src/worker-configuration.d.ts",
 		"typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
 		"test:e2e": "playwright test"

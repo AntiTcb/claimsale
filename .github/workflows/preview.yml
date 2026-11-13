@@ -1,6 +1,11 @@
 name: PR preview
 
-# One full Worker pair per PR (TECH_STACK T30): its own engine, web, D1 and queue.
+# Two kinds of PR preview (TECH_STACK S37), chosen by scripts/preview-kind.ts:
+# - web: a Cloudflare Worker Preview of claimsale-web-staging, bound to the staging engine,
+#   for PRs that only change the web app or docs.
+# - pair: one full Worker pair per PR (T30): its own engine, web, D1 and queue, for
+#   everything else (Worker Previews can't bind to another Worker's Preview, consume a
+#   queue or run a cron).
 on:
   pull_request:
     branches: [dev]
@@ -26,15 +31,30 @@ jobs:
       PR: ${{ github.event.pull_request.number }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The merge commit and its first parent (the base branch tip) give the PR's changes.
+          fetch-depth: 2
       - uses: ./.github/actions/setup
+      - name: Choose the preview kind
+        id: kind
+        run: |
+          set -euo pipefail
+          kind="$(git diff --name-only HEAD^1 HEAD | node scripts/preview-kind.ts)"
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          echo "Preview kind: $kind"
+
+      # ── kind: pair ────────────────────────────────────────────────────────────
       - name: Ensure the PR's D1 database and queue exist (cf)
+        if: steps.kind.outputs.kind == 'pair'
         id: resources
         run: |
           set -euo pipefail
           echo "d1_id=$(scripts/cf-resources.sh ensure-d1 "claimsale-pr-$PR")" >> "$GITHUB_OUTPUT"
           scripts/cf-resources.sh ensure-queue "claimsale-notifications-pr-$PR"
-      - run: node scripts/preview-config.ts --pr "$PR" --d1-id "${{ steps.resources.outputs.d1_id }}" --version "${{ github.sha }}"
+      - if: steps.kind.outputs.kind == 'pair'
+        run: node scripts/preview-config.ts --pr "$PR" --d1-id "${{ steps.resources.outputs.d1_id }}" --version "${{ github.sha }}"
       - uses: ./.github/actions/deploy-pair
+        if: steps.kind.outputs.kind == 'pair'
         # Worker secrets go here by name, one per name in each wrangler config's
         # secrets.required (TECH_STACK S35); none yet. Never pass the whole secrets context.
         #   env:
@@ -42,25 +62,57 @@ jobs:
         with:
           config-file: wrangler.preview.jsonc
           version: ${{ github.sha }}
+      - name: Preview URL (pair)
+        if: steps.kind.outputs.kind == 'pair'
+        id: pair
+        run: echo "url=https://claimsale-web-pr-$PR.$SUBDOMAIN.workers.dev" >> "$GITHUB_OUTPUT"
+        env:
+          SUBDOMAIN: ${{ vars.WORKERS_SUBDOMAIN }}
+
+      # ── kind: web ─────────────────────────────────────────────────────────────
+      - name: Build web
+        if: steps.kind.outputs.kind == 'web'
+        run: pnpm --filter @claimsale/web build
+      - name: Deploy a Worker Preview of claimsale-web-staging (wrangler preview)
+        if: steps.kind.outputs.kind == 'web'
+        id: web
+        # Secrets for Previews come from env.staging.previews.secrets.required, by name as above.
+        run: |
+          set -euo pipefail
+          node scripts/secrets-for.ts apps/web/wrangler.jsonc staging --previews > "$RUNNER_TEMP/web-secrets.json"
+          out="$(cd apps/web && pnpm exec wrangler preview --env staging --name "pr-$PR" --json \
+            --var "VERSION:${{ github.sha }}" --secrets-file "$RUNNER_TEMP/web-secrets.json" \
+            --message "PR #$PR at ${GITHUB_SHA::7}")"
+          printf '%s\n' "$out"
+          echo "url=$(printf '%s' "$out" | jq -er '.preview.urls[0]')" >> "$GITHUB_OUTPUT"
+      - name: Remove secret files
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/*-secrets.json
+
+      # ── both ──────────────────────────────────────────────────────────────────
       - name: Smoke test (@critical) against the preview
         run: |
           pnpm --filter @claimsale/web exec playwright install --with-deps chromium
           pnpm --filter @claimsale/web exec playwright test --grep @critical --project chromium-desktop
         env:
           CI: "true"
-          E2E_BASE_URL: https://claimsale-web-pr-${{ github.event.pull_request.number }}.${{ vars.WORKERS_SUBDOMAIN }}.workers.dev
+          E2E_BASE_URL: ${{ steps.pair.outputs.url || steps.web.outputs.url }}
           E2E_ACCESS_CLIENT_ID: ${{ secrets.ACCESS_CLIENT_ID }}
           E2E_ACCESS_CLIENT_SECRET: ${{ secrets.ACCESS_CLIENT_SECRET }}
       - name: Comment the preview URL
         uses: actions/github-script@v7
         with:
           script: |
-            const url = `https://claimsale-web-pr-${context.issue.number}.${process.env.SUBDOMAIN}.workers.dev`;
+            const url = process.env.URL;
+            const kind = process.env.KIND === "web"
+              ? "Worker Preview of the web app, backed by the **staging** engine and data"
+              : "isolated Worker pair with its own engine, D1 and queue";
             const marker = "<!-- claimsale-preview -->";
-            const body = `${marker}\nPreview for ${context.sha.slice(0, 7)}: ${url}\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_`;
+            const body = `${marker}\nPreview for ${context.sha.slice(0, 7)} (${kind}): ${url}\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_`;
             const { data: comments } = await github.rest.issues.listComments({ ...context.repo, issue_number: context.issue.number });
             const existing = comments.find((c) => c.body?.includes(marker));
             if (existing) await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
             else await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
         env:
-          SUBDOMAIN: ${{ vars.WORKERS_SUBDOMAIN }}
+          URL: ${{ steps.pair.outputs.url || steps.web.outputs.url }}
+          KIND: ${{ steps.kind.outputs.kind }}

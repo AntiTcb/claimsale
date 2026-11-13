@@ -5,6 +5,7 @@
 	"scripts": {
 		"dev": "pnpm --filter @claimsale/web dev",
 		"dev:ui": "pnpm --filter @claimsale/web dev:ui",
+		"preview": "pnpm --filter @claimsale/web preview",
 		"build": "pnpm -r build",
 		"lint": "oxlint --type-aware",
 		"format": "oxfmt",

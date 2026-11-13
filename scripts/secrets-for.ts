@@ -4,19 +4,30 @@
  * CI sets those by name from the GitHub Environment on the deploy step. Workflows never pass
  * `toJSON(secrets)`: GitHub flags that as possibly malicious and holds every run for approval.
  *
- * Usage: node scripts/secrets-for.ts apps/web/wrangler.jsonc [env]
+ * With --previews, reads the env's `previews.secrets.required` instead, for a Worker Preview
+ * (TECH_STACK S37). Previews inherit nothing from the Worker's own settings, so there is no
+ * fallback to the top-level list.
+ *
+ * Usage: node scripts/secrets-for.ts apps/web/wrangler.jsonc [env] [--previews]
  */
+import { parseArgs } from "node:util";
 import { readWranglerConfig } from "./wrangler-config.ts";
 
-const [path, envName] = process.argv.slice(2);
+const { values, positionals } = parseArgs({
+	allowPositionals: true,
+	options: { previews: { type: "boolean", default: false } },
+});
+const [path, envName] = positionals;
 if (!path) {
-	console.error("Usage: node scripts/secrets-for.ts <wrangler.jsonc> [env]");
+	console.error("Usage: node scripts/secrets-for.ts <wrangler.jsonc> [env] [--previews]");
 	process.exit(2);
 }
+type Secrets = { required?: string[] } | undefined;
 const config = readWranglerConfig(path);
 const scoped = envName ? ((config.env?.[envName] ?? {}) as Record<string, unknown>) : config;
-const required =
-	((scoped["secrets"] ?? config["secrets"]) as { required?: string[] } | undefined)?.required ?? [];
+const required = values.previews
+	? (((scoped["previews"] as Record<string, unknown> | undefined)?.["secrets"] as Secrets)?.required ?? [])
+	: (((scoped["secrets"] ?? config["secrets"]) as Secrets)?.required ?? []);
 
 const missing = required.filter((name) => !process.env[name]);
 if (missing.length > 0) {

@@ -16,7 +16,7 @@ questions are **T#**, each with a recommended default in *italics*.
 | S4 | ~~Zod~~ → **Effect Schema** (superseded by S26/T24). |
 | S5 | **Drizzle** for schema and migrations (query layer: T25). |
 | S6 | **D1 FTS5** for search at launch. |
-| S7 | Environments: **local, per-PR preview, staging, production**, with staging from day one. How previews work: T30. |
+| S7 | Environments: **local, per-PR preview, staging, production**, with staging from day one. How previews work: T30, plus Worker Previews for web-only PRs (S37). |
 | S8 | **Better Auth.** |
 | S9 | Sign-in: **email + password, magic link, Discord.** (No Google or passkeys at launch.) |
 | S10 | **Twilio Verify** for phone OTP, rejecting VoIP numbers. |
@@ -45,7 +45,8 @@ questions are **T#**, each with a recommended default in *italics*.
 | S33 | **Photo authenticity (D63):** an engine Queue job decodes each upload in WASM (`@jsquash/webp` 1.5.0, `@jsquash/jpeg` 1.6.0; `@jsquash/resize` 2.1.1 for downscaling) and computes dHash and pHash (our own small implementation in `packages/core`, property-tested), for the original, mirrored and rotated versions. Near-duplicates are found through a D1 index of 4 × 16-bit bands (multi-index hashing) followed by a Hamming-distance check. This avoids the Cloudflare Images binding, which needs a separate Images Paid subscription. |
 | S34 | **Milestone 0 findings (2026-10-09):** (1) `@cloudflare/vitest-pool-workers` is renamed **`@cloudflare/vitest-plugin`** (`cloudflareTest()` Vite plugin). Its first Vitest 5 release (1.4.0) is 1 day old and depends on an alpha Miniflare, so the engine stays on Vitest 4.1 + plugin 1.3.6 until it clears the 3-day release-age window. (2) SvelteKit 3 moved config into `sveltekit({...})` in `vite.config.ts` and replaced `$lib` with `#lib` subpath imports. (3) adapter-cloudflare 8 no longer passes `platform`; bindings come from `cloudflare:workers`. (4) Two `wrangler dev` processes crash each other in some environments, so local dev and E2E run **both Workers in one process** (`wrangler dev -c web -c engine`). (5) TypeScript is pinned to **6.0.x**, because SvelteKit 3 and svelte-check don't support TypeScript 7 yet. (6) pnpm's `minimumReleaseAge` (3 days) is enforced at install time. |
 | S35 | **No Doppler for now (2026-10-29).** Secrets live as **GitHub Environment secrets** (`preview`, `staging`, `production`). CI passes each Worker secret **by name** as an environment variable on the deploy step (never `toJSON(secrets)`, which GitHub flags as possibly malicious and holds for approval), and `scripts/secrets-for.ts` collects the names in each Worker's `secrets.required`, and wrangler uploads them with `--secrets-file`. Locally, secrets go in each app's `.dev.vars` (gitignored). Doppler can be reintroduced later behind the same `secrets-for.ts` step. |
-| S36 | **Cloudflare CLI (`cf`, beta, pinned `1.0.0-beta.21`) for provisioning (2026-10-29).** D1, queues, Worker deletion, D1 Time Travel bookmarks and **remote D1 migrations** (`cf d1 migrations apply`, which uses the same tracking table as wrangler) run through `cf`, via `scripts/cf-resources.sh` and the setup wizard. **Deploys, local dev and type generation stay on wrangler**, because adapter-cloudflare builds against `wrangler.jsonc` and moving to `cloudflare.config.ts` (`cf migrate`) waits for `cf` to leave beta. `cf` needs Node ≥ 22.23 / 24.22. |
+| S36 | **Cloudflare CLI (`cf`, beta, pinned `1.0.0-beta.29` since 2026-11-13) for provisioning (2026-10-29).** D1, queues, Worker deletion, D1 Time Travel bookmarks and **remote D1 migrations** (`cf d1 migrations apply`, which uses the same tracking table as wrangler) run through `cf`, via `scripts/cf-resources.sh` and the setup wizard. **Deploys, local dev and type generation stay on wrangler**, because adapter-cloudflare builds against `wrangler.jsonc` and moving to `cloudflare.config.ts` (`cf migrate`) waits for `cf` to leave beta. `cf` needs Node ≥ 22.23 / 24.22. Note: `cf` ≥ 1.0.0-beta.31 requires wrangler ≥ 4.161.0 for the commands that build (`cf dev`, `cf build`, `cf deploy`); provisioning commands don't build, so bump both together when Renovate offers it. |
+| S37 | **Cloudflare Worker Previews for web-only PRs (2026-11-13).** Worker Previews (`wrangler preview`, open beta, wrangler ≥ 4.135) create a Preview of an existing Worker with its own URL, config and Durable Object namespace. Three limits rule them out as a full replacement for the per-PR pair (T30): a Preview's service binding reaches the bound Worker's **deployed** version, never another Worker's Preview; Previews don't consume queues; and crons don't run in them. So: **`scripts/preview-kind.ts`** gives a PR a **Worker Preview** of `claimsale-web-staging` (`--name pr-<n>`, URL `pr-<n>-claimsale-web-staging.<subdomain>.workers.dev`) when every changed file is under `apps/web/`, `docs/` or a root `*.md`. Its `ENGINE` binding points at `claimsale-engine-staging`, so it reads and writes **staging data**. Every other PR keeps the isolated pair. Preview settings live in `env.staging.previews` in `apps/web/wrangler.jsonc`, and Previews inherit nothing from the Worker's own settings. **Production has no `previews` block on purpose**: without one, `wrangler preview` refuses to run, which keeps any Preview off the production engine. Never accept wrangler's offer to generate one there. Preview secrets are listed in `previews.secrets.required` and passed with `scripts/secrets-for.ts --previews` (S35). Locally, `pnpm preview` builds and creates a Preview named after the current git branch. Cleanup deletes the PR's Worker Preview and its pair, whichever exist. Revisit when Previews can bind to a matching Preview of another Worker. |
 
 ---
 
@@ -220,7 +221,7 @@ hotfix/*  ──PR──► main ──► production, then an automatic back-me
 | Area | Package | Version |
 | --- | --- | --- |
 | Framework | `@sveltejs/kit` / `svelte` / `vite` | 3.0.1 / 5.57.2 / 8.x |
-| Adapter / CLI | `@sveltejs/adapter-cloudflare` / `wrangler` | 8.0.0 / 4.148.0 (Previews need ≥ 4.135) |
+| Adapter / CLI | `@sveltejs/adapter-cloudflare` / `wrangler` | 8.0.0 / 4.160.0 (Worker Previews need ≥ 4.135; S37) |
 | App framework | `effect`, `@effect/sql-d1`, `@effect/vitest`, `@effect/language-service` | 4.0.2 / 4.0.2 / 4.0.2 / 0.87.4 |
 | Validation | `effect/Schema` (Standard Schema) | built in |
 | ORM | `drizzle-orm` / `drizzle-kit` | 0.45.3 / 0.31.11 |
@@ -307,6 +308,8 @@ Done in the repository and the AntiTcb account:
 - [x] D1 databases `claimsale-staging` (`e4d69871-…`) and `claimsale-production` (`5506c6e8-…`), East US.
 - [x] Wrangler configs for local, preview (generated per PR), staging and production.
 - [x] CI (`.github/workflows/ci.yml`), PR previews + cleanup, staging deploy, release PR, production deploy, nightly.
+- [x] Worker Previews of `claimsale-web-staging` for web-only PRs (S37).
+- [ ] Confirm in the dashboard that the Access policy on `claimsale-web-staging` covers its **Previews** as well as production traffic (Worker-level Access offers "Previews only" or "All traffic"). Worker Previews run on staging data.
 - [x] `dev` branch pushed.
 
 Owner steps are scripted in **`scripts/setup.sh`** (a guided wizard run on your own
