@@ -34,9 +34,9 @@ jobs:
         run: scripts/cf-resources.sh ensure-queue claimsale-notifications
       - uses: ./.github/actions/deploy-pair
         # Worker secrets go here by name, one per name in each wrangler config's
-        # secrets.required (TECH_STACK S35); none yet. Never pass the whole secrets context.
-        #   env:
-        #     FOO: ${{ secrets.FOO }}
+        # secrets.required (TECH_STACK S35). Never pass the whole secrets context.
+        env:
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
         with:
           wrangler-env: production
           version: ${{ github.sha }}

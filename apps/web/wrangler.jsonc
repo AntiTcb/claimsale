@@ -16,28 +16,94 @@
 		"VERSION": "dev",
 		// Sentry DSN (public by design); empty disables error reports (TECH_STACK S38).
 		"SENTRY_DSN": "",
+		"MAIL_FROM": "no-reply@notify.claimsale.net",
+		// "capture" writes email to the email_outbox table (E2E reads it); "cloudflare" sends it.
+		// Never "capture" where the data is shared with real users (staging, its Previews, production).
+		"MAILER": "capture",
 	},
+	// Better Auth signing secret (.dev.vars locally; GitHub Environment secret in CI).
+	// Optional, not required: DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET turn on Discord sign-in.
+	"secrets": { "required": ["BETTER_AUTH_SECRET"] },
 	"services": [{ "binding": "ENGINE", "service": "claimsale-engine" }],
+	// The same database as the engine (TECH_STACK §2): sessions and users live here.
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "claimsale-local",
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "../../packages/db/migrations",
+		},
+	],
+	"send_email": [{ "name": "EMAIL" }],
 	"env": {
 		"staging": {
 			"name": "claimsale-web-staging",
-			"vars": { "APP_ENV": "staging", "VERSION": "set-by-ci", "SENTRY_DSN": "" },
+			"vars": {
+				"APP_ENV": "staging",
+				"VERSION": "set-by-ci",
+				"SENTRY_DSN": "",
+				"MAIL_FROM": "no-reply@notify.claimsale.net",
+				"MAILER": "cloudflare",
+			},
+			"secrets": { "required": ["BETTER_AUTH_SECRET"] },
 			"services": [{ "binding": "ENGINE", "service": "claimsale-engine-staging" }],
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "claimsale-staging",
+					"database_id": "e4d69871-204b-4634-9c23-069b3374d585",
+					"migrations_dir": "../../packages/db/migrations",
+				},
+			],
+			"send_email": [{ "name": "EMAIL" }],
 			// Worker Previews (TECH_STACK S37): `wrangler preview --env staging` creates a
 			// Preview of claimsale-web-staging. Previews inherit nothing from the settings
 			// above, and a Preview's service binding reaches the bound Worker's deployed
 			// version, so web Previews run against the staging engine and its data.
 			// Production (top level and env.production) has no previews block on purpose.
 			"previews": {
-				"vars": { "APP_ENV": "preview", "VERSION": "set-by-ci", "SENTRY_DSN": "" },
+				// Staging data, so real email, never the capture outbox.
+				"vars": {
+					"APP_ENV": "preview",
+					"VERSION": "set-by-ci",
+					"SENTRY_DSN": "",
+					"MAIL_FROM": "no-reply@notify.claimsale.net",
+					"MAILER": "cloudflare",
+				},
+				"secrets": { "required": ["BETTER_AUTH_SECRET"] },
 				"services": [{ "binding": "ENGINE", "service": "claimsale-engine-staging" }],
+				"d1_databases": [
+					{
+						"binding": "DB",
+						"database_name": "claimsale-staging",
+						"database_id": "e4d69871-204b-4634-9c23-069b3374d585",
+						"migrations_dir": "../../packages/db/migrations",
+					},
+				],
+				"send_email": [{ "name": "EMAIL" }],
 			},
 		},
 		"production": {
 			"name": "claimsale-web",
 			"workers_dev": false,
-			"vars": { "APP_ENV": "production", "VERSION": "set-by-ci", "SENTRY_DSN": "" },
+			"vars": {
+				"APP_ENV": "production",
+				"VERSION": "set-by-ci",
+				"SENTRY_DSN": "",
+				"MAIL_FROM": "no-reply@notify.claimsale.net",
+				"MAILER": "cloudflare",
+			},
+			"secrets": { "required": ["BETTER_AUTH_SECRET"] },
 			"services": [{ "binding": "ENGINE", "service": "claimsale-engine" }],
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "claimsale-production",
+					"database_id": "5506c6e8-0aa3-4bea-953e-f5a82995717c",
+					"migrations_dir": "../../packages/db/migrations",
+				},
+			],
+			"send_email": [{ "name": "EMAIL" }],
 			// Custom domain (claimsale.net) is added once the domain is registered in the account.
 		},
 	},

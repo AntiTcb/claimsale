@@ -39,6 +39,12 @@ packages/db             Drizzle schema + D1 migrations
 - Read bindings with `import { env } from "cloudflare:workers"`; adapter-cloudflare 8 has no `platform`.
 - The engine's bindings are typed by `EngineEnv` (apps/engine/src/env.ts), not the global `Env`.
 - Effect 4: `Effect.andThen` takes an Effect, not a plain function; use `Effect.sync`.
+- Auth (TECH_STACK S39): Better Auth lives in `apps/web/src/lib/server/auth.ts`. Pages use form
+  actions that call `auth.api.*` and pass its headers to `forwardCookies()`. Profile fields are
+  never Better Auth input; write them through the validators in `@claimsale/core` (identity.ts).
+- Email in E2E: with `MAILER=capture` (local, tests, PR pairs) mail lands in `email_outbox`;
+  read it through `GET /api/test/outbox?to=` (see `apps/web/e2e/auth-helpers.ts`).
+- Web unit tests that need SQL use `apps/web/test/d1.ts` (D1 over `node:sqlite`, migrations applied).
 
 ## Commands
 

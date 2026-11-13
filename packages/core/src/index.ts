@@ -9,3 +9,4 @@ export * from "./sale.ts";
 export * from "./takeback.ts";
 export * from "./timers.ts";
 export * from "./visibility.ts";
+export * from "./identity.ts";

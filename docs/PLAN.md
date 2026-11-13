@@ -845,6 +845,10 @@ None. Everything is decided through D66. **Before the pilot sale** (not blocking
    The write-path rules (`SM-9-*`) and audit replay come with the engine in milestone 5.*
 3. **Auth:** Better Auth (email + password, magic link, Discord), email and phone
    verification, age attestation, profiles and handles.
+   *First slice built 2026-11-13 (TECH_STACK S39): sign-up with handle and age, email
+   verification, password and magic-link sign-in, password reset, Discord (when configured),
+   onboarding, settings and public profiles. Next slice: phone verification (Twilio), Turnstile,
+   seller requirements.*
 4. **Sales and items:** CRUD, item types and attributes, image upload to R2, **CSV/XLSX
    item import with templates and ZIP photos**.
 4b. **TCG catalog and photo authenticity:** nightly TCGCSV ingestion (games, sets,

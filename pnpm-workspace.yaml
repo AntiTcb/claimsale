@@ -27,6 +27,8 @@ catalog:
   effect: 4.0.1
   "@effect/vitest": 4.0.1
   "@effect/language-service": 0.87.3
+  # Auth
+  better-auth: 1.7.20
   # Data
   drizzle-orm: 0.45.3
   drizzle-kit: 0.31.11
