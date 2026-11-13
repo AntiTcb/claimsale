@@ -47,6 +47,8 @@ pnpm install            # pnpm 12 (packageManager); Node 24 (.nvmrc)
 pnpm dev                # both Workers in one wrangler process on http://localhost:8787;
                         # applies local migrations, rebuilds and restarts on source changes
 pnpm dev:ui             # vite dev with HMR (engine-backed features show as degraded)
+pnpm preview            # Worker Preview of the web app on the staging engine, named after
+                        # the git branch (TECH_STACK S37); needs `wrangler login`
 pnpm check              # format check, lint, typecheck, spec traceability
 pnpm test               # unit + browser tests (Vitest 5)
 pnpm test:workers       # engine Workers integration tests (Vitest 4.1 for now)
@@ -59,7 +61,15 @@ pnpm --filter @claimsale/db db:generate      # after changing the Drizzle schema
 
 Secrets: GitHub Environment secrets in CI; `apps/<app>/.dev.vars` locally (gitignored).
 Provisioning (D1, queues, Access) uses the Cloudflare CLI `cf` via `scripts/cf-resources.sh`;
-deploys and local dev use wrangler. First-time owner setup: `scripts/setup.sh`.
+deploys, Worker Previews and local dev use wrangler. First-time owner setup: `scripts/setup.sh`.
+
+PR previews come in two kinds (TECH_STACK S37): web-only PRs get a Cloudflare Worker Preview of
+`claimsale-web-staging`, which runs on **staging data**; all other PRs get an isolated Worker pair.
+Never add a `previews` block to production or to the engine.
+
+MCP: `.mcp.json` registers Cloudflare's hosted servers, `cloudflare-api` (the whole Cloudflare
+API, through code execution) and `cloudflare-docs`. Each signs in with OAuth on first use. Grant
+only the account and permissions the task needs, and prefer read-only scopes.
 
 Locally, set `CHROMIUM_EXECUTABLE` to use an already-installed Chromium for browser and
 E2E tests; otherwise run `pnpm --filter @claimsale/web exec playwright install chromium`.

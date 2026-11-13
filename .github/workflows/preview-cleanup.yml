@@ -27,6 +27,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
+      - name: Delete the PR's Worker Preview of claimsale-web-staging, if any (wrangler)
+        # A PR may have had either kind of preview, or both (TECH_STACK S37).
+        run: |
+          if ! out="$(cd apps/web && pnpm exec wrangler preview delete --env staging --name "pr-$PR" --skip-confirmation 2>&1)"; then
+            printf '%s\n' "$out"
+            # 10025: the API's "Preview not found"; any other failure fails the job.
+            if printf '%s' "$out" | grep -q "\[code: 10025\]"; then
+              echo "No Worker Preview named pr-$PR."
+            else
+              exit 1
+            fi
+          fi
       - name: Delete the preview pair, its queue and its database (cf)
         run: |
           # Web first (it binds to the engine), then the engine, queue and D1.

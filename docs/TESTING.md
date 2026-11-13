@@ -118,8 +118,10 @@ script fails if a spec ID has no test, so the spec and the tests can't drift apa
 - **Accessibility:** run `@axe-core/playwright` on every page visited in the critical paths.
 - **Where E2E runs:**
   - The full suite runs locally in CI, against `vite build && vite preview` + `wrangler dev` for the engine.
-  - The `@critical` smoke subset runs against each **deployed PR preview** pair and
-    against **staging** before a release is approved.
+  - The `@critical` smoke subset runs against each **deployed PR preview** (the
+    isolated pair, or for web-only PRs a Worker Preview backed by the staging engine;
+    TECH_STACK S37) and against **staging** before a release is approved. `@critical`
+    tests must therefore not depend on the test-only engine endpoint.
 
 ---
 
@@ -170,7 +172,7 @@ PR → dev
  ├─ workers integration (Vitest 4.1) ┘
  ├─ e2e full (Playwright, local stack, sharded ×4)
  ├─ coverage gates · spec-traceability check · tests-with-changes guard
- ├─ deploy the PR preview pair (secrets from the GitHub preview environment) → e2e @critical against the preview
+ ├─ deploy the PR preview: pair, or web Worker Preview (S37) (secrets from the GitHub preview environment) → e2e @critical against it
  └─ all green → mergeable
 
 dev → staging deploy → e2e @critical against staging
