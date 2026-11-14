@@ -59,7 +59,9 @@ pnpm --filter @claimsale/engine cf-typegen   # after changing a wrangler.jsonc (
 pnpm --filter @claimsale/db db:generate      # after changing the Drizzle schema
 ```
 
-Secrets: GitHub Environment secrets in CI; `apps/<app>/.dev.vars` locally (gitignored).
+Secrets: Infisical (self-hosted, TECH_STACK S39) is the source of truth and syncs into GitHub
+Environment secrets, which CI reads; never `gh secret set` them. Locally, `apps/<app>/.dev.vars`
+(gitignored), exported from Infisical's `dev` environment with `pnpm exec infisical export`.
 Provisioning (D1, queues, Access) uses the Cloudflare CLI `cf` via `scripts/cf-resources.sh`;
 deploys, Worker Previews and local dev use wrangler. First-time owner setup: `scripts/setup.sh`.
 

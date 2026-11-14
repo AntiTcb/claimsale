@@ -184,7 +184,7 @@ finish() {
 # Run from the repository root on your own machine: scripts/setup.sh
 # ──────────────────────────────────────────────────────────────────────────
 
-TOTAL_STAGES=10
+TOTAL_STAGES=12
 
 ACCOUNT_ID="e89111551171752d4230693ae0c83ed6" # AntiTcb (TECH_STACK S30)
 REQUIRED_CHECKS=(
@@ -194,8 +194,34 @@ REQUIRED_CHECKS=(
   "E2E (local stack)"
 )
 export CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID"
+# Self-hosted Infisical: the source of truth for secrets (TECH_STACK S39).
+export INFISICAL_DOMAIN="https://infiscal.alexgravely.dev"
 
 cd "$(git rev-parse --show-toplevel)"
+
+# set_infisical NAME VALUE ENV... stores a secret in each Infisical environment. The value
+# goes through a private temp file (NAME=@file), never the command line. The GitHub syncs
+# then copy it into the GitHub Environment of the same name.
+set_infisical() {
+  local name="$1" value="$2" tmp e
+  shift 2
+  tmp=$(mktemp); chmod 600 "$tmp"
+  printf '%s' "$value" > "$tmp"
+  for e in "$@"; do
+    if ! pnpm exec infisical secrets set --silent --env="$e" "$name=@$tmp" >/dev/null; then
+      rm -f "$tmp"
+      warn "couldn't store $name in Infisical ($e). Fix the error above and re-run."
+      exit 1
+    fi
+  done
+  rm -f "$tmp"
+  printf '  %s✓ stored%s %s in Infisical (%s)\n' "$GREEN" "$RESET" "$name" "$*"
+}
+
+# infisical_has NAME ENV succeeds if the secret exists in that Infisical environment.
+infisical_has() {
+  pnpm exec infisical export --silent --env="$2" --format=dotenv 2>/dev/null | grep -q "^$1="
+}
 
 banner "ClaimSale setup"
 
@@ -228,6 +254,30 @@ note "cf is signed in."
 pause
 
 # ── 2 ─────────────────────────────────────────────────────────────────────
+stage "Infisical: sign in and link the project"
+say "Secrets live in Infisical ($INFISICAL_DOMAIN). Each environment syncs into the"
+say "GitHub Environment of the same name; CI reads them from there (TECH_STACK S39)."
+if ! pnpm exec infisical user get token --plain >/dev/null 2>&1; then
+  step "Signing in to Infisical. Approve the request in your browser."
+  pnpm exec infisical login --domain "$INFISICAL_DOMAIN"
+fi
+if [[ ! -f .infisical.yaml && ! -f .infisical.json ]]; then
+  open_url "$INFISICAL_DOMAIN"
+  step "Create a Secrets Management project named claimsale."
+  step "Project settings → Environments: the slugs must be dev, preview, staging, production."
+  note "New projects start with dev, staging and prod: add preview, and change prod's slug to production."
+  pause "Press Enter once the project exists"
+  pnpm exec infisical init
+  note "Commit .infisical.yaml: it holds the project ID, not secrets."
+fi
+for e in dev preview staging production; do
+  pnpm exec infisical export --silent --env="$e" --format=dotenv >/dev/null 2>&1 \
+    || { warn "Can't read Infisical environment '$e'. Check its slug and re-run."; exit 1; }
+done
+note "Infisical is linked."
+pause
+
+# ── 3 ─────────────────────────────────────────────────────────────────────
 stage "GitHub: make dev the default branch"
 say "New pull requests should target dev (main is production only)."
 current=$(gh repo view "$REPO" --json defaultBranchRef --jq .defaultBranchRef.name)
@@ -241,7 +291,7 @@ else
 fi
 pause
 
-# ── 3 ─────────────────────────────────────────────────────────────────────
+# ── 4 ─────────────────────────────────────────────────────────────────────
 stage "GitHub: protect dev"
 say "A ruleset on dev: no deletion or force-push, changes through pull requests,"
 say "and the four CI checks must pass. Repository admins (you) can bypass it."
@@ -276,7 +326,7 @@ else
 fi
 pause
 
-# ── 4 ─────────────────────────────────────────────────────────────────────
+# ── 5 ─────────────────────────────────────────────────────────────────────
 stage "GitHub: deployment environments"
 say "preview (any branch), staging (dev only), production (main only, needs your approval)."
 me_id=$(gh api user --jq .id)
@@ -298,7 +348,7 @@ printf '  %s✓%s environments preview, staging, production\n' "$GREEN" "$RESET"
 note "Production deploys wait for your approval in the Actions tab."
 pause
 
-# ── 5 ─────────────────────────────────────────────────────────────────────
+# ── 6 ─────────────────────────────────────────────────────────────────────
 stage "Cloudflare: API token for CI"
 say "CI deploys with wrangler and provisions with cf using one API token."
 open_url "https://dash.cloudflare.com/profile/api-tokens"
@@ -308,6 +358,7 @@ step "  Account Settings: Read."
 step "Account Resources: Include → AntiTcb. Leave Zone Resources empty (no domain yet)."
 step "Continue to summary → Create Token → copy the token."
 note "If a later deploy fails with a 403, its log names the missing permission; edit the token to add it."
+note "If claimsale-ci already exists, use its ⋯ → Roll to get a new value (the old one stops working)."
 ask_secret CLOUDFLARE_API_TOKEN "Paste the token (hidden):"
 verify=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/user/tokens/verify | jq -r '.result.status // "invalid"')
 if [[ "$verify" != "active" ]]; then
@@ -315,12 +366,12 @@ if [[ "$verify" != "active" ]]; then
   exit 1
 fi
 note "Token verified (active)."
-set_secret CLOUDFLARE_API_TOKEN "$CLOUDFLARE_API_TOKEN"
+set_infisical CLOUDFLARE_API_TOKEN "$CLOUDFLARE_API_TOKEN" preview staging production
 set_var CLOUDFLARE_ACCOUNT_ID "$ACCOUNT_ID"
 unset CLOUDFLARE_API_TOKEN
 pause
 
-# ── 6 ─────────────────────────────────────────────────────────────────────
+# ── 7 ─────────────────────────────────────────────────────────────────────
 stage "Cloudflare: notification queues"
 say "The engine Worker needs its queue to exist before the first deploy."
 for q in claimsale-notifications-staging claimsale-notifications; do
@@ -330,7 +381,7 @@ done
 note "Per-PR queues and databases are created and deleted by the preview workflows."
 pause
 
-# ── 7 ─────────────────────────────────────────────────────────────────────
+# ── 8 ─────────────────────────────────────────────────────────────────────
 stage "Cloudflare: workers.dev subdomain"
 say "Staging and PR previews are served on <worker>.<subdomain>.workers.dev."
 open_url "https://dash.cloudflare.com/$ACCOUNT_ID/workers-and-pages"
@@ -343,24 +394,58 @@ set_var STAGING_URL "https://claimsale-web-staging.$WORKERS_SUBDOMAIN.workers.de
 note "PRODUCTION_URL is set later, once claimsale.net is registered."
 pause
 
-# ── 8 ─────────────────────────────────────────────────────────────────────
+# ── 9 ─────────────────────────────────────────────────────────────────────
 stage "Cloudflare Access: service token for CI"
 say "CI's smoke tests sign in to Access-protected staging with a service token."
-say "cf creates it and the values go straight into GitHub secrets; they're never shown."
-if gh secret list --json name --jq '.[].name' | grep -qx ACCESS_CLIENT_ID && ! confirm "ACCESS_CLIENT_ID already exists. Create a new service token anyway?"; then
+say "cf creates it and the values go straight into Infisical; they're never shown."
+if infisical_has ACCESS_CLIENT_ID staging && ! confirm "ACCESS_CLIENT_ID already exists. Create a new service token anyway?"; then
   note "Keeping the existing service token."
 else
   tok=$(mktemp); chmod 600 "$tok"
   pnpm exec cf zero-trust access service-tokens create --name claimsale-ci --duration 8760h > "$tok"
   rows='if type == "object" and has("result") then .result else . end'
-  set_secret ACCESS_CLIENT_ID "$(jq -r "$rows | .client_id" "$tok")"
-  set_secret ACCESS_CLIENT_SECRET "$(jq -r "$rows | .client_secret" "$tok")"
+  set_infisical ACCESS_CLIENT_ID "$(jq -r "$rows | .client_id" "$tok")" preview staging
+  set_infisical ACCESS_CLIENT_SECRET "$(jq -r "$rows | .client_secret" "$tok")" preview staging
   rm -f "$tok"
   note "The service token 'claimsale-ci' expires in 1 year; re-run this stage to rotate it."
 fi
 pause
 
-# ── 9 ─────────────────────────────────────────────────────────────────────
+# ── 10 ────────────────────────────────────────────────────────────────────
+stage "Infisical: sync secrets into GitHub"
+say "One Secret Sync per environment copies Infisical into the GitHub Environment of the"
+say "same name. The sync owns those GitHub secrets: change them in Infisical, never with gh."
+open_url "$INFISICAL_DOMAIN"
+step "Organization → App Connections → Add → GitHub (GitHub App), limited to ${REPO#*/}."
+step "Project claimsale → Integrations → Secret Syncs → Add → GitHub, once each for"
+step "  preview, staging and production: source = that environment, path /;"
+step "  destination = $REPO, scope Repository Environment, the environment of the same name;"
+step "  initial sync behavior: Overwrite destination; auto-sync on."
+pause "Press Enter once all three syncs show as synced"
+for e in preview staging production; do
+  names=$(gh secret list --repo "$REPO" --env "$e" --json name --jq '.[].name')
+  if grep -qx CLOUDFLARE_API_TOKEN <<<"$names"; then
+    printf '  %s✓%s GitHub environment %s has its secrets\n' "$GREEN" "$RESET" "$e"
+  else
+    SKIPPED+=("Infisical → GitHub sync for '$e' (CLOUDFLARE_API_TOKEN missing there)")
+    warn "GitHub environment $e has no CLOUDFLARE_API_TOKEN yet; check its sync."
+  fi
+done
+# Before S39 the wizard stored these as repository secrets. Environment secrets take
+# precedence, but stale repository copies are confusing and outlive rotation.
+stale=$(gh secret list --repo "$REPO" --json name --jq '.[].name' \
+  | grep -xE 'CLOUDFLARE_API_TOKEN|ACCESS_CLIENT_ID|ACCESS_CLIENT_SECRET' || true)
+if [[ -n "$stale" ]]; then
+  say "Repository-level copies from before Infisical: $(tr '\n' ' ' <<<"$stale")"
+  if confirm "Delete them (the synced environment secrets replace them)?"; then
+    while read -r s; do gh secret delete "$s" --repo "$REPO" >/dev/null && note "deleted repository secret $s"; done <<<"$stale"
+  else
+    SKIPPED+=("Delete repository-level secrets: $(tr '\n' ' ' <<<"$stale")")
+  fi
+fi
+pause
+
+# ── 11 ────────────────────────────────────────────────────────────────────
 stage "Renovate: dependency updates"
 say "Renovate opens weekly update PRs against dev (renovate.json)."
 open_url "https://github.com/apps/renovate"
@@ -368,7 +453,7 @@ step "Install (or Configure) → Only select repositories → choose ${REPO#*/} 
 step "Renovate opens an onboarding PR first; merge it to start updates."
 pause "Press Enter once Renovate is installed"
 
-# ── 10 ────────────────────────────────────────────────────────────────────
+# ── 12 ────────────────────────────────────────────────────────────────────
 stage "First staging deploy, then lock it with Access"
 say "This runs the 'Deploy staging' workflow on dev."
 if confirm "Start the staging deploy now?"; then
