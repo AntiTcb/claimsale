@@ -1,0 +1,27 @@
+# Check out text files with LF on every platform, whatever core.autocrlf is set to.
+# oxfmt and .editorconfig expect LF; Windows checkouts with autocrlf=true would otherwise get CRLF.
+* text=auto eol=lf
+
+# Shell scripts must stay LF even if detection ever misfires.
+*.sh text eol=lf
+
+# Binary files: never normalize or diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.wasm binary
+*.sqlite binary
+*.sqlite3 binary
+*.db binary
