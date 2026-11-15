@@ -10,3 +10,7 @@ export * from "./takeback.ts";
 export * from "./timers.ts";
 export * from "./visibility.ts";
 export * from "./identity.ts";
+export * from "./attributes.ts";
+export * from "./games.ts";
+export * from "./tcg.ts";
+export * from "./io/index.ts";
