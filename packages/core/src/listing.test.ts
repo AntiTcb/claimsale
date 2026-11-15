@@ -92,28 +92,24 @@ describe("sale visibility", () => {
 	it("[SM-2-visibility] property: no one but the seller ever sees a draft or an un-unlocked private sale", () => {
 		const statuses: SaleStatus[] = ["draft", "scheduled", "live", "closed", "archived", "deleted"];
 		const visibilities: SaleVisibility[] = ["public", "unlisted", "private"];
-		fc.assert(
-			fc.property(
-				fc.constantFrom(...statuses),
-				fc.constantFrom(...visibilities),
-				fc.boolean(),
-				fc.boolean(),
-				fc.option(fc.constantFrom("seller", "buyer")),
-				fc.boolean(),
-				fc.boolean(),
-				(status, visibility, hasPassword, allowlistEnabled, userId, passwordUnlocked, allowlisted) => {
-					const sale = gate({ status, visibility, hasPassword, allowlistEnabled });
-					const viewer = { userId, passwordUnlocked, allowlisted };
-					const access = saleAccess(sale, viewer);
-					if (access !== "ok") return;
-					if (status === "deleted") throw new Error("deleted sale was visible");
-					if (userId === "seller") return;
-					expect(status).not.toBe("draft");
-					if (visibility === "private") {
-						expect((hasPassword && passwordUnlocked) || (allowlistEnabled && allowlisted)).toBe(true);
-					}
-				},
-			),
+		const property = fc.property(
+			fc.constantFrom(...statuses),
+			fc.constantFrom(...visibilities),
+			fc.boolean(),
+			fc.boolean(),
+			fc.option(fc.constantFrom("seller", "buyer")),
+			fc.boolean(),
+			fc.boolean(),
+			(status, visibility, hasPassword, allowlistEnabled, userId, passwordUnlocked, allowlisted) => {
+				const sale = gate({ status, visibility, hasPassword, allowlistEnabled });
+				const viewer = { userId, passwordUnlocked, allowlisted };
+				if (saleAccess(sale, viewer) !== "ok") return true;
+				if (status === "deleted") return false;
+				if (userId === "seller") return true;
+				const unlocked = (hasPassword && passwordUnlocked) || (allowlistEnabled && allowlisted);
+				return status !== "draft" && (visibility !== "private" || unlocked);
+			},
 		);
+		expect(() => fc.assert(property)).not.toThrow();
 	});
 });

@@ -236,6 +236,8 @@ describe("cron sweep", () => {
 	});
 });
 
+const migrationsBefore = (prefix: string) => env.TEST_MIGRATIONS.filter((m) => m.name < prefix);
+
 describe("D1 migrations (expand/contract)", () => {
 	const authTables = ["users", "sessions", "auth_accounts", "verifications", "rate_limits", "email_outbox"];
 
@@ -304,11 +306,11 @@ describe("D1 migrations (expand/contract)", () => {
 	});
 
 	it("0002_sales_items applies on top of the auth schema, keeps its data and seeds the plans", async () => {
-		const upTo = (prefix: string) => env.TEST_MIGRATIONS.filter((m) => m.name < prefix);
 		const stub = env.SALE_ENGINE.get(env.SALE_ENGINE.idFromName("migration-check-0002"));
 		await runInDurableObject(stub, (_instance, state) => {
 			const sql = state.storage.sql;
-			for (const migration of upTo("0002_")) for (const query of migration.queries) sql.exec(query);
+			for (const migration of migrationsBefore("0002_"))
+				for (const query of migration.queries) sql.exec(query);
 			sql.exec(
 				"INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES ('u1', 'a@example.test', 'A', 1, 1)",
 			);
