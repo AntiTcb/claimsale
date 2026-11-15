@@ -202,7 +202,8 @@ Wave 4:                     WS-L → pilot sale
   reruns; find the cause before merging (CLAUDE.md: no flaky tests).
 - `pnpm test` times out in `scripts/` tests that spawn `node` on the owner's machine
   (Node takes ~3–4 s to start), and `cf-resources.test.ts` fails when WSL's `bash` is
-  first on PATH. Seen on every wave-1 branch; none of them touch `scripts/`.
+  first on PATH. Seen on every wave-1 branch, including WS-B, WS-C and WS-F1, which don't
+  touch `scripts/` (WS-D only adds preview-pair vars in `preview-config.ts`).
 
 ### Merge rules for parallel work
 - **Migrations:** WS-A owns the core tables, WS-C owns catalog tables, WS-F2 owns
