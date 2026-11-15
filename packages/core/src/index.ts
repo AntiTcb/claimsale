@@ -10,3 +10,5 @@ export * from "./takeback.ts";
 export * from "./timers.ts";
 export * from "./visibility.ts";
 export * from "./identity.ts";
+export * from "./entitlements.ts";
+export * from "./phone.ts";

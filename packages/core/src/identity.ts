@@ -1,3 +1,5 @@
+import type { Millis, Tier } from "./common.ts";
+
 /**
  * Identity rules for accounts and profiles (PLAN §5 "Auth and identity", D38, D55).
  * Each validator returns the normalized value or a message for the form.
@@ -111,17 +113,64 @@ export function validateAge(choice: unknown, parentalConsent: unknown): Validate
 	}
 }
 
-/** Who may sell (D55): 18+, a verified email and, for free sellers, a verified phone. */
+export type SellerBlocker = "age" | "email" | "phone";
+
+/**
+ * Who may sell (D55): 18+, a verified email and, for free sellers, a verified phone.
+ * Returns what's missing, in the order the seller should fix it.
+ *
+ * @spec AUTH-seller-requirements — selling needs 18+, a verified email and (unless Pro) a verified phone.
+ */
 export function sellerBlockers(user: {
 	readonly ageAttested: AgeAttestation | null;
 	readonly emailVerified: boolean;
 	readonly phoneVerified: boolean;
 	readonly pro: boolean;
-}): Array<"age" | "email" | "phone"> {
-	const blockers: Array<"age" | "email" | "phone"> = [];
+}): SellerBlocker[] {
+	const blockers: SellerBlocker[] = [];
 	if (user.ageAttested !== "18+") blockers.push("age");
 	if (!user.emailVerified) blockers.push("email");
 	if (!user.pro && !user.phoneVerified) blockers.push("phone");
+	return blockers;
+}
+
+/** What a sale asks of its buyers (D20, D29); every sale needs a verified email by default. */
+export interface BuyerRequirements {
+	readonly emailVerified: boolean;
+	/** Minimum account age; 0 for none. */
+	readonly minAccountAge: Millis;
+}
+
+export const DEFAULT_BUYER_REQUIREMENTS: BuyerRequirements = { emailVerified: true, minAccountAge: 0 };
+
+/** The parts of a buyer's account the requirements look at. */
+export interface BuyerStanding {
+	readonly tier: Tier;
+	/** Blocked by this seller, or banned. */
+	readonly blocked: boolean;
+	readonly emailVerified: boolean;
+	readonly accountCreatedAt: Millis;
+}
+
+export type BuyerBlocker = "blocked" | "email" | "account_age";
+
+/**
+ * Why a buyer can't claim or offer in a sale, if anything: `[]` means eligible.
+ *
+ * @spec SM-4.1-buyer-requirements — blocked buyers are rejected; unverified or too-new
+ * accounts are rejected when the sale asks; Pro buyers bypass the email and
+ * account-age requirements (D29), but never a block.
+ */
+export function buyerBlockers(
+	buyer: BuyerStanding,
+	requirements: BuyerRequirements,
+	now: Millis,
+): BuyerBlocker[] {
+	if (buyer.blocked) return ["blocked"];
+	if (buyer.tier === "pro") return [];
+	const blockers: BuyerBlocker[] = [];
+	if (requirements.emailVerified && !buyer.emailVerified) blockers.push("email");
+	if (now - buyer.accountCreatedAt < requirements.minAccountAge) blockers.push("account_age");
 	return blockers;
 }
 
