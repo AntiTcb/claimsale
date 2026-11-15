@@ -51,7 +51,45 @@ export async function signUp(page: Page, who: Identity, age: "18+" | "13-17" = "
 	await page.getByLabel("Password").fill(who.password);
 	await page.getByLabel(age === "18+" ? "18 or older" : "13 to 17").check();
 	if (age === "13-17") await page.getByLabel(/parent or guardian/).check();
+	await waitForTurnstile(page);
 	await page.getByRole("button", { name: "Create account" }).click();
+}
+
+/** Waits until the Turnstile widget has put its token in the form (test keys pass at once). */
+export async function waitForTurnstile(page: Page): Promise<void> {
+	await expect(page.locator('input[name="cf-turnstile-response"]')).not.toHaveValue("", { timeout: 15_000 });
+}
+
+/** Whether captured phone codes can be read here (local, test and isolated preview pairs only). */
+export async function smsCaptureAvailable(request: APIRequestContext): Promise<boolean> {
+	const res = await request.get("/api/test/sms?to=%2B12025550100");
+	return res.status() === 200;
+}
+
+const digit = (min: number) => String(min + Math.floor(Math.random() * (10 - min)));
+
+/** A random, valid North American number, so parallel tests and reruns never share one. */
+export function newPhone(): { e164: string; typed: string; last4: string } {
+	const area = digit(2) + digit(0) + digit(0);
+	const exchange = digit(2) + digit(0) + digit(0);
+	const line = digit(0) + digit(0) + digit(0) + digit(0);
+	return { e164: `+1${area}${exchange}${line}`, typed: `(${area}) ${exchange}-${line}`, last4: line };
+}
+
+/** The latest captured code for a number. */
+export async function codeFromSms(request: APIRequestContext, e164: string): Promise<string> {
+	let code = "";
+	await expect
+		.poll(
+			async () => {
+				const res = await request.get(`/api/test/sms?to=${encodeURIComponent(e164)}`);
+				code = ((await res.json()) as { code?: string } | null)?.code ?? "";
+				return code;
+			},
+			{ message: `code texted to ${e164}`, timeout: 10_000 },
+		)
+		.not.toBe("");
+	return code;
 }
 
 export async function signOut(page: Page): Promise<void> {

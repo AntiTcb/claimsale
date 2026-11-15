@@ -16,15 +16,24 @@ const MESSAGES: Record<string, string> = {
 	PASSWORD_TOO_LONG: "Use at most 128 characters for your password.",
 	INVALID_TOKEN: "This link has expired or was already used. Ask for a new one.",
 	TOO_MANY_REQUESTS: "Too many attempts. Wait a minute and try again.",
+	// Turnstile (Better Auth's captcha plugin, S41).
+	MISSING_RESPONSE: "Complete the check that you're a person, then try again.",
+	VERIFICATION_FAILED: "We couldn't confirm you're a person. Try the check again.",
+	UNKNOWN_ERROR: "We couldn't run the check that you're a person. Try again in a minute.",
+	EMAIL_PASSWORD_SIGN_UP_DISABLED: "Sign-up is unavailable right now. Try again later.",
 };
 
+const GENERIC = "Something went wrong. Try again.";
+
+/** Our message for a Better Auth error response (status and its body's `code`). */
+export function authCodeMessage(status: number, code: unknown): string {
+	if (status === 429) return MESSAGES["TOO_MANY_REQUESTS"]!;
+	return (typeof code === "string" ? MESSAGES[code] : undefined) ?? GENERIC;
+}
+
 export function authErrorMessage(error: unknown): string {
-	if (error instanceof APIError) {
-		if (error.statusCode === 429) return MESSAGES["TOO_MANY_REQUESTS"]!;
-		const code = typeof error.body?.code === "string" ? error.body.code : "";
-		return MESSAGES[code] ?? "Something went wrong. Try again.";
-	}
-	return "Something went wrong. Try again.";
+	if (error instanceof APIError) return authCodeMessage(error.statusCode, error.body?.code);
+	return GENERIC;
 }
 
 export function isApiError(error: unknown): error is APIError {
@@ -33,7 +42,10 @@ export function isApiError(error: unknown): error is APIError {
 
 /** Field errors for the account forms; `form` is the message for the whole form. */
 export type FormErrors = Partial<
-	Record<"form" | "displayName" | "handle" | "email" | "password" | "age" | "fbProfileUrl", string>
+	Record<
+		"form" | "displayName" | "handle" | "email" | "password" | "age" | "fbProfileUrl" | "phone" | "code",
+		string
+	>
 >;
 
 export const formError = (message: string): FormErrors => ({ form: message });

@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { page } from "$app/state";
+	import PhoneVerification from "#lib/components/PhoneVerification.svelte";
 	import TextField from "#lib/components/TextField.svelte";
 	import type { PageProps } from "./$types";
 
 	let { data, form }: PageProps = $props();
+	const phoneForm = $derived(form?.action === "phone" ? form : undefined);
 	const values = $derived(form?.action === "profile" && "values" in form ? form.values : data.profile);
 	const errors = $derived<Record<string, string>>(
 		form?.action === "profile" && "errors" in form ? form.errors : {},
@@ -38,6 +40,22 @@
 			</form>
 		{/if}
 	{/if}
+
+	<h2 id="phone" class="mt-10 text-lg font-semibold">Phone</h2>
+	<div class="mt-2">
+		<PhoneVerification
+			verified={data.phone.verified}
+			pending={data.phone.pending}
+			available={data.phone.available}
+			phoneValue={phoneForm && "phone" in phoneForm ? phoneForm.phone : ""}
+			errors={phoneForm && "errors" in phoneForm ? phoneForm.errors : {}}
+			status={phoneForm && "verified" in phoneForm
+				? "Your phone number is verified."
+				: phoneForm && "sentTo" in phoneForm
+					? "Code sent."
+					: undefined}
+		/>
+	</div>
 
 	<h2 class="mt-10 text-lg font-semibold">Profile</h2>
 	{#if form?.action === "profile" && "saved" in form}

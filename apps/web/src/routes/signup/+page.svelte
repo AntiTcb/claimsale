@@ -1,8 +1,9 @@
 <script lang="ts">
 	import TextField from "#lib/components/TextField.svelte";
+	import Turnstile from "#lib/components/Turnstile.svelte";
 	import type { PageProps } from "./$types";
 
-	let { form }: PageProps = $props();
+	let { data, form }: PageProps = $props();
 	let age = $state<string>("");
 	$effect.pre(() => {
 		if (form?.values.age) age = form.values.age;
@@ -87,9 +88,18 @@
 			{/if}
 		</fieldset>
 
+		{#if data.turnstileSiteKey}
+			<Turnstile siteKey={data.turnstileSiteKey} action="signup" />
+		{:else}
+			<p role="alert" class="rounded-md bg-amber-50 p-3 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+				Sign-up with email is unavailable right now. Try again later.
+			</p>
+		{/if}
+
 		<button
 			type="submit"
-			class="rounded-md bg-zinc-900 px-4 py-2 text-white dark:bg-zinc-100 dark:text-zinc-900"
+			disabled={!data.turnstileSiteKey}
+			class="rounded-md bg-zinc-900 px-4 py-2 text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
 		>
 			Create account
 		</button>
