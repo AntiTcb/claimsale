@@ -10,6 +10,8 @@ allowBuilds:
   esbuild: true
   workerd: true
   sharp: true
+  # Its preinstall downloads the CLI binary from Infisical's GitHub releases.
+  "@infisical/cli": true
 
 # Shared versions. Renovate updates these in one place.
 catalog:
@@ -46,6 +48,9 @@ catalog:
   # Tooling
   # Cloudflare CLI (beta) for provisioning in CI and the setup wizard; deploys stay on wrangler.
   cf: 1.0.0-beta.29
+  # Infisical CLI: secrets source of truth, synced to GitHub Environments (TECH_STACK S39).
+  # Keep the global install (winget infisical.infisical) on the same version.
+  "@infisical/cli": 0.45.6
   typescript: 6.0.3
   "@types/node": 26.6.4
   oxlint: 1.87.0

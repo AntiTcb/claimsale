@@ -22,6 +22,7 @@
 		"check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm check:spec-traceability"
 	},
 	"devDependencies": {
+		"@infisical/cli": "catalog:",
 		"@types/node": "catalog:",
 		"@vitest/browser-playwright": "catalog:",
 		"@vitest/coverage-v8": "catalog:",

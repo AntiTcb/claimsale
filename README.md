@@ -28,5 +28,5 @@ scripts/setup.sh
 ```
 
 It sets the default branch and protections, GitHub environments, the Cloudflare API token
-and Access service token (as GitHub secrets), queues, the `workers.dev` variables, Renovate,
+and Access service token (stored in Infisical and synced into GitHub), queues, the `workers.dev` variables, Renovate,
 and runs the first staging deploy. Details: [docs/TECH_STACK.md §11](docs/TECH_STACK.md#11-milestone-0-setup-checklist).

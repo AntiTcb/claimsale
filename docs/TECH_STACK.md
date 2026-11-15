@@ -44,10 +44,11 @@ questions are **T#**, each with a recommended default in *italics*.
 | S32 | **TCG catalog ingestion (TCGCSV only, D60):** an engine cron (daily, after TCGCSV's ~20:00 UTC refresh) enqueues one job per game and set. Consumers upsert `games` / `catalog_sets` / `catalog_products` and the latest `market_prices` (per product + subtype) in D1, with an FTS5 index for autofill. No images are ingested. Prices are a seller-only listing aid (D64). `TcgCsvSource` is an Effect service with rate limiting, a descriptive `User-Agent`, retries and MSW fixtures. The ingestion is idempotent and resumable, and its progress is visible in `/admin`. The source's terms and attribution are checked before the build. |
 | S33 | **Photo authenticity (D63):** an engine Queue job decodes each upload in WASM (`@jsquash/webp` 1.5.0, `@jsquash/jpeg` 1.6.0; `@jsquash/resize` 2.1.1 for downscaling) and computes dHash and pHash (our own small implementation in `packages/core`, property-tested), for the original, mirrored and rotated versions. Near-duplicates are found through a D1 index of 4 × 16-bit bands (multi-index hashing) followed by a Hamming-distance check. This avoids the Cloudflare Images binding, which needs a separate Images Paid subscription. |
 | S34 | **Milestone 0 findings (2026-10-09):** (1) `@cloudflare/vitest-pool-workers` is renamed **`@cloudflare/vitest-plugin`** (`cloudflareTest()` Vite plugin). Its first Vitest 5 release (1.4.0) is 1 day old and depends on an alpha Miniflare, so the engine stays on Vitest 4.1 + plugin 1.3.6 until it clears the 3-day release-age window. (2) SvelteKit 3 moved config into `sveltekit({...})` in `vite.config.ts` and replaced `$lib` with `#lib` subpath imports. (3) adapter-cloudflare 8 no longer passes `platform`; bindings come from `cloudflare:workers`. (4) Two `wrangler dev` processes crash each other in some environments, so local dev and E2E run **both Workers in one process** (`wrangler dev -c web -c engine`). (5) TypeScript is pinned to **6.0.x**, because SvelteKit 3 and svelte-check don't support TypeScript 7 yet. (6) pnpm's `minimumReleaseAge` (3 days) is enforced at install time. |
-| S35 | **No Doppler for now (2026-10-29).** Secrets live as **GitHub Environment secrets** (`preview`, `staging`, `production`). CI passes each Worker secret **by name** as an environment variable on the deploy step (never `toJSON(secrets)`, which GitHub flags as possibly malicious and holds for approval), and `scripts/secrets-for.ts` collects the names in each Worker's `secrets.required`, and wrangler uploads them with `--secrets-file`. Locally, secrets go in each app's `.dev.vars` (gitignored). Doppler can be reintroduced later behind the same `secrets-for.ts` step. |
+| S35 | **No Doppler for now (2026-10-29).** Secrets live as **GitHub Environment secrets** (`preview`, `staging`, `production`). CI passes each Worker secret **by name** as an environment variable on the deploy step (never `toJSON(secrets)`, which GitHub flags as possibly malicious and holds for approval), and `scripts/secrets-for.ts` collects the names in each Worker's `secrets.required`, and wrangler uploads them with `--secrets-file`. Locally, secrets go in each app's `.dev.vars` (gitignored). Doppler can be reintroduced later behind the same `secrets-for.ts` step. **Amended by S39 (2026-11-14):** Infisical is the source of truth and syncs into these GitHub Environment secrets. |
 | S36 | **Cloudflare CLI (`cf`, beta, pinned `1.0.0-beta.29` since 2026-11-13) for provisioning (2026-10-29).** D1, queues, Worker deletion, D1 Time Travel bookmarks and **remote D1 migrations** (`cf d1 migrations apply`, which uses the same tracking table as wrangler) run through `cf`, via `scripts/cf-resources.sh` and the setup wizard. **Deploys, local dev and type generation stay on wrangler**, because adapter-cloudflare builds against `wrangler.jsonc` and moving to `cloudflare.config.ts` (`cf migrate`) waits for `cf` to leave beta. `cf` needs Node ≥ 22.23 / 24.22. Note: `cf` ≥ 1.0.0-beta.31 requires wrangler ≥ 4.161.0 for the commands that build (`cf dev`, `cf build`, `cf deploy`); provisioning commands don't build, so bump both together when Renovate offers it. |
 | S37 | **Cloudflare Worker Previews for web-only PRs (2026-11-13).** Worker Previews (`wrangler preview`, open beta, wrangler ≥ 4.135) create a Preview of an existing Worker with its own URL, config and Durable Object namespace. Three limits rule them out as a full replacement for the per-PR pair (T30): a Preview's service binding reaches the bound Worker's **deployed** version, never another Worker's Preview; Previews don't consume queues; and crons don't run in them. So: **`scripts/preview-kind.ts`** gives a PR a **Worker Preview** of `claimsale-web-staging` (`--name pr-<n>`, URL `pr-<n>-claimsale-web-staging.<subdomain>.workers.dev`) when every changed file is under `apps/web/`, `docs/` or a root `*.md`. Its `ENGINE` binding points at `claimsale-engine-staging`, so it reads and writes **staging data**. Every other PR keeps the isolated pair. Preview settings live in `env.staging.previews` in `apps/web/wrangler.jsonc`, and Previews inherit nothing from the Worker's own settings. **Production has no `previews` block on purpose**: without one, `wrangler preview` refuses to run, which keeps any Preview off the production engine. Never accept wrangler's offer to generate one there. Preview secrets are listed in `previews.secrets.required` and passed with `scripts/secrets-for.ts --previews` (S35). Locally, `pnpm preview` builds and creates a Preview named after the current git branch. Cleanup deletes the PR's Worker Preview and its pair, whichever exist. Revisit when Previews can bind to a matching Preview of another Worker. |
 | S38 | **Observability spike outcome, T28 (2026-11-13): keep the bridge; report server errors without the Sentry SDK.** `CloudflareTracer` maps Effect spans onto Workers custom spans, nests them with `tracing.withActiveSpan()` and uses `span.spanContext()` IDs in log lines. It feature-detects both, because the workerd used by the Workers test pool (1.20261001) lacks them; wrangler 4.160's local runtime has them. **Server errors go to Sentry through our own envelope reporter** (`packages/observability/src/sentry.ts`, ~150 lines, `fetch` only), not `@sentry/cloudflare` / `@sentry/sveltekit`: the SDKs wrap handlers and Durable Object classes in proxies, own their own async-context scopes, and adapter-cloudflare 8 offers no entry point to wrap; we only need "defect → issue tagged with `trace_id`", which `contexts.trace` gives. Reports come from the root span of the Worker where the defect happens. **RPC methods return `RpcResult` data instead of throwing** (one bug, one Sentry issue; a throwing Durable Object call also logs an uncaught exception). The browser Sentry SDK and the `OtelApiShim` for SvelteKit's own spans are deferred until there are real pages (milestone 3+). Details: section 4, "Spike outcome". |
+| S39 | **Infisical is the secrets source of truth, synced into GitHub (2026-11-14).** Self-hosted on the owner's Coolify at `https://infiscal.alexgravely.dev`, project `claimsale` (`.infisical.yaml`), environments `dev` (local), `preview`, `staging`, `production`, secrets flat at `/`. One Infisical **Secret Sync** per deployed environment copies it into the GitHub Environment of the same name, so CI and `scripts/secrets-for.ts` are unchanged (S35), and deploys don't depend on the Infisical server being up. **Not synced straight to Cloudflare:** the CI-only secrets (API token, Access service token) have to reach GitHub anyway; per-PR Workers and Worker Previews only get secrets through the deploy; a direct Worker secret change would deploy production without the GitHub approval; and `secrets.required` would no longer catch a missing secret at deploy time. The sync owns those GitHub secrets: change them in Infisical, never with `gh secret set`. The CLI is pinned as `@infisical/cli` (root devDependency, catalog). Install the same version globally with winget (`infisical.infisical`), because the npm package's Windows shims only work from cmd.exe (they point at an empty placeholder next to `infisical.exe`). |
 
 ---
 
@@ -189,10 +190,14 @@ production, the fallback above (Effect's `OtlpTracer`) still applies.
 
 ---
 
-## 5. Secrets (S35; Doppler removed)
+## 5. Secrets (S35, S39)
 
-- **Where secrets live:** GitHub Environment secrets on `preview`, `staging` and
-  `production`. Non-secret config stays in `wrangler.jsonc` `vars`.
+- **Source of truth:** Infisical (`https://infiscal.alexgravely.dev`, project `claimsale`),
+  environments `dev`, `preview`, `staging`, `production`. Non-secret config stays in
+  `wrangler.jsonc` `vars`; non-secret CI settings are GitHub repository variables.
+- **What CI reads:** GitHub Environment secrets on `preview`, `staging` and `production`,
+  written only by Infisical's GitHub Secret Syncs (one per environment). Never set them
+  with `gh secret set`: the next sync overwrites them.
 - **Each Worker declares** the secret names it needs in `secrets.required`. `wrangler deploy`
   then fails if one is missing, and `wrangler types` generates typed bindings for them.
 - **Deploy step** (`.github/actions/deploy-pair`): the calling workflow step's `env:` lists
@@ -201,11 +206,15 @@ production, the fallback above (Effect's `OtlpTracer`) still applies.
   temporary files are deleted when the job ends, whatever the outcome.
 - **Never pass `toJSON(secrets)`** to a step or action: GitHub flags such workflows as
   possibly malicious and holds every run until someone approves it.
-- **Local:** put values in `apps/<app>/.dev.vars` (gitignored). Wrangler and Vite read
-  it for the names in `secrets.required`.
-- **Rotation:** update the GitHub secret, then re-run the environment's deploy workflow.
-- **Coming back to Doppler later:** have Doppler set those environment variables before
-  `secrets-for.ts` runs; nothing else changes.
+- **Local:** values go in `apps/<app>/.dev.vars` (gitignored), which Wrangler and Vite read
+  for the names in `secrets.required`. Generate them from the `dev` environment:
+  `pnpm exec infisical export --env=dev --format=dotenv > apps/engine/.dev.vars` (same for
+  web). `.dev.vars.staging` is for `wrangler dev --env staging`.
+- **Rotation:** change the value in Infisical, check that the sync ran (Secret Syncs shows
+  the last sync), then re-run the environment's deploy workflow.
+- **CLI:** `@infisical/cli` is pinned in the root devDependencies (`pnpm exec infisical`).
+  Keep the global install on the same version:
+  `winget install --id infisical.infisical --exact --version <version>`.
 
 ## 6. Renovate (S22)
 
@@ -275,7 +284,7 @@ hotfix/*  ──PR──► main ──► production, then an automatic back-me
 | Tests | `vitest` 5 (+ `@vitest/browser-playwright`, `vitest-browser-svelte`, `@vitest/coverage-v8`), `@effect/vitest`, `fast-check`, `msw`, `@playwright/test`, `@axe-core/playwright`, `@stryker-mutator/core` | 5.0.3 / 3.1.0 / 4.0.2 / 4.10.2 / 3.0.2 / 1.64.0 / 4.13.0 / 10.0.0 |
 | Workers tests | `vitest` **4.1** + `@cloudflare/vitest-pool-workers` (the pool doesn't support Vitest 5 yet) | 4.1.11 / 0.23.0 |
 | Lint / format / types | `oxlint`, `oxfmt`, `svelte-check` | 1.87.0 / 0.72.0 / — |
-| Secrets / provisioning | GitHub Environment secrets; `cf` (Cloudflare CLI, beta) | 1.0.0-beta.21 |
+| Secrets / provisioning | Infisical (self-hosted), synced to GitHub Environment secrets; `@infisical/cli`; `cf` (Cloudflare CLI, beta) | 0.45.6 / 1.0.0-beta.29 |
 | Deps | Renovate (GitHub App) | — |
 
 ---
@@ -366,6 +375,7 @@ Observability spike (T28, S38), owner steps before it can be checked in Sentry:
       trace, its logs and the linked issue in Sentry. Record the result under S38.
 
 Owner steps are scripted in **`scripts/setup.sh`** (a guided wizard run on your own
-machine, using `cf` and `gh`). It covers: default branch and protections, GitHub
-Environments with their secrets and variables, the Cloudflare API token, queues, the
+machine, using `cf`, `gh` and `infisical`). It covers: Infisical sign-in and project link,
+default branch and protections, GitHub Environments and variables, the Cloudflare API token
+and Access service token (stored in Infisical, synced into GitHub), queues, the
 `workers.dev` subdomain, Cloudflare Access for previews and staging, and Renovate.
