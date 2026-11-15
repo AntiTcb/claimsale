@@ -1,0 +1,23 @@
+{
+	"name": "@claimsale/imagehash",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./decode": "./src/decode.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@jsquash/jpeg": "catalog:",
+		"@jsquash/png": "catalog:",
+		"@jsquash/webp": "catalog:"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"fast-check": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

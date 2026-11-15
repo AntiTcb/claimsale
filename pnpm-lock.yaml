@@ -176,6 +176,15 @@ catalogs:
     '@infisical/cli':
       specifier: 0.45.6
       version: 0.45.6
+    '@jsquash/jpeg':
+      specifier: 1.6.0
+      version: 1.6.0
+    '@jsquash/png':
+      specifier: 3.1.1
+      version: 3.1.1
+    '@jsquash/webp':
+      specifier: 1.5.0
+      version: 1.5.0
     '@playwright/test':
       specifier: 1.63.0
       version: 1.63.0
@@ -323,7 +332,7 @@ importers:
         version: 4.1.11(@types/node@26.6.4)(@vitest/browser-playwright@5.0.3)(@vitest/coverage-v8@5.0.3)(@vitest/ui@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
       wrangler:
         specifier: 'catalog:'
-        version: 4.160.0(@cloudflare/workers-types@5.20261005.1)(@types/node@26.6.4)
+        version: 4.160.0(@types/node@26.6.4)
 
   apps/web:
     dependencies:
@@ -425,6 +434,31 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
+
+  packages/imagehash:
+    dependencies:
+      '@jsquash/jpeg':
+        specifier: 'catalog:'
+        version: 1.6.0
+      '@jsquash/png':
+        specifier: 'catalog:'
+        version: 3.1.1
+      '@jsquash/webp':
+        specifier: 'catalog:'
+        version: 1.5.0
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      fast-check:
+        specifier: 'catalog:'
+        version: 4.10.2
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@types/node@26.6.4)(@vitest/browser-playwright@5.0.3)(@vitest/coverage-v8@5.0.3)(@vitest/ui@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
 
   packages/observability:
     dependencies:
@@ -1614,6 +1648,15 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
+
+  '@jsquash/jpeg@1.6.0':
+    resolution: {integrity: sha512-zwN46Awh1VM6gXlIcALwb5WzqK5H2e6+Awcs1QP8AvS8ohsK/sbE4esvmH4jhlhW7+CgiUUww66vg0aTnlSIMA==}
+
+  '@jsquash/png@3.1.1':
+    resolution: {integrity: sha512-C10pc+0H6j0h8fENOfnGOvkXCmvpSQTDGlfGd0sHphZhPSGTyLjIrHba0FaZZdsKqA/wlmhYicUHb92vfZphaw==}
+
+  '@jsquash/webp@1.5.0':
+    resolution: {integrity: sha512-KggLoj2MnRSfIqTeKe1EmbljTX2vuV7mh79k89PCL1pyqiDULcPM1L47twxXt0hkb68F70bXiL31MxsuoZtKFw==}
 
   '@noble/ciphers@2.4.0':
     resolution: {integrity: sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw==}
@@ -3167,6 +3210,9 @@ packages:
       jsdom:
         optional: true
 
+  wasm-feature-detect@1.10.1:
+    resolution: {integrity: sha512-+wz9+WpMKgQ7H1tm41nJbFwAvwX4DqY0jNY8Blw5Qe6hHg1yhCJ+AqU0R4lgX7p3pyo8irYIl1+mMNoBwSj2Zg==}
+
   why-is-node-running@2.3.0:
     resolution: {integrity: sha512-hUrmaWBdVDcxvYqnyh09zunKzROWjbZTiNy8dBEjkS7ehEDQibXJ7XvlmtbwuTclUiIyN+CyXQD4Vmko8fNm8w==}
     engines: {node: '>=8'}
@@ -3978,6 +4024,14 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  '@jsquash/jpeg@1.6.0': {}
+
+  '@jsquash/png@3.1.1': {}
+
+  '@jsquash/webp@1.5.0':
+    dependencies:
+      wasm-feature-detect: 1.10.1
 
   '@noble/ciphers@2.4.0': {}
 
@@ -5238,6 +5292,8 @@ snapshots:
     transitivePeerDependencies:
       - msw
 
+  wasm-feature-detect@1.10.1: {}
+
   why-is-node-running@2.3.0:
     dependencies:
       siginfo: 2.0.0
@@ -5276,26 +5332,6 @@ snapshots:
     transitivePeerDependencies:
       - '@types/node'
       - bufferutil
-      - utf-8-validate
-
-  wrangler@4.160.0(@cloudflare/workers-types@5.20261005.1)(@types/node@26.6.4):
-    dependencies:
-      '@cloudflare/kv-asset-handler': 0.5.0
-      '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261110.1)
-      '@cspotcode/source-map-support': 0.8.1
-      blake3-wasm: 2.1.5
-      esbuild: 0.28.2
-      miniflare: 5.20261110.0-beta(@types/node@26.6.4)
-      path-to-regexp: 6.3.0
-      unenv: 2.0.0-rc.24
-      workerd: 1.20261110.1
-    optionalDependencies:
-      '@cloudflare/workers-types': 5.20261005.1
-      fsevents: 2.3.3
-    transitivePeerDependencies:
-      - '@types/node'
-      - bufferutil
-      - kerberos
       - utf-8-validate
 
   wrangler@4.160.0(@types/node@26.6.4):

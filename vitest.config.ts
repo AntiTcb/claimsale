@@ -44,6 +44,7 @@ export default defineConfig({
 			thresholds: {
 				"packages/core/src/**": { lines: 95, branches: 95 },
 				"packages/observability/src/**": { lines: 85, branches: 80 },
+				"packages/imagehash/src/**": { lines: 95, branches: 90 },
 				"apps/web/src/lib/server/**": { lines: 85, branches: 80 },
 				"apps/web/src/lib/components/**": { lines: 70, branches: 60 },
 			},

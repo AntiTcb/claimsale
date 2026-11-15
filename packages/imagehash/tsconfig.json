@@ -1,0 +1,10 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		// WebWorker: the WebAssembly namespace (and ImageData, which @jsquash's typings use),
+		// as in workerd. Node types for the test-only helpers in src/testing.
+		"lib": ["ES2024", "WebWorker"],
+		"types": ["node"]
+	},
+	"include": ["src", "scripts"]
+}
