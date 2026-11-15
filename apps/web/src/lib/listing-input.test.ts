@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_TERMS,
+	describeItem,
 	parseLocalDateTime,
 	parsePrice,
 	parseQuantity,
@@ -13,6 +14,12 @@ import {
 } from "./listing-input.ts";
 
 describe("listing input", () => {
+	it("describes an item in one line, skipping a missing condition", () => {
+		expect(describeItem("yugioh", "single", "LP")).toBe("Yu-Gi-Oh! · Single · Lightly Played");
+		expect(describeItem("pokemon", "sealed", null)).toBe("Pokémon · Sealed");
+		expect(describeItem("chess", "box", "MINT")).toBe("chess · box · MINT");
+	});
+
 	it("parses prices into integer cents without float cents", () => {
 		expect(parsePrice("12")).toEqual({ ok: true, value: 1200 });
 		expect(parsePrice(" $12.5 ")).toEqual({ ok: true, value: 1250 });

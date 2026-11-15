@@ -50,6 +50,9 @@ export type Condition = (typeof CONDITIONS)[number]["id"];
 
 export const gameName = (id: string): string => GAMES.find((g) => g.id === id)?.name ?? id;
 export const kindName = (id: string): string => ITEM_KINDS.find((k) => k.id === id)?.name ?? id;
+/** "Yu-Gi-Oh! · Single · Lightly Played": the one-line summary under an item's title. */
+export const describeItem = (gameId: string, kind: string, condition: string | null): string =>
+	[gameName(gameId), kindName(kind), condition ? conditionName(condition) : ""].filter(Boolean).join(" · ");
 export const conditionName = (id: string | null): string =>
 	CONDITIONS.find((c) => c.id === id)?.name ?? id ?? "";
 

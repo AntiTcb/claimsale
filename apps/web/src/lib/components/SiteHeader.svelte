@@ -14,6 +14,7 @@
 				{#if user.handle}
 					<a href="/u/{user.handle}" class="hover:underline">@{user.handle}</a>
 				{/if}
+				<a href="/sell" class="hover:underline">Sell</a>
 				<a href="/me/settings" class="hover:underline">Settings</a>
 				<form method="POST" action="/logout">
 					<button type="submit" class="hover:underline">Sign out</button>

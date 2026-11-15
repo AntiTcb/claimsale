@@ -9,7 +9,7 @@ import {
 	type SaleVisibility,
 	type Tier,
 } from "@claimsale/core";
-import { and, asc, desc, eq, inArray, ne, sql, type Db } from "@claimsale/db";
+import { and, asc, desc, eq, inArray, ne, sql, type Db, type SQL } from "@claimsale/db";
 import { items, saleAccess, saleAllowlist, sales, users } from "@claimsale/db/schema";
 import { uuidv7 } from "uuidv7";
 import { DEFAULT_TERMS, type SaleDetails, type SaleTerms } from "#lib/listing-input.ts";
@@ -103,7 +103,15 @@ export interface PublicSale extends SaleRow {
 }
 
 /** A sale by slug with its seller and access settings. Access is decided by the caller (saleAccess). */
-export async function findSaleBySlug(db: Db, slug: string): Promise<PublicSale | undefined> {
+export function findSaleBySlug(db: Db, slug: string): Promise<PublicSale | undefined> {
+	return findPublicSale(db, eq(sales.slug, slug));
+}
+
+export function findSaleById(db: Db, saleId: string): Promise<PublicSale | undefined> {
+	return findPublicSale(db, eq(sales.id, saleId));
+}
+
+async function findPublicSale(db: Db, where: SQL): Promise<PublicSale | undefined> {
 	const row = await db
 		.select({
 			sale: sales,
@@ -115,7 +123,7 @@ export async function findSaleBySlug(db: Db, slug: string): Promise<PublicSale |
 		.from(sales)
 		.innerJoin(users, eq(users.id, sales.sellerId))
 		.leftJoin(saleAccess, eq(saleAccess.saleId, sales.id))
-		.where(eq(sales.slug, slug))
+		.where(where)
 		.get();
 	if (!row) return undefined;
 	return {

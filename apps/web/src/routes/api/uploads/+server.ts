@@ -1,0 +1,45 @@
+import { json } from "@sveltejs/kit";
+import { db, imageStore } from "#lib/server/context.ts";
+import { entitlements } from "#lib/server/entitlements.ts";
+import { MAX_BYTES } from "#lib/server/image-sanitize.ts";
+import { addItemPhoto } from "#lib/server/images.ts";
+import type { RequestHandler } from "./$types";
+
+/**
+ * Receives one photo for an item, already resized and re-encoded by the browser
+ * (PLAN §5 "Images", step 2 "upload through a Worker endpoint"). The body is the
+ * image itself. It's sanitized again, stored in R2 and recorded as `pending`.
+ */
+export const POST: RequestHandler = async ({ request, url, locals }) => {
+	if (!locals.user) return json({ message: "Sign in to upload photos" }, { status: 401 });
+	const saleId = url.searchParams.get("sale") ?? "";
+	const itemId = url.searchParams.get("item") ?? "";
+	const declared = Number(request.headers.get("content-length") ?? "0");
+	if (declared > MAX_BYTES) return json({ message: "That photo is larger than 5 MB" }, { status: 413 });
+	const body = new Uint8Array(await request.arrayBuffer());
+	const now = Date.now();
+	const tier = (await entitlements(db(), locals.user.id, now)).seller;
+	const result = await addItemPhoto(
+		db(),
+		imageStore(),
+		{ id: locals.user.id, tier },
+		{ saleId, itemId },
+		body,
+		now,
+	);
+	if (!result.ok) {
+		const status =
+			result.error.code === "not_found"
+				? 404
+				: result.error.code === "too_large"
+					? 413
+					: result.error.code === "photo_cap_reached"
+						? 409
+						: 400;
+		return json({ code: result.error.code, message: result.error.message }, { status });
+	}
+	return json(
+		{ id: result.value.id, url: `/api/images/${result.value.id}`, status: result.value.status },
+		{ status: 201 },
+	);
+};

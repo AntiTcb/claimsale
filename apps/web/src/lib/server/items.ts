@@ -9,7 +9,7 @@ import {
 	type SaleStatus,
 	type Tier,
 } from "@claimsale/core";
-import { and, asc, eq, sql, type Db } from "@claimsale/db";
+import { and, asc, eq, inArray, sql, type Db } from "@claimsale/db";
 import { auditLog, entries, itemAttributes, itemImages, items, sales } from "@claimsale/db/schema";
 import { uuidv7 } from "uuidv7";
 import type { ItemFields } from "#lib/listing-input.ts";
@@ -76,6 +76,17 @@ export async function entryCount(db: Db, itemId: string): Promise<number> {
 		.where(eq(entries.itemId, itemId))
 		.get();
 	return row?.n ?? 0;
+}
+
+/** Which of these items have any entries, i.e. have price and quantity locked (D40). */
+export async function itemsWithEntries(db: Db, itemIds: readonly string[]): Promise<Set<string>> {
+	if (itemIds.length === 0) return new Set();
+	const rows = await db
+		.selectDistinct({ itemId: entries.itemId })
+		.from(entries)
+		.where(inArray(entries.itemId, [...itemIds]))
+		.all();
+	return new Set(rows.map((r) => r.itemId));
 }
 
 /** Filterable attributes mirrored into item_attributes (browse filters, PLAN §3). */

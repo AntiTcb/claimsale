@@ -6,7 +6,15 @@ import { testD1 } from "../../../test/d1.ts";
 import { addUser, jpegBytes, memoryStore } from "../../../test/fixtures.ts";
 import type { ItemFields } from "#lib/listing-input.ts";
 import { addItemPhoto } from "./images.ts";
-import { addItem, deleteItem, itemsWithoutPhotos, listItems, reorderItems, updateItem } from "./items.ts";
+import {
+	addItem,
+	deleteItem,
+	itemsWithEntries,
+	itemsWithoutPhotos,
+	listItems,
+	reorderItems,
+	updateItem,
+} from "./items.ts";
 import { createDraft } from "./sales.ts";
 
 let db: Db;
@@ -97,6 +105,8 @@ describe("items repository", () => {
 			status: "won",
 			createdAt: 30,
 		});
+		expect(await itemsWithEntries(db, [item.id, "other"])).toEqual(new Set([item.id]));
+		expect(await itemsWithEntries(db, [])).toEqual(new Set());
 		const price = await updateItem(
 			db,
 			"seller",
