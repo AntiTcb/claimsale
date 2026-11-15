@@ -124,6 +124,8 @@ Needs WS-A, WS-B, WS-C.
   (`IO-import-idempotent`, `IO-import-photos`), results CSV.
 - Catalog type-ahead in the item form and table editor; price placeholder and the
   70–100 % buttons; seller default %; bulk "N % of market" with preview.
+- ManaBox exports carry no price, and core's import validation requires one: offer the
+  % of market preview for blank prices before validating (from WS-B).
 
 ### WS-H · Live grid (M6)
 Needs WS-E.
@@ -148,6 +150,8 @@ Needs WS-E; uses WS-B's pure logic.
 - Shipping menu editor; payment deadlines and the overdue one-click rescind.
 - Export jobs on a Queue → R2, 24 h links (`IO-export-expiry`), `/sell/exports`;
   tracking re-import (`IO-tracking-transition`, `IO-tracking-replace`).
+- Make `invoice.ship()` enforce core's `trackingRequiredFor` (graded/sealed and the
+  threshold); WS-B added the rule but not this check.
 
 ### WS-K · Notifications and messaging (M9)
 Needs WS-E. Can run alongside WS-H/I/J if it only adds the consumer side.
