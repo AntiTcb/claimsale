@@ -115,6 +115,17 @@ Pure part can start now; wiring needs WS-A.
   images, banded candidate lookup, `IMG-dup-reject`, `IMG-dup-review`, `IMG-own-reuse`,
   `IMG-repeat-offender`, `IMG-required` and `IMG-timestamp-required` at publish, and the
   `/admin` review queue.
+- Notes from F1 (`@claimsale/imagehash`):
+  - Store each 64-bit hash as hex TEXT (D1 returns INTEGER as a JS number and loses
+    bits); the 16-bit bands are safe as INTEGER.
+  - Index only the `orig` bands of stored images; look up with all 5 variants of the upload.
+  - `candidateBands` radius 1 is guaranteed to find every match within 7 bits (all rejects);
+    review-band matches (7–12) are best effort.
+  - Pass candidate keys as one JSON parameter through `json_each` (D1 allows 100 bound
+    parameters per query).
+  - Import the jsquash `.wasm` files in wrangler and pass them to `createJsquashDecoder`.
+  - Owner to confirm: review needs both hashes ≤ 12, each hash takes its own minimum
+    over the variants, and mirror + 90° together isn't covered.
 
 ### WS-G · Item import UI + catalog picker + market price aid (M4 part 3)
 Needs WS-A, WS-B, WS-C.
