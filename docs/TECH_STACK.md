@@ -354,7 +354,7 @@ Done in the repository and the AntiTcb account:
 - [x] Wrangler configs for local, preview (generated per PR), staging and production.
 - [x] CI (`.github/workflows/ci.yml`), PR previews + cleanup, staging deploy, release PR, production deploy, nightly.
 - [x] Worker Previews of `claimsale-web-staging` for web-only PRs (S37).
-- [ ] Confirm in the dashboard that the Access policy on `claimsale-web-staging` covers its **Previews** as well as production traffic (Worker-level Access offers "Previews only" or "All traffic"). Worker Previews run on staging data.
+- [x] Access on `claimsale-web-staging` covers **All traffic**: its Previews and its workers.dev URL (Worker-level Access offers "Previews only" or "All traffic"). It was set to Previews only until 2026-11-15, which left the staging URL public. Worker Previews run on staging data.
 - [x] `dev` branch pushed.
 
 Observability spike (T28, S38), owner steps before it can be checked in Sentry:
