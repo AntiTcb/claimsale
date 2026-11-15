@@ -372,6 +372,13 @@ Auth (S40), owner steps before staging can sign people in:
       verified in the Cloudflare account: verify each tester's address there, or they won't
       receive verification, magic-link or reset email.
 
+Sales and items (WS-A), owner steps before the web Worker can deploy:
+- [ ] Create the R2 buckets `claimsale-images-staging`, `claimsale-images` (production) and
+      `claimsale-images-preview` (shared by every PR pair; keys start with the sale ID). They stay
+      private: photos are served only through `/api/images/[id]` (`SM-2-private-images`). **Web
+      deploys fail until they exist**, because `apps/web/wrangler.jsonc` binds `IMAGES`. A lifecycle
+      rule on `claimsale-images-preview` (e.g. delete after 30 days) keeps PR leftovers small.
+
 Observability spike (T28, S38), owner steps before it can be checked in Sentry:
 - [ ] Create a Sentry project (platform: JavaScript). Put its DSN in `SENTRY_DSN` under
       `env.staging.vars` in `apps/engine/wrangler.jsonc`, and under `env.staging.vars` and

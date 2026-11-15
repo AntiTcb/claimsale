@@ -62,6 +62,10 @@ describe("preview-config", () => {
 		expect(engine["triggers"]).toEqual({ crons: [] });
 	});
 
+	it("points web at the shared preview photo bucket, never staging's or production's", () => {
+		expect(web["r2_buckets"]).toEqual([{ binding: "IMAGES", bucket_name: "claimsale-images-preview" }]);
+	});
+
 	it("copies staging's vars, with preview's APP_ENV and VERSION, and captures web email", () => {
 		expect(engine["vars"]).toMatchObject({
 			APP_ENV: "preview",
