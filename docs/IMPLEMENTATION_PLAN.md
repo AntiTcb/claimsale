@@ -194,6 +194,14 @@ Wave 4:                     WS-L → pilot sale
 ```
 
 ### Wave 1 integration notes
+- WS-A's publish check accepts any photo that isn't rejected; WS-F2 tightens it to
+  `approved` (`IMG-required`). WS-A's item form takes WS-B's schemas through
+  `apps/web/src/lib/listing-input.ts`.
+- WS-A deferred: allowlist invite emails (WS-K), deleting R2 objects with a draft.
+- WS-A: new tables store timestamps as number milliseconds (auth tables use `Date`);
+  repositories are plain async functions over `Db`, like `users.ts`; all PR pairs share
+  the `claimsale-images-preview` bucket. The R2 buckets must exist before the next web
+  deploy (TECH_STACK §11).
 - WS-D adds `requireSeller(event)` (`#lib/server/seller.ts`): every `/sell` `load` and
   action from WS-A must call it when the two merge.
 - WS-D turns email sign-up off wherever no Turnstile key is set, which includes
