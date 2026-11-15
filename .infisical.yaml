@@ -1,0 +1,5 @@
+version: 1
+general:
+    domain: https://infiscal.alexgravely.dev
+secrets-management:
+    project-id: 72d90cf0-8b9c-4307-84e4-29ffcb4044e7
