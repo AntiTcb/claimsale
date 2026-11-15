@@ -7,6 +7,11 @@ declare global {
 			/** Set for unexpected errors, so support can find the trace (TECH_STACK §4). */
 			traceId?: string;
 		}
+		interface Locals {
+			/** The signed-in user, or null (set in hooks.server.ts). */
+			user: import("#lib/server/auth.ts").SessionUser | null;
+			session: { id: string; expiresAt: Date } | null;
+		}
 	}
 }
 

@@ -11,14 +11,17 @@
 		"dev:ui": "vite dev",
 		"build": "vite build",
 		"preview": "vite build && wrangler preview --env staging",
-		"cf-typegen": "wrangler types --strict-vars=false -c wrangler.jsonc -c ../engine/wrangler.jsonc src/worker-configuration.d.ts",
+		"cf-typegen": "node -e \"require('node:fs').rmSync('.svelte-kit/cloudflare',{recursive:true,force:true})\" && wrangler types --strict-vars=false -c wrangler.jsonc -c ../engine/wrangler.jsonc src/worker-configuration.d.ts",
 		"typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
 		"test:e2e": "playwright test"
 	},
 	"dependencies": {
 		"@claimsale/core": "workspace:*",
+		"@claimsale/db": "workspace:*",
 		"@claimsale/observability": "workspace:*",
-		"effect": "catalog:"
+		"better-auth": "catalog:",
+		"effect": "catalog:",
+		"uuidv7": "catalog:"
 	},
 	"devDependencies": {
 		"@axe-core/playwright": "catalog:",

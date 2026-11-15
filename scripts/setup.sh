@@ -184,7 +184,7 @@ finish() {
 # Run from the repository root on your own machine: scripts/setup.sh
 # ──────────────────────────────────────────────────────────────────────────
 
-TOTAL_STAGES=12
+TOTAL_STAGES=13
 
 ACCOUNT_ID="e89111551171752d4230693ae0c83ed6" # AntiTcb (TECH_STACK S30)
 REQUIRED_CHECKS=(
@@ -412,6 +412,19 @@ fi
 pause
 
 # ── 10 ────────────────────────────────────────────────────────────────────
+stage "Infisical: Better Auth signing secrets"
+say "Each deployed environment gets its own random BETTER_AUTH_SECRET (sign-in sessions,"
+say "TECH_STACK S40). An existing one is kept: replacing it signs everyone out."
+for e in preview staging production; do
+  if infisical_has BETTER_AUTH_SECRET "$e"; then
+    printf '  %s✓%s %s already has BETTER_AUTH_SECRET\n' "$GREEN" "$RESET" "$e"
+  else
+    set_infisical BETTER_AUTH_SECRET "$(openssl rand -base64 48 | tr -d '\n')" "$e"
+  fi
+done
+pause
+
+# ── 11 ────────────────────────────────────────────────────────────────────
 stage "Infisical: sync secrets into GitHub"
 say "One Secret Sync per environment copies Infisical into the GitHub Environment of the"
 say "same name. The sync owns those GitHub secrets: change them in Infisical, never with gh."
@@ -445,7 +458,7 @@ if [[ -n "$stale" ]]; then
 fi
 pause
 
-# ── 11 ────────────────────────────────────────────────────────────────────
+# ── 12 ────────────────────────────────────────────────────────────────────
 stage "Renovate: dependency updates"
 say "Renovate opens weekly update PRs against dev (renovate.json)."
 open_url "https://github.com/apps/renovate"
@@ -453,7 +466,7 @@ step "Install (or Configure) → Only select repositories → choose ${REPO#*/} 
 step "Renovate opens an onboarding PR first; merge it to start updates."
 pause "Press Enter once Renovate is installed"
 
-# ── 12 ────────────────────────────────────────────────────────────────────
+# ── 13 ────────────────────────────────────────────────────────────────────
 stage "First staging deploy, then lock it with Access"
 say "This runs the 'Deploy staging' workflow on dev."
 if confirm "Start the staging deploy now?"; then

@@ -57,8 +57,10 @@ delete web.env;
 Object.assign(web, {
 	name: `claimsale-web-${suffix}`,
 	workers_dev: true,
-	vars: webVars,
+	// The pair has its own database, so email can be captured for E2E (MAILER, TECH_STACK §10).
+	vars: { ...webVars, MAILER: "capture" },
 	services: [{ binding: "ENGINE", service: `claimsale-engine-${suffix}` }],
+	d1_databases: engine.d1_databases,
 });
 
 writeFileSync("apps/engine/wrangler.preview.jsonc", JSON.stringify(engine, null, "\t") + "\n");
