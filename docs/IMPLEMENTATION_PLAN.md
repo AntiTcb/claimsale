@@ -193,6 +193,17 @@ Wave 3 (after WS-E):        WS-H   WS-I   WS-J   WS-K
 Wave 4:                     WS-L → pilot sale
 ```
 
+### Wave 1 integration notes
+- WS-D adds `requireSeller(event)` (`#lib/server/seller.ts`): every `/sell` `load` and
+  action from WS-A must call it when the two merge.
+- WS-D turns email sign-up off wherever no Turnstile key is set, which includes
+  production today. Turnstile keys must exist before WS-D ships to production.
+- WS-D's Turnstile browser test failed once in a full run and didn't reproduce in 13
+  reruns; find the cause before merging (CLAUDE.md: no flaky tests).
+- `pnpm test` times out in `scripts/` tests that spawn `node` on the owner's machine
+  (Node takes ~3–4 s to start), and `cf-resources.test.ts` fails when WSL's `bash` is
+  first on PATH. Seen on every wave-1 branch; none of them touch `scripts/`.
+
 ### Merge rules for parallel work
 - **Migrations:** WS-A owns the core tables, WS-C owns catalog tables, WS-F2 owns
   `image_hashes`. Whoever merges second regenerates their migration on top of `dev`
