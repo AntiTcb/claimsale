@@ -481,4 +481,5 @@ IDs stay in the table, marked ~~struck~~.
 | `TCG-market-placeholder` | The market price appears only as a placeholder and hint for the item's seller; the price is never set without a seller action; market prices are never in buyer-facing responses | PLAN 3, D64 |
 | `TCG-market-pct` | % buttons compute price = market × pct, rounded down ($0.05 under $5, $0.25 from $5), never below $0.05; bulk apply is previewed first | PLAN 3, D64 |
 | `IMG-timestamp-required` | Sellers with fewer than 5 completed sales can't publish a sale without an approved, new timestamp photo; "Timestamped" badge when present | PLAN 3 (Photo authenticity), D66 |
+| `TCG-catalog-ingest` | Catalog ingestion is idempotent and resumable: re-ingesting the same TCGCSV build writes no rows, sets that fail or don't fit in a run are retried by the next one, and only autofill fields plus the latest market price per product + subtype are stored (no images, no card text) | PLAN 3 (TCG catalog), TECH_STACK S32 |
 

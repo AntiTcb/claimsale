@@ -1,0 +1,25 @@
+{
+	"totalItems": 2,
+	"success": true,
+	"errors": [],
+	"results": [
+		{
+			"groupId": 24439,
+			"name": "Origins: Proving Grounds",
+			"abbreviation": "OGS",
+			"isSupplemental": false,
+			"publishedOn": "2025-10-31T00:00:00",
+			"modifiedOn": "2026-08-12T20:22:47.78",
+			"categoryId": 89
+		},
+		{
+			"groupId": 24343,
+			"name": "Riftbound Promotional Cards",
+			"abbreviation": "PR",
+			"isSupplemental": false,
+			"publishedOn": "2025-10-31T00:00:00",
+			"modifiedOn": "2026-10-28T19:31:31.163",
+			"categoryId": 89
+		}
+	]
+}

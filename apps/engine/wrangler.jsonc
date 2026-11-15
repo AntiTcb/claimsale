@@ -16,6 +16,9 @@
 		"MAIL_FROM": "no-reply@notify.claimsale.net",
 		// Sentry DSN (public by design); empty disables error reports (TECH_STACK S38).
 		"SENTRY_DSN": "",
+		// TCG catalog ingestion (TECH_STACK S32). Tests stub fetch and serve fixtures.
+		"TCGCSV_BASE_URL": "https://tcgcsv.com",
+		"CATALOG_GROUPS_PER_RUN": "300",
 	},
 	// Cloudflare Email Service (TECH_STACK S28). Simulated by `wrangler dev` and tests.
 	"send_email": [{ "name": "EMAIL" }],
@@ -35,7 +38,8 @@
 		"producers": [{ "binding": "NOTIFICATIONS", "queue": "claimsale-notifications-local" }],
 		"consumers": [{ "queue": "claimsale-notifications-local", "max_batch_size": 25, "max_retries": 5 }],
 	},
-	"triggers": { "crons": ["*/5 * * * *"] },
+	// Timer sweep, and the catalog ingestion (CATALOG_CRON in src/catalog/index.ts).
+	"triggers": { "crons": ["*/5 * * * *", "15 0-2,21-23 * * *"] },
 	"env": {
 		"staging": {
 			"name": "claimsale-engine-staging",
@@ -44,6 +48,8 @@
 				"VERSION": "set-by-ci",
 				"MAIL_FROM": "no-reply@notify.claimsale.net",
 				"SENTRY_DSN": "",
+				"TCGCSV_BASE_URL": "https://tcgcsv.com",
+				"CATALOG_GROUPS_PER_RUN": "300",
 			},
 			"send_email": [{ "name": "EMAIL" }],
 			"d1_databases": [
@@ -61,6 +67,7 @@
 				"producers": [{ "binding": "NOTIFICATIONS", "queue": "claimsale-notifications-staging" }],
 				"consumers": [{ "queue": "claimsale-notifications-staging", "max_batch_size": 25, "max_retries": 5 }],
 			},
+			// No catalog cron: staging ingests on demand (ingestCatalog RPC), sparing TCGCSV's request budget.
 			"triggers": { "crons": ["*/5 * * * *"] },
 		},
 		"production": {
@@ -70,6 +77,8 @@
 				"VERSION": "set-by-ci",
 				"MAIL_FROM": "no-reply@notify.claimsale.net",
 				"SENTRY_DSN": "",
+				"TCGCSV_BASE_URL": "https://tcgcsv.com",
+				"CATALOG_GROUPS_PER_RUN": "300",
 			},
 			"send_email": [{ "name": "EMAIL" }],
 			"d1_databases": [
@@ -87,7 +96,8 @@
 				"producers": [{ "binding": "NOTIFICATIONS", "queue": "claimsale-notifications" }],
 				"consumers": [{ "queue": "claimsale-notifications", "max_batch_size": 25, "max_retries": 5 }],
 			},
-			"triggers": { "crons": ["*/5 * * * *"] },
+			// Production alone runs the catalog cron (TCGCSV asks for < 10,000 requests a day).
+			"triggers": { "crons": ["*/5 * * * *", "15 0-2,21-23 * * *"] },
 		},
 	},
 }
