@@ -61,6 +61,9 @@ Object.assign(web, {
 	vars: { ...webVars, MAILER: "capture" },
 	services: [{ binding: "ENGINE", service: `claimsale-engine-${suffix}` }],
 	d1_databases: engine.d1_databases,
+	// One shared bucket for every PR pair: keys start with the sale's UUID, so pairs never
+	// collide, and there is no per-PR bucket to create or delete.
+	r2_buckets: [{ binding: "IMAGES", bucket_name: "claimsale-images-preview" }],
 });
 
 writeFileSync("apps/engine/wrangler.preview.jsonc", JSON.stringify(engine, null, "\t") + "\n");

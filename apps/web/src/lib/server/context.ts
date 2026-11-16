@@ -1,6 +1,8 @@
 import { createDb, type Db } from "@claimsale/db";
 import { env } from "cloudflare:workers";
 import { authSecret, createAuth, type Auth } from "./auth.ts";
+import { localEngine, type Engine } from "./engine.ts";
+import type { ImageStore } from "./images.ts";
 import { makeMailer, type Mailer } from "./mailer.ts";
 
 /**
@@ -16,6 +18,21 @@ function optional(name: "DISCORD_CLIENT_ID" | "DISCORD_CLIENT_SECRET"): string |
 
 export function db(): Db {
 	return createDb(env.DB);
+}
+
+/** Seller photos in R2 (private; served through /api/images/[imageId]). */
+export function imageStore(): ImageStore {
+	return env.IMAGES;
+}
+
+/** The sale engine. Local stub today; WS-E routes it to the SaleEngine Durable Object. */
+export function engine(): Engine {
+	return localEngine(db());
+}
+
+/** The key for sale unlock cookies (shared with Better Auth's signing secret). */
+export function cookieSecret(): string {
+	return authSecret(env.APP_ENV, env.BETTER_AUTH_SECRET);
 }
 
 export function mailer(): Mailer {
