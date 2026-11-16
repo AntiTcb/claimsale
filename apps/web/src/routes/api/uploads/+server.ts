@@ -3,6 +3,7 @@ import { db, imageStore } from "#lib/server/context.ts";
 import { entitlements } from "#lib/server/entitlements.ts";
 import { MAX_BYTES } from "#lib/server/image-sanitize.ts";
 import { addItemPhoto } from "#lib/server/images.ts";
+import { sellerReadiness } from "#lib/server/seller.ts";
 import type { RequestHandler } from "./$types";
 
 /**
@@ -19,6 +20,10 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 	const body = new Uint8Array(await request.arrayBuffer());
 	const now = Date.now();
 	const tier = (await entitlements(db(), locals.user.id, now)).seller;
+	// D55: the same seller gate as the /sell pages (an API can't redirect, so 403).
+	if (sellerReadiness(locals.user, tier).length > 0) {
+		return json({ message: "Finish the seller requirements first" }, { status: 403 });
+	}
 	const result = await addItemPhoto(
 		db(),
 		imageStore(),

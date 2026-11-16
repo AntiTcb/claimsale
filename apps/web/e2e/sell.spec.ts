@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { newIdentity, signUp } from "./auth-helpers.ts";
+import { newIdentity, outboxAvailable, signUp, smsCaptureAvailable, verifySeller } from "./auth-helpers.ts";
 import { expect, test } from "./fixtures.ts";
 
 // Sales and items (milestone 4, WS-A): a seller creates a draft through the wizard,
@@ -41,14 +41,22 @@ function localDateTime(page: Page, days: number): Promise<string> {
 	}, days);
 }
 
-/** Signs up a new 18+ seller and waits until the post-sign-up redirect has fully loaded. */
+/**
+ * Signs up a new 18+ seller, waits until the post-sign-up redirect has fully loaded,
+ * and verifies their email and phone (D55) through capture mode.
+ */
 async function signedUpSeller(page: Page): Promise<void> {
+	test.skip(
+		!(await outboxAvailable(page.request)) || !(await smsCaptureAvailable(page.request)),
+		"Captured email and phone codes aren't readable here",
+	);
 	const seller = newIdentity("seller");
 	await signUp(page, seller);
 	// WebKit: navigating before this load finishes interrupts it ("/?welcome=1").
 	await page.waitForURL(/\/\?welcome=1$/, { waitUntil: "load" });
 	await page.waitForLoadState("networkidle");
 	await expect(page.getByRole("link", { name: `@${seller.handle}` })).toBeVisible();
+	await verifySeller(page, seller.email);
 }
 
 async function startSale(page: Page, title: string): Promise<void> {

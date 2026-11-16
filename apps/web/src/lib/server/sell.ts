@@ -5,6 +5,7 @@ import type { SessionUser } from "./auth.ts";
 import { db } from "./context.ts";
 import { entitlements } from "./entitlements.ts";
 import { field } from "./forms.ts";
+import { assertSellerReady } from "./seller.ts";
 import { hashSalePassword, SALE_PASSWORD_MAX, SALE_PASSWORD_MIN } from "./sale-access.ts";
 import { findSellerSale, type PrivateAccessUpdate, type SaleRow, type Seller } from "./sales.ts";
 
@@ -16,12 +17,18 @@ export function requireUser(event: Pick<RequestEvent, "locals" | "url">): Sessio
 	return user;
 }
 
-/** The signed-in seller with their tier, read server-side on every request (PLAN §3a). */
+/**
+ * The signed-in seller with their tier, read server-side on every request (PLAN §3a).
+ * Every /sell load and action calls this, so it is also the D55 gate: accounts
+ * missing 18+, a verified email or (free sellers) a verified phone go to
+ * /sell/requirements instead.
+ */
 export async function requireSeller(
 	event: Pick<RequestEvent, "locals" | "url">,
 ): Promise<Seller & { tier: Tier }> {
 	const user = requireUser(event);
 	const { seller } = await entitlements(db(), user.id, Date.now());
+	assertSellerReady(event.url, user, seller);
 	return { id: user.id, tier: seller };
 }
 
