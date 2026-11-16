@@ -481,4 +481,12 @@ IDs stay in the table, marked ~~struck~~.
 | `TCG-market-placeholder` | The market price appears only as a placeholder and hint for the item's seller; the price is never set without a seller action; market prices are never in buyer-facing responses | PLAN 3, D64 |
 | `TCG-market-pct` | % buttons compute price = market × pct, rounded down ($0.05 under $5, $0.25 from $5), never below $0.05; bulk apply is previewed first | PLAN 3, D64 |
 | `IMG-timestamp-required` | Sellers with fewer than 5 completed sales can't publish a sale without an approved, new timestamp photo; "Timestamped" badge when present | PLAN 3 (Photo authenticity), D66 |
+| `AUTH-seller-requirements` | Selling needs an 18+ attestation, a verified email and, unless Pro, a verified phone; the seller is shown what's missing | PLAN 5 (Auth and identity), D55 |
+| `AUTH-phone-e164` | Phone numbers are stored in E.164, verified by a one-time code, unique per account, and never shown publicly (masked for the owner) | PLAN 5 (Auth and identity), D55 |
+| `AUTH-phone-otp-limit` | Phone code sends are limited per account and per number, and code checks per account | PLAN 5 (Auth and identity), TECH_STACK S10 |
+| `AUTH-signup-captcha` | Email sign-up, through the form or the API, needs a passing Turnstile check | TECH_STACK S41 |
+| `SM-2-visibility` | Drafts are seen only by their seller; public and unlisted sales by anyone with the link; private sales by the seller, a browser that entered the password, or a verified allowlisted email. Only public sales are listed or indexed (unlisted and private are `noindex`) | 2, D5, D56 |
+| `SM-2-private-pro` | Private visibility (password / allowlist) is Pro only; free sellers choose public or unlisted | 2, D31 |
+| `SM-2-private-images` | Photos are served only through an access-checked route; photos of private sales and drafts are never publicly cacheable | 2, PLAN 3 (Sale) |
+| `SM-2-photo-cap` | Photos per item: 4 for free sellers, 12 for Pro, checked server-side on upload | 2, D33 |
 

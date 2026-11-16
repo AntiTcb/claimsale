@@ -9,6 +9,7 @@ import {
 	type Tier,
 	type UserId,
 } from "./common.ts";
+import { buyerBlockers, type BuyerRequirements, type BuyerStanding } from "./identity.ts";
 import type { Cents } from "./money.ts";
 import { COUNTER_TTL, MIN_RESCIND_EXPLANATION, PRO_BUYER_RESCINDS_PER_MONTH } from "./plans.ts";
 import type { RescindReasonCode } from "./rescind.ts";
@@ -105,15 +106,11 @@ export interface ItemContext {
 	readonly allowBackupOffers: boolean;
 	/** From decisionWindow() (D25). */
 	readonly decisionWindow: Millis;
-	readonly buyerRequirements: { readonly emailVerified: boolean; readonly minAccountAge: Millis };
+	readonly buyerRequirements: BuyerRequirements;
 }
 
-export interface Buyer {
+export interface Buyer extends BuyerStanding {
 	readonly id: UserId;
-	readonly tier: Tier;
-	readonly blocked: boolean;
-	readonly emailVerified: boolean;
-	readonly accountCreatedAt: Millis;
 }
 
 export type WinVia = "instant" | "award" | "window" | "promotion" | "counter";
@@ -334,14 +331,15 @@ export function place(
 		return reject("sale_not_live", "This sale isn't taking claims or offers");
 	if (item.withdrawn) return reject("item_withdrawn", "This item was withdrawn");
 	if (buyer.id === context.sellerId) return notAllowed();
-	if (buyer.blocked) return reject("buyer_blocked", "You can't join this sale");
-	if (buyer.tier !== "pro") {
-		if (context.buyerRequirements.emailVerified && !buyer.emailVerified) {
+	switch (buyerBlockers(buyer, context.buyerRequirements, now)[0]) {
+		case "blocked":
+			return reject("buyer_blocked", "You can't join this sale");
+		case "email":
 			return reject("email_not_verified", "Verify your email address first");
-		}
-		if (now - buyer.accountCreatedAt < context.buyerRequirements.minAccountAge) {
+		case "account_age":
 			return reject("account_too_new", "This sale requires an older account");
-		}
+		case undefined:
+			break;
 	}
 	const mine = item.entries.filter((e) => e.buyerId === buyer.id);
 	if (mine.some(isPending))

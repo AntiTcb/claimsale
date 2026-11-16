@@ -1,5 +1,9 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import { DAY } from "./common.ts";
 import {
+	buyerBlockers,
+	DEFAULT_BUYER_REQUIREMENTS,
 	sellerBlockers,
 	validateAge,
 	validateDisplayName,
@@ -84,8 +88,54 @@ describe("age attestation (D38)", () => {
 	});
 });
 
+describe("buyer requirements (D20, D29)", () => {
+	const now = 100 * DAY;
+	const buyer = { tier: "free" as const, blocked: false, emailVerified: true, accountCreatedAt: now - DAY };
+	const strict = { emailVerified: true, minAccountAge: 30 * DAY };
+
+	it("[SM-4.1-buyer-requirements] lists what stops a buyer, with Pro bypassing all but a block", () => {
+		expect(buyerBlockers(buyer, DEFAULT_BUYER_REQUIREMENTS, now)).toEqual([]);
+		expect(buyerBlockers({ ...buyer, emailVerified: false }, DEFAULT_BUYER_REQUIREMENTS, now)).toEqual([
+			"email",
+		]);
+		expect(buyerBlockers({ ...buyer, emailVerified: false }, strict, now)).toEqual(["email", "account_age"]);
+		expect(buyerBlockers({ ...buyer, accountCreatedAt: now - 30 * DAY }, strict, now)).toEqual([]);
+		expect(buyerBlockers({ ...buyer, tier: "pro", emailVerified: false }, strict, now)).toEqual([]);
+		expect(buyerBlockers({ ...buyer, tier: "pro", blocked: true }, strict, now)).toEqual(["blocked"]);
+		expect(buyerBlockers({ ...buyer, emailVerified: false, blocked: true }, strict, now)).toEqual([
+			"blocked",
+		]);
+		expect(
+			buyerBlockers({ ...buyer, emailVerified: false }, { emailVerified: false, minAccountAge: 0 }, now),
+		).toEqual([]);
+	});
+
+	it("[SM-4.1-buyer-requirements] a blocked buyer is never eligible, and an eligible free buyer stays eligible as Pro", () => {
+		fc.assert(
+			fc.property(
+				fc.record({
+					tier: fc.constantFrom("free" as const, "pro" as const),
+					blocked: fc.boolean(),
+					emailVerified: fc.boolean(),
+					accountCreatedAt: fc.integer({ min: 0, max: now }),
+				}),
+				fc.record({ emailVerified: fc.boolean(), minAccountAge: fc.integer({ min: 0, max: 60 * DAY }) }),
+				(standing, requirements) => {
+					const blockers = buyerBlockers(standing, requirements, now);
+					const asPro = buyerBlockers({ ...standing, tier: "pro" }, requirements, now);
+					// Blocked ⇔ the only blocker is the block; Pro never adds a blocker.
+					expect(blockers.includes("blocked")).toBe(standing.blocked);
+					expect(standing.blocked ? blockers : ["blocked"]).toEqual(["blocked"]);
+					expect(asPro.length).toBeLessThanOrEqual(blockers.length);
+					expect(asPro).toEqual(standing.blocked ? ["blocked"] : []);
+				},
+			),
+		);
+	});
+});
+
 describe("seller requirements (D55)", () => {
-	it("needs 18+, a verified email and, unless Pro, a verified phone", () => {
+	it("[AUTH-seller-requirements] needs 18+, a verified email and, unless Pro, a verified phone", () => {
 		const ready = { ageAttested: "18+" as const, emailVerified: true, phoneVerified: true, pro: false };
 		expect(sellerBlockers(ready)).toEqual([]);
 		expect(sellerBlockers({ ...ready, phoneVerified: false, pro: true })).toEqual([]);

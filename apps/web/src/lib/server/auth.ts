@@ -3,6 +3,7 @@ import type { Db } from "@claimsale/db";
 import { authAccounts, rateLimits, sessions, users, verifications } from "@claimsale/db/schema";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { captcha } from "better-auth/plugins/captcha";
 import { magicLink } from "better-auth/plugins/magic-link";
 import { uuidv7 } from "uuidv7";
 import { magicLinkEmail, passwordResetEmail, verificationEmail } from "./emails.ts";
@@ -21,7 +22,17 @@ export interface AuthDeps {
 	readonly origin: string;
 	readonly secret: string;
 	readonly discord?: { readonly clientId: string; readonly clientSecret: string } | undefined;
+	/** Turnstile on email sign-up (S41). Without it, email sign-up is off. */
+	readonly captcha?: { readonly secretKey: string; readonly siteVerifyUrl?: string } | undefined;
+	/**
+	 * Throwaway data (local, tests, isolated PR pairs): E2E signs up many accounts from
+	 * one address, so the per-address sign-up limit is raised there. Never on shared data.
+	 */
+	readonly throwawayData?: boolean;
 }
+
+/** Better Auth endpoints that need a Turnstile token in `x-captcha-response`. */
+export const CAPTCHA_ENDPOINTS = ["/sign-up/email"];
 
 /** Fields Better Auth may never set from a request body: they go through our own validated forms. */
 const text = { type: "string", required: false, input: false } as const;
@@ -64,6 +75,8 @@ export function createAuth(deps: AuthDeps) {
 		},
 		emailAndPassword: {
 			enabled: true,
+			// @spec AUTH-signup-captcha — no Turnstile configured, no email sign-up (fail closed).
+			disableSignUp: deps.captcha === undefined,
 			minPasswordLength: PASSWORD_MIN,
 			maxPasswordLength: PASSWORD_MAX,
 			// D20: verification is needed to claim, not to sign in.
@@ -84,6 +97,17 @@ export function createAuth(deps: AuthDeps) {
 				expiresIn: 5 * 60,
 				sendMagicLink: ({ email, url }) => send(magicLinkEmail(email, url)),
 			}),
+			// Runs in the router (auth.handler), so the sign-up form goes through signUpWithCaptcha.
+			...(deps.captcha
+				? [
+						captcha({
+							provider: "cloudflare-turnstile",
+							secretKey: deps.captcha.secretKey,
+							endpoints: CAPTCHA_ENDPOINTS,
+							...(deps.captcha.siteVerifyUrl ? { siteVerifyURLOverride: deps.captcha.siteVerifyUrl } : {}),
+						}),
+					]
+				: []),
 		],
 		rateLimit: {
 			enabled: true,
@@ -92,7 +116,7 @@ export function createAuth(deps: AuthDeps) {
 			max: 100,
 			customRules: {
 				"/sign-in/email": { window: 60, max: 5 },
-				"/sign-up/email": { window: 60, max: 5 },
+				"/sign-up/email": { window: 60, max: deps.throwawayData ? 200 : 5 },
 				"/sign-in/magic-link": { window: 60, max: 3 },
 				"/request-password-reset": { window: 60, max: 3 },
 				"/send-verification-email": { window: 60, max: 3 },

@@ -6,15 +6,18 @@ import {
 	validateHandle,
 } from "@claimsale/core";
 import { fail, redirect } from "@sveltejs/kit";
-import { auth, db } from "#lib/server/context.ts";
+import { auth, db, turnstile } from "#lib/server/context.ts";
 import { forwardCookies } from "#lib/server/cookies.ts";
-import { type FormErrors, authErrorMessage, field, formError } from "#lib/server/forms.ts";
+import { type FormErrors, field, formError } from "#lib/server/forms.ts";
+import { signUpWithCaptcha } from "#lib/server/signup.ts";
+import { TURNSTILE_FIELD } from "#lib/server/turnstile.ts";
 import { completeIdentity, isHandleAvailable, isUniqueViolation } from "#lib/server/users.ts";
 import type { Actions, PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = ({ locals }) => {
 	if (locals.user) redirect(303, "/");
-	return {};
+	// Without Turnstile there is no email sign-up (S41); the page says so.
+	return { turnstileSiteKey: turnstile()?.siteKey ?? null };
 };
 
 export const actions: Actions = {
@@ -44,23 +47,20 @@ export const actions: Actions = {
 			return fail(400, { values, errors });
 		}
 
-		let userId: string;
-		try {
-			const result = await auth(url.origin).api.signUpEmail({
-				body: { name: displayName.value, email: values.email, password, callbackURL: "/?verified=1" },
-				headers: request.headers,
-				returnHeaders: true,
-			});
-			forwardCookies(result.headers, cookies);
-			userId = result.response.user.id;
-		} catch (error) {
-			return fail(400, { values, errors: formError(authErrorMessage(error)) });
-		}
+		const result = await signUpWithCaptcha(
+			auth(url.origin),
+			request,
+			url.origin,
+			{ name: displayName.value, email: values.email, password, callbackURL: "/?verified=1" },
+			field(data, TURNSTILE_FIELD),
+		);
+		if (!result.ok) return fail(400, { values, errors: formError(result.message) });
+		forwardCookies(result.headers, cookies);
 
 		try {
 			await completeIdentity(
 				db(),
-				userId,
+				result.userId,
 				{ handle: handle.value, displayName: displayName.value, ageAttested: age.value },
 				new Date(),
 			);

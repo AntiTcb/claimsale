@@ -57,10 +57,15 @@ delete web.env;
 Object.assign(web, {
 	name: `claimsale-web-${suffix}`,
 	workers_dev: true,
-	// The pair has its own database, so email can be captured for E2E (MAILER, TECH_STACK §10).
-	vars: { ...webVars, MAILER: "capture" },
+	// The pair has its own database, so email and phone codes can be captured for E2E (MAILER
+	// and SMS, TECH_STACK §10, S41), and sign-up uses Turnstile's test key (its workers.dev
+	// hostname isn't on a real widget).
+	vars: { ...webVars, MAILER: "capture", SMS: "capture", TURNSTILE_SITE_KEY: "1x00000000000000000000AA" },
 	services: [{ binding: "ENGINE", service: `claimsale-engine-${suffix}` }],
 	d1_databases: engine.d1_databases,
+	// One shared bucket for every PR pair: keys start with the sale's UUID, so pairs never
+	// collide, and there is no per-PR bucket to create or delete.
+	r2_buckets: [{ binding: "IMAGES", bucket_name: "claimsale-images-preview" }],
 });
 
 writeFileSync("apps/engine/wrangler.preview.jsonc", JSON.stringify(engine, null, "\t") + "\n");

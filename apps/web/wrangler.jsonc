@@ -20,9 +20,18 @@
 		// "capture" writes email to the email_outbox table (E2E reads it); "cloudflare" sends it.
 		// Never "capture" where the data is shared with real users (staging, its Previews, production).
 		"MAILER": "capture",
+		// "capture" stores phone codes in D1 (E2E reads them); "twilio" sends them with Twilio Verify.
+		// Never "capture" where the data is shared with real users (TECH_STACK S41).
+		"SMS": "capture",
+		// Turnstile on sign-up (S41). Cloudflare's "always passes" test key here and in PR pairs.
+		"TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
 	},
 	// Better Auth signing secret (.dev.vars locally; GitHub Environment secret in CI).
-	// Optional, not required: DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET turn on Discord sign-in.
+	// Optional, not required: DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET turn on Discord sign-in;
+	// TURNSTILE_SECRET_KEY pairs with a real TURNSTILE_SITE_KEY (the test site key falls back to the
+	// test secret; a real site key without its secret turns email sign-up off); and
+	// TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET, TWILIO_VERIFY_SERVICE_SID turn on phone
+	// verification when SMS is "twilio" (without them, nobody can verify a phone there).
 	"secrets": { "required": ["BETTER_AUTH_SECRET"] },
 	"services": [{ "binding": "ENGINE", "service": "claimsale-engine" }],
 	// The same database as the engine (TECH_STACK §2): sessions and users live here.
@@ -35,6 +44,9 @@
 		},
 	],
 	"send_email": [{ "name": "EMAIL" }],
+	// Seller photos (PLAN §5 "Images"). Private: served only through /api/images/[id],
+	// which checks sale access (SM-2-private-images). Local dev simulates it.
+	"r2_buckets": [{ "binding": "IMAGES", "bucket_name": "claimsale-images-local" }],
 	"env": {
 		"staging": {
 			"name": "claimsale-web-staging",
@@ -44,6 +56,10 @@
 				"SENTRY_DSN": "",
 				"MAIL_FROM": "no-reply@notify.claimsale.net",
 				"MAILER": "cloudflare",
+				"SMS": "twilio",
+				// Test key until the staging widget exists (owner step, TECH_STACK §11); staging is
+				// behind Access, so bots can't reach its sign-up meanwhile.
+				"TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
 			},
 			"secrets": { "required": ["BETTER_AUTH_SECRET"] },
 			"services": [{ "binding": "ENGINE", "service": "claimsale-engine-staging" }],
@@ -56,6 +72,7 @@
 				},
 			],
 			"send_email": [{ "name": "EMAIL" }],
+			"r2_buckets": [{ "binding": "IMAGES", "bucket_name": "claimsale-images-staging" }],
 			// Worker Previews (TECH_STACK S37): `wrangler preview --env staging` creates a
 			// Preview of claimsale-web-staging. Previews inherit nothing from the settings
 			// above, and a Preview's service binding reaches the bound Worker's deployed
@@ -69,6 +86,8 @@
 					"SENTRY_DSN": "",
 					"MAIL_FROM": "no-reply@notify.claimsale.net",
 					"MAILER": "cloudflare",
+					"SMS": "twilio",
+					"TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
 				},
 				"secrets": { "required": ["BETTER_AUTH_SECRET"] },
 				"services": [{ "binding": "ENGINE", "service": "claimsale-engine-staging" }],
@@ -81,6 +100,8 @@
 					},
 				],
 				"send_email": [{ "name": "EMAIL" }],
+				// Staging data, so staging's photos.
+				"r2_buckets": [{ "binding": "IMAGES", "bucket_name": "claimsale-images-staging" }],
 			},
 		},
 		"production": {
@@ -92,6 +113,9 @@
 				"SENTRY_DSN": "",
 				"MAIL_FROM": "no-reply@notify.claimsale.net",
 				"MAILER": "cloudflare",
+				"SMS": "twilio",
+				// The production widget's site key (owner step). Empty turns email sign-up off.
+				"TURNSTILE_SITE_KEY": "",
 			},
 			"secrets": { "required": ["BETTER_AUTH_SECRET"] },
 			"services": [{ "binding": "ENGINE", "service": "claimsale-engine" }],
@@ -104,6 +128,7 @@
 				},
 			],
 			"send_email": [{ "name": "EMAIL" }],
+			"r2_buckets": [{ "binding": "IMAGES", "bucket_name": "claimsale-images" }],
 			// Custom domain (claimsale.net) is added once the domain is registered in the account.
 		},
 	},
