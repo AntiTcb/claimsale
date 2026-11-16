@@ -86,7 +86,9 @@ jobs:
             --var "VERSION:${{ github.sha }}" --secrets-file "$RUNNER_TEMP/web-secrets.json" \
             --message "PR #$PR at ${GITHUB_SHA::7}")"
           printf '%s\n' "$out"
-          echo "url=$(printf '%s' "$out" | jq -er '.preview.urls[0]')" >> "$GITHUB_OUTPUT"
+          # `wrangler preview --json` prints asset-upload progress on stdout before the JSON
+          # document, so parse from the first line that opens it.
+          echo "url=$(printf '%s' "$out" | sed -n '/^{/,$p' | jq -er '.preview.urls[0]')" >> "$GITHUB_OUTPUT"
       - name: Remove secret files
         if: always()
         run: rm -f "$RUNNER_TEMP"/*-secrets.json
