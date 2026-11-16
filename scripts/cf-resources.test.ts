@@ -22,6 +22,9 @@ case "$1 $2" in
   "queues list")  echo '[{"queue_name":"claimsale-notifications-pr-3","queue_id":"q-123"}]' ;;
   "d1 list")      echo '[{"name":"claimsale-pr-3","uuid":"d-123"}]' ;;
   "d1 create"|"queues create") echo '{}' ;;
+  "r2 buckets")
+    # --name-contains is a substring filter, so a longer name sharing the prefix comes back too.
+    [ "$3" = "list" ] && echo '{"buckets":[{"name":"claimsale-images-staging"},{"name":"claimsale-images-preview"}]}' || echo '{}' ;;
   *) echo '{}' ;;
 esac
 `;
@@ -109,5 +112,48 @@ describe("cf-resources.sh ensure commands are idempotent", () => {
 	it("does not create a queue that already exists", () => {
 		run("ensure-queue", "claimsale-notifications-pr-3");
 		expect(calls()).toEqual(["queues list"]);
+	});
+
+	it("does not create an R2 bucket that already exists", () => {
+		run("ensure-r2", "claimsale-images-staging");
+		expect(calls()).toEqual(["r2 buckets list --name-contains claimsale-images-staging"]);
+	});
+
+	// The list filter matches substrings: claimsale-images-staging must not count as claimsale-images.
+	it("creates an R2 bucket whose name only prefixes an existing one", () => {
+		run("ensure-r2", "claimsale-images");
+		expect(calls()).toEqual([
+			"r2 buckets list --name-contains claimsale-images",
+			"r2 buckets create --name claimsale-images --location-hint enam",
+		]);
+	});
+});
+
+// The --rules JSON passed to the last `r2 buckets lifecycle update` call.
+function lifecycleRules(): Array<Record<string, unknown>> {
+	const call = calls().find((c) => c.startsWith("r2 buckets lifecycle update"));
+	return JSON.parse(call!.replace(/^.* --rules (.*) --force$/, "$1")) as Array<Record<string, unknown>>;
+}
+
+describe("cf-resources.sh set-r2-expiry", () => {
+	it("deletes objects after the given days and keeps R2's default multipart rule", () => {
+		run("set-r2-expiry", "claimsale-images-preview", "30");
+		expect(calls()[0]).toMatch(/^r2 buckets lifecycle update claimsale-images-preview --rules .* --force$/);
+		expect(lifecycleRules()).toEqual([
+			expect.objectContaining({
+				id: "Default Multipart Abort Rule",
+				abortMultipartUploadsTransition: { condition: { type: "Age", maxAge: 604800 } },
+			}),
+			expect.objectContaining({
+				enabled: true,
+				deleteObjectsTransition: { condition: { type: "Age", maxAge: 30 * 86400 } },
+			}),
+		]);
+	});
+
+	it("rejects a missing or non-numeric day count", () => {
+		expect(() => run("set-r2-expiry", "claimsale-images-preview")).toThrow(/Command failed/);
+		expect(() => run("set-r2-expiry", "claimsale-images-preview", "0")).toThrow(/Command failed/);
+		expect(calls()).toEqual([""]);
 	});
 });

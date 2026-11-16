@@ -372,13 +372,20 @@ unset CLOUDFLARE_API_TOKEN
 pause
 
 # ── 7 ─────────────────────────────────────────────────────────────────────
-stage "Cloudflare: notification queues"
+stage "Cloudflare: notification queues and photo buckets"
 say "The engine Worker needs its queue to exist before the first deploy."
 for q in claimsale-notifications-staging claimsale-notifications; do
   scripts/cf-resources.sh ensure-queue "$q"
   printf '  %s✓%s queue %s\n' "$GREEN" "$RESET" "$q"
 done
 note "Per-PR queues and databases are created and deleted by the preview workflows."
+say "The web Worker binds an R2 bucket for item photos; deploys fail until it exists."
+for b in claimsale-images-preview claimsale-images-staging claimsale-images; do
+  scripts/cf-resources.sh ensure-r2 "$b"
+  printf '  %s✓%s R2 bucket %s\n' "$GREEN" "$RESET" "$b"
+done
+scripts/cf-resources.sh set-r2-expiry claimsale-images-preview 30
+note "Every PR pair shares claimsale-images-preview; its photos are deleted after 30 days."
 pause
 
 # ── 8 ─────────────────────────────────────────────────────────────────────
