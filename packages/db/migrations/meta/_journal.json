@@ -19,15 +19,22 @@
     {
       "idx": 2,
       "version": "6",
-      "when": 1794775922259,
-      "tag": "0002_catalog",
+      "when": 1794775926114,
+      "tag": "0002_sales_items",
       "breakpoints": true
     },
     {
       "idx": 3,
       "version": "6",
-      "when": 1794775977794,
-      "tag": "0003_catalog_search",
+      "when": 1794808826546,
+      "tag": "0003_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794808832448,
+      "tag": "0004_catalog_search",
       "breakpoints": true
     }
   ]

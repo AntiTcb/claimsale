@@ -236,6 +236,8 @@ describe("cron sweep", () => {
 	});
 });
 
+const migrationsBefore = (prefix: string) => env.TEST_MIGRATIONS.filter((m) => m.name < prefix);
+
 describe("D1 migrations (expand/contract)", () => {
 	const authTables = ["users", "sessions", "auth_accounts", "verifications", "rate_limits", "email_outbox"];
 	const catalogTables = [
@@ -281,8 +283,92 @@ describe("D1 migrations (expand/contract)", () => {
 		for (const statement of statements) expect(statement).toMatch(/^CREATE (UNIQUE )?(TABLE|INDEX) /i);
 	});
 
+	const coreTables = [
+		"seller_profiles",
+		"sales",
+		"sale_access",
+		"sale_allowlist",
+		"items",
+		"item_attributes",
+		"item_images",
+		"entries",
+		"takeback_requests",
+		"rescinds",
+		"invoices",
+		"invoice_lines",
+		"addresses",
+		"audit_log",
+		"notifications",
+		"follows",
+		"blocks",
+		"plans",
+		"subscriptions",
+		"fees",
+	];
+
+	it("0002_sales_items only adds tables, indexes and the plan seed (expand step)", () => {
+		const migration = env.TEST_MIGRATIONS.find((m) => m.name.startsWith("0002_"));
+		const statements = migration!.queries.map((q) => q.replace(/^--.*$/gm, "").trim()).filter(Boolean);
+		expect(statements.length).toBeGreaterThan(coreTables.length);
+		for (const statement of statements) {
+			expect(statement).toMatch(/^(CREATE (UNIQUE )?(TABLE|INDEX) |INSERT OR IGNORE INTO `plans` )/i);
+		}
+	});
+
+	it("0002_sales_items applies on top of the auth schema, keeps its data and seeds the plans", async () => {
+		const stub = env.SALE_ENGINE.get(env.SALE_ENGINE.idFromName("migration-check-0002"));
+		await runInDurableObject(stub, (_instance, state) => {
+			const sql = state.storage.sql;
+			for (const migration of migrationsBefore("0002_"))
+				for (const query of migration.queries) sql.exec(query);
+			sql.exec(
+				"INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES ('u1', 'a@example.test', 'A', 1, 1)",
+			);
+			for (const migration of env.TEST_MIGRATIONS.filter((m) => m.name >= "0002_"))
+				for (const query of migration.queries) sql.exec(query);
+			expect(sql.exec("SELECT id FROM users").toArray()).toEqual([{ id: "u1" }]);
+			const tables = sql
+				.exec("SELECT name FROM sqlite_master WHERE type = 'table'")
+				.toArray()
+				.map((r) => r["name"]);
+			expect(tables).toEqual(expect.arrayContaining(coreTables));
+			expect(
+				sql
+					.exec("SELECT id FROM plans ORDER BY id")
+					.toArray()
+					.map((r) => r["id"]),
+			).toEqual(["bundle", "buyer_pro", "free", "seller_pro"]);
+		});
+	});
+
+	it("allows only one open or countered entry per buyer per item [SM-4.1-one-open-entry]", async () => {
+		const db = env.DB;
+		await db.batch([
+			db.prepare(
+				"INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES ('s1', 's1@example.test', 'S', 1, 1), ('b1', 'b1@example.test', 'B', 1, 1)",
+			),
+			db.prepare(
+				"INSERT INTO sales (id, seller_id, slug, title, created_at, updated_at) VALUES ('sale1', 's1', 'sale-1', 'Sale', 1, 1)",
+			),
+			db.prepare(
+				"INSERT INTO items (id, sale_id, sort_order, game_id, title, price_cents, created_at, updated_at) VALUES ('i1', 'sale1', 0, 'pokemon', 'Card', 500, 1, 1)",
+			),
+		]);
+		const entry = (id: string, status: string) =>
+			db
+				.prepare(
+					"INSERT INTO entries (id, item_id, user_id, kind, amount_cents, status, created_at) VALUES (?, 'i1', 'b1', 'offer', 400, ?, 1)",
+				)
+				.bind(id, status)
+				.run();
+		await entry("e1", "declined");
+		await entry("e2", "open");
+		await expect(entry("e3", "countered")).rejects.toThrow(/UNIQUE/);
+		await entry("e4", "withdrawn");
+	});
+
 	it("the catalog migrations only add tables, indexes, the FTS index, its triggers and seed rows", () => {
-		const catalog = env.TEST_MIGRATIONS.filter((m) => /^000[23]_catalog/.test(m.name));
+		const catalog = env.TEST_MIGRATIONS.filter((m) => /^000[34]_catalog/.test(m.name));
 		expect(catalog.map((m) => m.name)).toHaveLength(2);
 		const statements = catalog
 			.flatMap((m) => m.queries)
