@@ -54,6 +54,11 @@ describe("money cells", () => {
 		expect(expectOk(parseCents("1000000"))).toBe(MAX_PRICE_CENTS);
 	});
 
+	it("refuses to format negative or fractional cents", () => {
+		expect(() => formatCentsPlain(-1)).toThrow(RangeError);
+		expect(() => formatCentsPlain(1.5)).toThrow(RangeError);
+	});
+
 	it("formats cents so parseCents reads them back (property)", () => {
 		fc.assert(
 			fc.property(fc.integer({ min: 0, max: MAX_PRICE_CENTS }), (cents) => {

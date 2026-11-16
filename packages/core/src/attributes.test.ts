@@ -186,4 +186,34 @@ describe("grader certificate links", () => {
 		expect(certificateUrl("other", "12345678")).toBeNull();
 		expect(certificateUrl("PSA", "../evil")).toBeNull();
 	});
+
+	it("builds the BGS, CGC and SGC lookups", () => {
+		expect(certificateUrl("BGS", "0012345678")).toBe(
+			"https://www.beckett.com/grading/card-lookup?item_type=BGS&item_id=0012345678",
+		);
+		expect(certificateUrl("CGC", "4012345001")).toBe("https://www.cgccards.com/certlookup/4012345001/");
+		expect(certificateUrl("SGC", "1234567")).toBe("https://gosgc.com/cert-code-lookup/1234567");
+		expect(certificateUrl("TAG", "1234567")).toBeNull();
+	});
+});
+
+describe("attribute edge cases [TCG-attribute-schema]", () => {
+	it("refuses to build card, sealed or lot fields without a game [TCG-attribute-schema]", () => {
+		expect(() => attributeFields("single", null)).toThrow("single items need a game");
+		expect(() => attributeFields("graded", null)).toThrow("graded items need a game");
+		expect(() => attributeFields("sealed", null)).toThrow("sealed items need a game");
+		expect(() => attributeFields("lot", null)).toThrow("lots need a game");
+	});
+
+	it("rejects input that isn't an object as a whole-row issue [TCG-attribute-schema]", () => {
+		const issues = issuesOf(validateAttributes("lot", game("mtg"), "500 cards"));
+		expect(issues).toHaveLength(1);
+		expect(issues[0]!.field).toBe("");
+	});
+
+	it("explains boolean fields as yes or no [TCG-attribute-schema]", () => {
+		expect(issuesOf(validateAttributes("sealed", game("mtg"), { name: "Box", repack: "maybe" }))).toEqual([
+			{ field: "repack", message: "Repack (not factory sealed) must be yes or no" },
+		]);
+	});
 });

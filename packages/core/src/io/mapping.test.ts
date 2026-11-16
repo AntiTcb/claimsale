@@ -50,6 +50,54 @@ describe("column mapping", () => {
 			{ row: 4, cells: { name: "Eevee", price: "2" } },
 		]);
 	});
+
+	it("ignores unnamed columns and reads short rows as blanks", () => {
+		const { mapping, unmapped } = autoMapColumns(["name", "", "price"]);
+		expect(unmapped).toEqual([]);
+		expect(mapRows([["name", "", "price"], ["Pikachu"]], mapping)).toEqual([
+			{ row: 2, cells: { name: "Pikachu", price: "" } },
+		]);
+	});
+});
+
+describe("preset detection and edge rows", () => {
+	const HEADER =
+		"TCGplayer Id,Product Line,Product Name,Number,Condition,Total Quantity,TCG Marketplace Price";
+	const tcgRows = (...lines: string[]) =>
+		mapRowsWithPreset(parseCsv([HEADER, ...lines].join("\n")), TCGPLAYER_PRESET).map((r) => r.cells);
+
+	it("finds no preset for our own headers", () => {
+		expect(detectPreset(["sku", "game", "kind", "title"])).toBeNull();
+	});
+
+	it("detects ManaBox by its Scryfall columns and defaults a blank Foil to non-foil", () => {
+		const table = parseCsv(
+			"Name,Set code,Collector number,Scryfall ID,Foil\nSol Ring,fdn,248,abc,\n,,,,\nBolt,2xm",
+		);
+		expect(detectPreset(table[0]!)).toBe(MANABOX_PRESET);
+		const rows = mapRowsWithPreset(table, MANABOX_PRESET);
+		expect(rows.map((r) => r.row)).toEqual([2, 4]);
+		expect(rows[0]!.cells["finish"]).toBe("non-foil");
+		expect(rows[1]!.cells["number"]).toBe("");
+	});
+
+	it("reads TCGplayer's plain printing as non-holo or non-foil, and Foil per game", () => {
+		const [pokemon, mtg, mtgFoil] = tcgRows(
+			"1,Pokemon,Pikachu,1,Near Mint,1,1.00",
+			"2,Magic,Sol Ring,1,Near Mint,1,1.00",
+			"3,Magic,Sol Ring,1,Lightly Played Holofoil,1,1.00",
+		);
+		expect(pokemon).toMatchObject({ condition: "Near Mint", finish: "non-holo" });
+		expect(mtg).toMatchObject({ finish: "non-foil" });
+		expect(mtgFoil).toMatchObject({ condition: "Lightly Played", finish: "foil" });
+	});
+
+	it("passes unknown product lines and conditions through for validation to flag", () => {
+		const [row] = tcgRows("1,Hearthstone,Ragnaros,1,Mint,1,1.00");
+		expect(row).toMatchObject({ game: "Hearthstone", condition: "Mint", finish: "" });
+		const result = expectOk(validateImport([{ row: 2, cells: row! }], { sellerTier: "free" }));
+		expect(result.errors.map((e) => e.field)).toContain("game");
+	});
 });
 
 const TCGPLAYER_CSV = [

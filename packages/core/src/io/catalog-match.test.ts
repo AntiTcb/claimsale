@@ -133,5 +133,8 @@ describe("name similarity", () => {
 		expect(nameSimilarity("Pikachu", "Pikachuu")).toBeGreaterThan(0.8);
 		expect(nameSimilarity("Pikachu", "Raichu")).toBeLessThan(0.5);
 		expect(nameSimilarity("", "")).toBe(1);
+		// Single characters have no bigrams; only an exact match counts.
+		expect(nameSimilarity("N", "n")).toBe(1);
+		expect(nameSimilarity("N", "M")).toBe(0);
 	});
 });

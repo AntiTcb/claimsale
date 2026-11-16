@@ -97,6 +97,13 @@ describe("text decoding", () => {
 		expect(decodeWindows1252(bytes(0x93, 0x94, 0x99, 0x9f))).toBe("“”™Ÿ");
 	});
 
+	it("reads big-endian UTF-16 with a BOM", () => {
+		expect(decodeText(bytes(0xfe, 0xff, 0x00, 0x41, 0x00, 0xe9))).toEqual({
+			text: "Aé",
+			encoding: "utf-16be",
+		});
+	});
+
 	it("reads UTF-16 files with a BOM (Excel's Unicode text)", () => {
 		expect(decodeText(bytes(0xff, 0xfe, 0x41, 0x00, 0xe9, 0x00))).toEqual({
 			text: "Aé",

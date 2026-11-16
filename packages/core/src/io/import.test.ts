@@ -66,6 +66,56 @@ describe("row validation [IO-import-validate]", () => {
 		expect(fields(result)).toEqual(["condition", "name", "offers", "price", "quantity", "title"]);
 	});
 
+	it("enforces length limits on title, description and SKU [IO-import-validate]", () => {
+		const result = validateImportRow(
+			single({ title: "T".repeat(201), description: "D".repeat(5001), sku: "S".repeat(65) }),
+			free,
+		);
+		expect(issues(result)).toEqual([
+			{ field: "title", message: "Title must be at most 200 characters" },
+			{ field: "description", message: "Description must be at most 5000 characters" },
+			{ field: "sku", message: "SKU must be at most 64 characters" },
+		]);
+	});
+
+	it("requires a kind (or item_type) and a positive price [IO-import-validate]", () => {
+		expect(issues(validateImportRow(single({ kind: "" }), free))).toEqual([
+			{ field: "kind", message: "Kind is required" },
+		]);
+		expect(
+			expectOk(
+				validateImportRow(
+					single({
+						kind: "",
+						item_type: "Graded single",
+						grader: "PSA",
+						grade: "10",
+						cert_number: "12345678",
+					}),
+					free,
+				),
+			).kind,
+		).toBe("graded");
+		expect(issues(validateImportRow(single({ price: "" }), free))).toEqual([
+			{ field: "price", message: "Price is required" },
+		]);
+		expect(issues(validateImportRow(single({ price: "0.00" }), free))).toEqual([
+			{ field: "price", message: "Price must be more than $0.00" },
+		]);
+	});
+
+	it("reads shipping overrides and rejects unreadable amounts [IO-import-validate]", () => {
+		expect(
+			expectOk(validateImportRow(single({ shipping_override: "4.50" }), free)).shippingOverrideCents,
+		).toBe(450);
+		expect(fields(validateImportRow(single({ shipping_override: "free" }), free))).toEqual([
+			"shipping_override",
+		]);
+		expect(fields(validateImportRow(single({ offers: "min", min_offer: "ten" }), pro))).toEqual([
+			"min_offer",
+		]);
+	});
+
 	it("rejects unknown games and kinds, and requires a game except for accessories [IO-import-validate]", () => {
 		expect(fields(validateImportRow(single({ game: "Hearthstone" }), free))).toContain("game");
 		expect(fields(validateImportRow(single({ kind: "figure" }), free))).toEqual(["kind"]);
@@ -236,6 +286,25 @@ describe("upsert planning [IO-import-upsert]", () => {
 		expect(plan.outcomes).toEqual([
 			{ row: 2, outcome: "skipped", itemId: "i1", reason: "unchanged" },
 			{ row: 3, outcome: "updated", itemId: "i2", changed: ["photos"] },
+		]);
+	});
+
+	it("compares attributes regardless of key order [IO-import-upsert]", () => {
+		const plan = planImport({
+			rows: planRows(
+				imported({ itemId: "i1", attributes: { name: "Charizard ex", condition: "NM", finish: "holo" } }),
+				imported({ itemId: "i2", attributes: { condition: "LP", name: "Charizard ex" } }),
+			),
+			existing: [
+				existing("i1", { attributes: { finish: "holo", condition: "NM", name: "Charizard ex" } }),
+				existing("i2"),
+			],
+			removeMissing: false,
+			sellerTier: "free",
+		});
+		expect(plan.outcomes).toEqual([
+			{ row: 2, outcome: "skipped", itemId: "i1", reason: "unchanged" },
+			{ row: 3, outcome: "updated", itemId: "i2", changed: ["attributes"] },
 		]);
 	});
 

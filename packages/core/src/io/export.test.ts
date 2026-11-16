@@ -2,6 +2,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
 	genericShippingExport,
+	itemsExport,
 	ordersExport,
 	ORDER_COLUMNS,
 	pirateShipExport,
@@ -92,9 +93,62 @@ describe("orders export [IO-export-privacy]", () => {
 		).toEqual([]);
 	});
 
+	it("leaves address cells blank before payment, and blanks missing SKU and shipping option [IO-export-privacy]", () => {
+		const table = ordersExport([
+			order({
+				status: "sent",
+				shippingAddress: null,
+				shippingOptionLabel: null,
+				lines: [{ title: "Pikachu", sku: null, amountCents: 500, refundOwed: false }],
+			}),
+		]);
+		const row = Object.fromEntries(table.headers.map((h, i) => [h, table.rows[0]![i]]));
+		expect(row).toMatchObject({
+			ship_name: "",
+			ship_line1: "",
+			ship_country: "",
+			sku: "",
+			shipping_option: "",
+		});
+		expect(genericShippingExport([order({ shippingOptionLabel: null })]).rows[0]!.at(-1)).toBe("");
+	});
+
 	it("escapes buyer-controlled text that looks like a formula [IO-export-privacy]", () => {
 		const table = ordersExport([order({ buyer: { id: "u", handle: "h", displayName: '=HYPERLINK("x")' } })]);
 		expect(table.rows[0]![2]).toBe(`'=HYPERLINK("x")`);
+	});
+});
+
+describe("items export", () => {
+	const base = {
+		sku: null,
+		title: "Listing",
+		description: "",
+		priceCents: 100,
+		quantity: 1,
+		offers: "off" as const,
+		minOfferCents: null,
+		shippingOverrideCents: null,
+		status: "available",
+		winnerHandle: null,
+		finalPriceCents: null,
+	};
+
+	it("adds attribute columns only for games it knows, and accessories without a game", () => {
+		const table = itemsExport([
+			{
+				...base,
+				id: "a",
+				game: null,
+				kind: "accessory",
+				attributes: { accessory_type: "playmat", condition: "new" },
+			},
+			// A game that was removed from the registry contributes no attribute columns.
+			{ ...base, id: "b", game: "retired-game", kind: "single", attributes: { name: "Old card" } },
+		]);
+		expect(table.headers.slice(-3)).toEqual(["accessory_type", "brand", "condition"]);
+		expect(table.headers).not.toContain("name");
+		expect(table.rows[1]![table.headers.indexOf("game")]).toBe("retired-game");
 	});
 });
 

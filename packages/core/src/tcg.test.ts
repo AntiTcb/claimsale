@@ -162,6 +162,33 @@ describe("catalog autofill [TCG-autofill-only]", () => {
 		);
 	});
 
+	const box: CatalogProduct = {
+		...product,
+		tcgplayerProductId: 501,
+		kind: "sealed",
+		name: "Obsidian Flames Booster Box",
+		number: "N/A",
+		rarity: "None",
+		productType: "Booster Box",
+	};
+
+	it("fills a sealed item's product type but never a number or rarity [TCG-autofill-only]", () => {
+		const sealed = { ...draft, kind: "sealed" as const, attributes: { repack: false, number: "stale" } };
+		expect(expectOk(applyCatalogAutofill(sealed, box, "replace")).attributes).toEqual({
+			repack: false,
+			name: "Obsidian Flames Booster Box",
+			set_code: "OBF",
+			set_name: "Obsidian Flames",
+			product_type: "Booster Box",
+			tcgplayer_product_id: 501,
+		});
+	});
+
+	it("takes the product's game when an import row has none [TCG-autofill-only]", () => {
+		const row = { ...draft, kind: "sealed" as const, attributes: {} };
+		expect(expectOk(applyCatalogAutofill(row, box, "fill-blanks")).game).toBe("pokemon");
+	});
+
 	it("only ever changes the game and the autofill keys (property) [TCG-autofill-only]", () => {
 		const value = fc.oneof(fc.string(), fc.integer(), fc.boolean());
 		fc.assert(
@@ -224,6 +251,12 @@ describe("market price aid [TCG-market-placeholder]", () => {
 			expect(marketHint({ ...base, kind })).toBeNull();
 		expect(marketHint({ ...base, tcgplayerProductId: null })).toBeNull();
 		expect(marketHint({ ...base, quote: null })).toBeNull();
+	});
+
+	it("highlights no button when the seller has no default % [TCG-market-placeholder]", () => {
+		const hint = marketHint({ ...base, kind: "sealed", quote: { marketCents: 15_000, asOf: 0 } });
+		expect(hint?.highlightedPercent).toBeNull();
+		expect(hint?.placeholder).toBe("Market $150.00 · updated Jan 1");
 	});
 
 	it("strips market data from buyer-facing values at any depth [TCG-market-placeholder]", () => {
