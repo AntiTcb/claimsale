@@ -115,6 +115,17 @@ Pure part can start now; wiring needs WS-A.
   images, banded candidate lookup, `IMG-dup-reject`, `IMG-dup-review`, `IMG-own-reuse`,
   `IMG-repeat-offender`, `IMG-required` and `IMG-timestamp-required` at publish, and the
   `/admin` review queue.
+- Notes from F1 (`@claimsale/imagehash`):
+  - Store each 64-bit hash as hex TEXT (D1 returns INTEGER as a JS number and loses
+    bits); the 16-bit bands are safe as INTEGER.
+  - Index only the `orig` bands of stored images; look up with all 5 variants of the upload.
+  - `candidateBands` radius 1 is guaranteed to find every match within 7 bits (all rejects);
+    review-band matches (7–12) are best effort.
+  - Pass candidate keys as one JSON parameter through `json_each` (D1 allows 100 bound
+    parameters per query).
+  - Import the jsquash `.wasm` files in wrangler and pass them to `createJsquashDecoder`.
+  - Owner to confirm: review needs both hashes ≤ 12, each hash takes its own minimum
+    over the variants, and mirror + 90° together isn't covered.
 
 ### WS-G · Item import UI + catalog picker + market price aid (M4 part 3)
 Needs WS-A, WS-B, WS-C.
@@ -124,6 +135,8 @@ Needs WS-A, WS-B, WS-C.
   (`IO-import-idempotent`, `IO-import-photos`), results CSV.
 - Catalog type-ahead in the item form and table editor; price placeholder and the
   70–100 % buttons; seller default %; bulk "N % of market" with preview.
+- ManaBox exports carry no price, and core's import validation requires one: offer the
+  % of market preview for blank prices before validating (from WS-B).
 
 ### WS-H · Live grid (M6)
 Needs WS-E.
@@ -148,6 +161,8 @@ Needs WS-E; uses WS-B's pure logic.
 - Shipping menu editor; payment deadlines and the overdue one-click rescind.
 - Export jobs on a Queue → R2, 24 h links (`IO-export-expiry`), `/sell/exports`;
   tracking re-import (`IO-tracking-transition`, `IO-tracking-replace`).
+- Make `invoice.ship()` enforce core's `trackingRequiredFor` (graded/sealed and the
+  threshold); WS-B added the rule but not this check.
 
 ### WS-K · Notifications and messaging (M9)
 Needs WS-E. Can run alongside WS-H/I/J if it only adds the consumer side.
@@ -177,6 +192,26 @@ Wave 2 (after WS-A):        WS-E   WS-F2  WS-G (also needs B, C)
 Wave 3 (after WS-E):        WS-H   WS-I   WS-J   WS-K
 Wave 4:                     WS-L → pilot sale
 ```
+
+### Wave 1 integration notes
+- WS-A's publish check accepts any photo that isn't rejected; WS-F2 tightens it to
+  `approved` (`IMG-required`). WS-A's item form takes WS-B's schemas through
+  `apps/web/src/lib/listing-input.ts`.
+- WS-A deferred: allowlist invite emails (WS-K), deleting R2 objects with a draft.
+- WS-A: new tables store timestamps as number milliseconds (auth tables use `Date`);
+  repositories are plain async functions over `Db`, like `users.ts`; all PR pairs share
+  the `claimsale-images-preview` bucket. The R2 buckets must exist before the next web
+  deploy (TECH_STACK §11).
+- WS-D adds `requireSeller(event)` (`#lib/server/seller.ts`): every `/sell` `load` and
+  action from WS-A must call it when the two merge.
+- WS-D turns email sign-up off wherever no Turnstile key is set, which includes
+  production today. Turnstile keys must exist before WS-D ships to production.
+- WS-D's Turnstile browser test failed once in a full run and didn't reproduce in 13
+  reruns; find the cause before merging (CLAUDE.md: no flaky tests).
+- `pnpm test` times out in `scripts/` tests that spawn `node` on the owner's machine
+  (Node takes ~3–4 s to start), and `cf-resources.test.ts` fails when WSL's `bash` is
+  first on PATH. Seen on every wave-1 branch, including WS-B, WS-C and WS-F1, which don't
+  touch `scripts/` (WS-D only adds preview-pair vars in `preview-config.ts`).
 
 ### Merge rules for parallel work
 - **Migrations:** WS-A owns the core tables, WS-C owns catalog tables, WS-F2 owns
