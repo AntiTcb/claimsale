@@ -1,31 +1,28 @@
-import type { Cents, SaleVisibility, Validated } from "@claimsale/core";
+import { enabledGames, type Cents, type SaleVisibility, type Validated } from "@claimsale/core";
 
 /**
  * Form input for sales and items, shared by the pages (client) and the form
  * actions (server, which always re-validates).
  *
- * **Seam for WS-B:** the game list, kinds, conditions and `validateAttributes`
- * are deliberately minimal. When the per-game Effect Schemas land in
- * packages/core (`TCG-attribute-schema`), `GAMES` comes from the core games
- * registry and `validateAttributes` delegates to the game × kind schema; callers
- * keep the same signatures.
+ * **Seam for WS-G:** `GAMES` comes from the core games registry. Kinds, conditions
+ * and `validateAttributes` are still minimal; WS-G moves them onto core's
+ * per-game schemas (`TCG-attribute-schema`), and callers keep the same signatures.
  */
 
 const valid = <T>(value: T): Validated<T> => ({ ok: true, value });
 const invalid = (message: string): Validated<never> => ({ ok: false, message });
 
-/** Launch games (D61); replaced by the core games registry (WS-B / WS-C). */
-export const GAMES = [
-	{ id: "yugioh", name: "Yu-Gi-Oh!" },
-	{ id: "pokemon", name: "Pokémon" },
-	{ id: "magic", name: "Magic: The Gathering" },
-	{ id: "riftbound", name: "Riftbound" },
-	{ id: "one-piece", name: "One Piece" },
-	{ id: "lorcana", name: "Disney Lorcana" },
+/**
+ * The games a seller can pick: the core registry's enabled games (D61), whose slugs
+ * are the `games` table's ids, then "Other TCG" for anything outside it. WS-G
+ * replaces "other" when the form moves to the per-game schemas.
+ */
+export const GAMES: readonly { readonly id: string; readonly name: string }[] = [
+	...enabledGames().map((game) => ({ id: game.slug, name: game.name })),
 	{ id: "other", name: "Other TCG" },
-] as const;
+];
 
-export type GameId = (typeof GAMES)[number]["id"];
+export type GameId = string;
 
 export const ITEM_KINDS = [
 	{ id: "single", name: "Single" },

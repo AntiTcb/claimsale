@@ -11,12 +11,12 @@ import {
 } from "./games.ts";
 
 describe("games registry", () => {
-	it("has the launch games first: Pokémon, Yu-Gi-Oh!, MTG, Riftbound (D61)", () => {
+	it("has the launch games first: Yu-Gi-Oh!, Pokémon, MTG, Riftbound (D61)", () => {
 		expect(
 			enabledGames()
 				.slice(0, 4)
 				.map((game) => game.slug),
-		).toEqual(["pokemon", "yugioh", "mtg", "riftbound"]);
+		).toEqual(["yugioh", "pokemon", "mtg", "riftbound"]);
 	});
 
 	it("has unique slugs, sort orders and category IDs, and only known finishes and languages", () => {

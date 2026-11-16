@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ITEM_KINDS } from "../attributes.ts";
-import { GAMES } from "../games.ts";
+import { enabledGames } from "../games.ts";
 import { FREE_ITEM_CAP } from "../plans.ts";
 import type { SaleStatus } from "../sale.ts";
 import { expectOk, expectRejected } from "../testing.ts";
@@ -116,6 +116,12 @@ describe("row validation [IO-import-validate]", () => {
 		]);
 	});
 
+	it("refuses a known game that isn't enabled yet [IO-import-validate]", () => {
+		expect(issues(validateImportRow(single({ game: "Final Fantasy TCG" }), free))).toEqual([
+			{ field: "game", message: "Final Fantasy TCG isn't open for listings yet" },
+		]);
+	});
+
 	it("rejects unknown games and kinds, and requires a game except for accessories [IO-import-validate]", () => {
 		expect(fields(validateImportRow(single({ game: "Hearthstone" }), free))).toContain("game");
 		expect(fields(validateImportRow(single({ kind: "figure" }), free))).toEqual(["kind"]);
@@ -168,7 +174,8 @@ describe("row validation [IO-import-validate]", () => {
 	});
 
 	it("accepts every template's example row [IO-import-validate]", () => {
-		for (const game of GAMES) {
+		// Disabled games are refused on import (separate test), so only enabled ones have usable templates.
+		for (const game of enabledGames()) {
 			for (const kind of ITEM_KINDS) {
 				const [headers, example] = templateRows(kind, game);
 				const cells = Object.fromEntries(headers!.map((h, i) => [h, example![i]!]));

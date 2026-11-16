@@ -24,7 +24,7 @@
 	const reorderError = $derived(form?.action === "reorder" && "errors" in form ? form.errors.form : null);
 
 	// Sticky choices for fast entry: game, kind and condition carry over to the next item.
-	let game = $state<string>(GAMES[0].id);
+	let game = $state<string>(GAMES[0]?.id ?? "other");
 	let kind = $state<string>(ITEM_KINDS[0].id);
 	let condition = $state<string>("NM");
 	let titleInput: HTMLInputElement | undefined = $state();

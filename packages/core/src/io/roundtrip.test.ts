@@ -12,7 +12,7 @@ import {
 	type FieldSpec,
 	type ItemKind,
 } from "../attributes.ts";
-import { GAMES, type Game } from "../games.ts";
+import { enabledGames, type Game } from "../games.ts";
 import { expectOk } from "../testing.ts";
 import { MAX_PRICE_CENTS } from "./cells.ts";
 import { decodeText, encodeCsv, encodeUtf8, parseCsv, type Delimiter } from "./csv.ts";
@@ -83,7 +83,7 @@ function attributesFor(kind: ItemKind, game: Game | null): fc.Arbitrary<Record<s
 }
 
 const gameAndKind = fc
-	.tuple(fc.constantFrom(...ITEM_KINDS), fc.constantFrom(...GAMES), fc.boolean())
+	.tuple(fc.constantFrom(...ITEM_KINDS), fc.constantFrom(...enabledGames()), fc.boolean())
 	.map(([kind, game, noGame]) => ({ kind, game: kind === "accessory" && noGame ? null : game }));
 
 const offersFor = (priceCents: number) =>

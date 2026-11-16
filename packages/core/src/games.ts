@@ -72,9 +72,12 @@ export interface Game {
 const FOIL: readonly Finish[] = ["non-foil", "foil"];
 const EN_JA: readonly Language[] = ["en", "ja"];
 
-// TODO verify: every category ID against TCGCSV's /tcgplayer/categories before WS-C
-// enables ingestion. MTG 1, YGO 2, Pokémon 3 are long-standing; the rest are from
-// memory, and Riftbound / Gundam are recent additions.
+// Category IDs checked against TCGCSV's /tcgplayer/categories on 2026-11-16. The
+// `games` table matches this list (migrations 0004 and 0005); changing a game here
+// needs a migration that changes its row. Launch (D61, 2026-11-16): the first ten are
+// enabled; the rest are turned on later, which keeps TCGCSV ingestion small. Japanese
+// Pokémon is a language of `pokemon`, not a game: the table's disabled `pokemon-japan`
+// row only marks TCGCSV's separate category (85) for future catalog ingestion.
 export const GAMES: readonly Game[] = [
 	{
 		slug: "pokemon",
@@ -85,7 +88,7 @@ export const GAMES: readonly Game[] = [
 		tcgplayerCategoryId: 3,
 		tcgplayerProductLine: "Pokemon",
 		enabled: true,
-		sortOrder: 10,
+		sortOrder: 20,
 	},
 	{
 		slug: "yugioh",
@@ -97,7 +100,7 @@ export const GAMES: readonly Game[] = [
 		tcgplayerCategoryId: 2,
 		tcgplayerProductLine: "YuGiOh",
 		enabled: true,
-		sortOrder: 20,
+		sortOrder: 10,
 	},
 	{
 		slug: "mtg",
@@ -116,7 +119,7 @@ export const GAMES: readonly Game[] = [
 		conditionScale: CONDITIONS,
 		finishes: FOIL,
 		languages: ["en", "zh-Hans"],
-		tcgplayerCategoryId: 89, // TODO verify
+		tcgplayerCategoryId: 89,
 		tcgplayerProductLine: "Riftbound: League of Legends Trading Card Game", // TODO verify
 		enabled: true,
 		sortOrder: 40,
@@ -127,7 +130,7 @@ export const GAMES: readonly Game[] = [
 		conditionScale: CONDITIONS,
 		finishes: FOIL,
 		languages: ["en", "ja"],
-		tcgplayerCategoryId: 68, // TODO verify
+		tcgplayerCategoryId: 68,
 		tcgplayerProductLine: "One Piece Card Game",
 		enabled: true,
 		sortOrder: 50,
@@ -138,7 +141,7 @@ export const GAMES: readonly Game[] = [
 		conditionScale: CONDITIONS,
 		finishes: FOIL,
 		languages: ["en", "fr", "de", "it", "ja"],
-		tcgplayerCategoryId: 71, // TODO verify
+		tcgplayerCategoryId: 71,
 		tcgplayerProductLine: "Lorcana TCG",
 		enabled: true,
 		sortOrder: 60,
@@ -149,7 +152,7 @@ export const GAMES: readonly Game[] = [
 		conditionScale: CONDITIONS,
 		finishes: ["non-foil", "foil"],
 		languages: ["en", "fr", "de", "it", "es", "ja"],
-		tcgplayerCategoryId: 62, // TODO verify
+		tcgplayerCategoryId: 62,
 		tcgplayerProductLine: "Flesh and Blood TCG",
 		enabled: true,
 		sortOrder: 70,
@@ -160,7 +163,7 @@ export const GAMES: readonly Game[] = [
 		conditionScale: CONDITIONS,
 		finishes: FOIL,
 		languages: ["en", "fr", "de", "it", "es"],
-		tcgplayerCategoryId: 79, // TODO verify
+		tcgplayerCategoryId: 79,
 		tcgplayerProductLine: "Star Wars: Unlimited",
 		enabled: true,
 		sortOrder: 80,
@@ -171,7 +174,7 @@ export const GAMES: readonly Game[] = [
 		conditionScale: CONDITIONS,
 		finishes: FOIL,
 		languages: EN_JA,
-		tcgplayerCategoryId: 63, // TODO verify
+		tcgplayerCategoryId: 63,
 		tcgplayerProductLine: "Digimon Card Game",
 		enabled: true,
 		sortOrder: 90,
@@ -182,7 +185,7 @@ export const GAMES: readonly Game[] = [
 		conditionScale: CONDITIONS,
 		finishes: FOIL,
 		languages: EN_JA,
-		tcgplayerCategoryId: null, // TODO verify (recent addition to TCGCSV)
+		tcgplayerCategoryId: 86,
 		tcgplayerProductLine: "Gundam Card Game",
 		enabled: true,
 		sortOrder: 100,
@@ -193,10 +196,10 @@ export const GAMES: readonly Game[] = [
 		conditionScale: CONDITIONS,
 		finishes: FOIL,
 		languages: EN_JA,
-		tcgplayerCategoryId: 80, // TODO verify
+		tcgplayerCategoryId: 80,
 		tcgplayerProductLine: "Dragon Ball Super Fusion World",
-		enabled: true,
-		sortOrder: 110,
+		enabled: false,
+		sortOrder: 120,
 	},
 	{
 		slug: "union-arena",
@@ -204,10 +207,10 @@ export const GAMES: readonly Game[] = [
 		conditionScale: CONDITIONS,
 		finishes: FOIL,
 		languages: EN_JA,
-		tcgplayerCategoryId: 81, // TODO verify
+		tcgplayerCategoryId: 81,
 		tcgplayerProductLine: "Union Arena",
-		enabled: true,
-		sortOrder: 120,
+		enabled: false,
+		sortOrder: 130,
 	},
 	{
 		slug: "weiss-schwarz",
@@ -215,10 +218,10 @@ export const GAMES: readonly Game[] = [
 		conditionScale: CONDITIONS,
 		finishes: FOIL,
 		languages: EN_JA,
-		tcgplayerCategoryId: 20, // TODO verify
+		tcgplayerCategoryId: 20,
 		tcgplayerProductLine: "Weiss Schwarz",
-		enabled: true,
-		sortOrder: 130,
+		enabled: false,
+		sortOrder: 140,
 	},
 	{
 		slug: "cardfight-vanguard",
@@ -226,10 +229,10 @@ export const GAMES: readonly Game[] = [
 		conditionScale: CONDITIONS,
 		finishes: FOIL,
 		languages: EN_JA,
-		tcgplayerCategoryId: 16, // TODO verify
+		tcgplayerCategoryId: 16,
 		tcgplayerProductLine: "Cardfight Vanguard",
-		enabled: true,
-		sortOrder: 140,
+		enabled: false,
+		sortOrder: 150,
 	},
 	{
 		slug: "sorcery",
@@ -237,10 +240,10 @@ export const GAMES: readonly Game[] = [
 		conditionScale: CONDITIONS,
 		finishes: FOIL,
 		languages: ["en"],
-		tcgplayerCategoryId: 77, // TODO verify
+		tcgplayerCategoryId: 77,
 		tcgplayerProductLine: "Sorcery Contested Realm",
-		enabled: true,
-		sortOrder: 150,
+		enabled: false,
+		sortOrder: 160,
 	},
 	{
 		slug: "grand-archive",
@@ -248,10 +251,10 @@ export const GAMES: readonly Game[] = [
 		conditionScale: CONDITIONS,
 		finishes: FOIL,
 		languages: EN_JA,
-		tcgplayerCategoryId: 74, // TODO verify
+		tcgplayerCategoryId: 74,
 		tcgplayerProductLine: "Grand Archive TCG",
-		enabled: true,
-		sortOrder: 160,
+		enabled: false,
+		sortOrder: 170,
 	},
 	{
 		slug: "final-fantasy",
@@ -259,10 +262,10 @@ export const GAMES: readonly Game[] = [
 		conditionScale: CONDITIONS,
 		finishes: FOIL,
 		languages: ["en", "ja", "fr", "de", "it", "es"],
-		tcgplayerCategoryId: 24, // TODO verify
+		tcgplayerCategoryId: 24,
 		tcgplayerProductLine: "Final Fantasy TCG",
-		enabled: true,
-		sortOrder: 170,
+		enabled: false,
+		sortOrder: 180,
 	},
 ];
 

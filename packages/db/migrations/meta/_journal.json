@@ -36,6 +36,13 @@
       "when": 1794808832448,
       "tag": "0004_catalog_search",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794853880809,
+      "tag": "0005_games_registry",
+      "breakpoints": true
     }
   ]
 }
