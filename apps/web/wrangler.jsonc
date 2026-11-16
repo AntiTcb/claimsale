@@ -44,6 +44,9 @@
 		},
 	],
 	"send_email": [{ "name": "EMAIL" }],
+	// Seller photos (PLAN §5 "Images"). Private: served only through /api/images/[id],
+	// which checks sale access (SM-2-private-images). Local dev simulates it.
+	"r2_buckets": [{ "binding": "IMAGES", "bucket_name": "claimsale-images-local" }],
 	"env": {
 		"staging": {
 			"name": "claimsale-web-staging",
@@ -69,6 +72,7 @@
 				},
 			],
 			"send_email": [{ "name": "EMAIL" }],
+			"r2_buckets": [{ "binding": "IMAGES", "bucket_name": "claimsale-images-staging" }],
 			// Worker Previews (TECH_STACK S37): `wrangler preview --env staging` creates a
 			// Preview of claimsale-web-staging. Previews inherit nothing from the settings
 			// above, and a Preview's service binding reaches the bound Worker's deployed
@@ -96,6 +100,8 @@
 					},
 				],
 				"send_email": [{ "name": "EMAIL" }],
+				// Staging data, so staging's photos.
+				"r2_buckets": [{ "binding": "IMAGES", "bucket_name": "claimsale-images-staging" }],
 			},
 		},
 		"production": {
@@ -122,6 +128,7 @@
 				},
 			],
 			"send_email": [{ "name": "EMAIL" }],
+			"r2_buckets": [{ "binding": "IMAGES", "bucket_name": "claimsale-images" }],
 			// Custom domain (claimsale.net) is added once the domain is registered in the account.
 		},
 	},

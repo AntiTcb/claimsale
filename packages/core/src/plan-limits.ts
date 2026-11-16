@@ -2,11 +2,11 @@ import type { Actor, Tier, UserId } from "./common.ts";
 import { FREE_ACTIVE_SALE_CAP, FREE_ITEM_CAP } from "./plans.ts";
 
 /**
- * What an account's plan allows (PLAN §3a). Every tier check reads one of these,
- * so the source of the tier (a `plans`/`subscriptions` row, an admin grant) can
- * change without touching the rules.
+ * What a tier allows (PLAN §3a). The tier itself comes from `entitlements()` in
+ * apps/web (`plans` / `subscriptions`); these are the rules that follow from it, so
+ * the engine, the UI and tests agree.
  */
-export interface Entitlements {
+export interface PlanLimits {
 	readonly tier: Tier;
 	/** D55: Pro sellers skip phone verification. */
 	readonly sellerPhoneRequired: boolean;
@@ -17,7 +17,7 @@ export interface Entitlements {
 	readonly itemCapPerSale: number | null;
 }
 
-const FREE: Entitlements = {
+const FREE: PlanLimits = {
 	tier: "free",
 	sellerPhoneRequired: true,
 	buyerRequirementsApply: true,
@@ -25,7 +25,7 @@ const FREE: Entitlements = {
 	itemCapPerSale: FREE_ITEM_CAP,
 };
 
-const PRO: Entitlements = {
+const PRO: PlanLimits = {
 	tier: "pro",
 	sellerPhoneRequired: false,
 	buyerRequirementsApply: false,
@@ -34,11 +34,11 @@ const PRO: Entitlements = {
 };
 
 /** The plan for a tier; anything but `"pro"` is Free, so a missing or unknown plan never grants Pro. */
-export function entitlementsFor(tier: unknown): Entitlements {
+export function planLimits(tier: unknown): PlanLimits {
 	return tier === "pro" ? PRO : FREE;
 }
 
 /** The actor a signed-in user acts as, with the tier from their entitlements (STATE_MACHINES §8). */
-export function actorFor(kind: "buyer" | "seller", id: UserId, entitlements: Entitlements): Actor {
-	return { kind, id, tier: entitlements.tier };
+export function actorFor(kind: "buyer" | "seller", id: UserId, limits: PlanLimits): Actor {
+	return { kind, id, tier: limits.tier };
 }

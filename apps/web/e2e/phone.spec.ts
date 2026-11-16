@@ -24,7 +24,9 @@ test.describe("phone verification and seller requirements", () => {
 		await signUp(page, who);
 		await expect(page).toHaveURL(/\/\?welcome=1$/);
 
-		await page.goto("/sell/requirements?next=/sell/new");
+		// The real /sell pages send an unready seller to the checklist, keeping where they were going.
+		await page.goto("/sell/new");
+		await expect(page).toHaveURL(/\/sell\/requirements\?next=%2Fsell%2Fnew$/);
 		await expect(page.getByRole("heading", { name: "Before you can sell" })).toBeVisible();
 		await expect(page.getByText("Verified email: missing")).toBeAttached();
 		await expect(page.getByText("Verified mobile number: missing")).toBeAttached();
@@ -53,6 +55,8 @@ test.describe("phone verification and seller requirements", () => {
 		await page.goto("/sell/requirements?next=/sell/new");
 		await expect(page.getByRole("heading", { name: "You're ready to sell" })).toBeVisible();
 		await expect(page.getByRole("link", { name: "Continue" })).toHaveAttribute("href", "/sell/new");
+		await page.getByRole("link", { name: "Continue" }).click();
+		await expect(page.getByRole("heading", { name: "New sale" })).toBeVisible();
 	});
 
 	test("one number can't verify a second account", async ({ page, browser, request }) => {

@@ -1,14 +1,40 @@
-import { entitlementsFor, type Entitlements } from "@claimsale/core";
+import type { Millis, Tier } from "@claimsale/core";
+import { and, eq, gt, inArray, isNull, or, type Db } from "@claimsale/db";
+import { plans, subscriptions } from "@claimsale/db/schema";
 
 /**
- * The one place the web Worker reads a user's plan. Until the `plans` /
- * `subscriptions` tables exist (IMPLEMENTATION_PLAN WS-A), every account is Free
- * unless the user record carries `tier: "pro"`; swap the body for a subscription
- * lookup then, and every caller follows. Async so that lookup can query D1.
+ * `entitlements(user)` (PLAN §3a): the user's seller and buyer tier, read from
+ * `subscriptions` + `plans`. Every server-side limit check goes through here, so
+ * Stripe Billing or an admin grant (WS-D) only has to write those rows.
  */
-export async function entitlements(user: {
-	readonly id: string;
-	readonly tier?: unknown;
-}): Promise<Entitlements> {
-	return entitlementsFor(user.tier);
+
+export interface Entitlements {
+	readonly seller: Tier;
+	readonly buyer: Tier;
+}
+
+export const FREE: Entitlements = { seller: "free", buyer: "free" };
+
+const ACTIVE = ["active", "trialing", "granted"] as const;
+
+export async function entitlements(db: Db, userId: string, now: Millis): Promise<Entitlements> {
+	const rows = await db
+		.select({ limits: plans.limits })
+		.from(subscriptions)
+		.innerJoin(plans, eq(plans.id, subscriptions.planId))
+		.where(
+			and(
+				eq(subscriptions.userId, userId),
+				inArray(subscriptions.status, [...ACTIVE]),
+				or(isNull(subscriptions.currentPeriodEnd), gt(subscriptions.currentPeriodEnd, now)),
+			),
+		)
+		.all();
+	let seller: Tier = "free";
+	let buyer: Tier = "free";
+	for (const { limits } of rows) {
+		if (limits["seller"] === "pro") seller = "pro";
+		if (limits["buyer"] === "pro") buyer = "pro";
+	}
+	return { seller, buyer };
 }

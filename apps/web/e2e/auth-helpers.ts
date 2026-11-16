@@ -76,6 +76,22 @@ export function newPhone(): { e164: string; typed: string; last4: string } {
 	return { e164: `+1${area}${exchange}${line}`, typed: `(${area}) ${exchange}-${line}`, last4: line };
 }
 
+/**
+ * Makes a signed-in 18+ account ready to sell (D55): verifies its email through the
+ * captured outbox and a fresh phone through captured SMS codes.
+ */
+export async function verifySeller(page: Page, email: string): Promise<void> {
+	const request = page.request;
+	await page.goto(await linkFromEmail(request, email, "Confirm your email"));
+	const phone = newPhone();
+	await page.goto("/me/settings");
+	await page.getByLabel("Mobile number").fill(phone.e164);
+	await page.getByRole("button", { name: "Text me a code" }).click();
+	await page.getByLabel("Code").fill(await codeFromSms(request, phone.e164));
+	await page.getByRole("button", { name: "Verify" }).click();
+	await expect(page.getByRole("status")).toHaveText("Your phone number is verified.");
+}
+
 /** The latest captured code for a number. */
 export async function codeFromSms(request: APIRequestContext, e164: string): Promise<string> {
 	let code = "";
