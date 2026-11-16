@@ -1,0 +1,41 @@
+{
+	"_fixture": "Synthetic, in TCGCSV's shape: foil subtypes, a missing market price, ranking ties.",
+	"totalItems": 3,
+	"success": true,
+	"errors": [],
+	"results": [
+		{
+			"productId": 990001,
+			"name": "Annie, Fiery (Alternate Art)",
+			"cleanName": "Annie Fiery Alternate Art",
+			"categoryId": 89,
+			"groupId": 24343,
+			"modifiedOn": "2026-10-28T19:31:31.163",
+			"extendedData": [
+				{ "name": "Rarity", "displayName": "Rarity", "value": "Promo" },
+				{ "name": "Number", "displayName": "Card Number", "value": "PR-001" }
+			]
+		},
+		{
+			"productId": 990002,
+			"name": "Tibbers,  Unleashed",
+			"cleanName": "Tibbers Unleashed",
+			"categoryId": 89,
+			"groupId": 24343,
+			"modifiedOn": "2026-10-28T19:31:31.163",
+			"extendedData": [
+				{ "name": "Rarity", "displayName": "Rarity", "value": "Promo" },
+				{ "name": "Number", "displayName": "Card Number", "value": "PR-002" }
+			]
+		},
+		{
+			"productId": 990003,
+			"name": "Riftbound Promo Booster Pack: Annie",
+			"cleanName": "Riftbound Promo Booster Pack Annie",
+			"categoryId": 89,
+			"groupId": 24343,
+			"modifiedOn": "2026-10-28T19:31:31.163",
+			"extendedData": []
+		}
+	]
+}

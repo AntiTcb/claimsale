@@ -1,5 +1,18 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
+import {
+	CATALOG_CRON,
+	catalogCron,
+	CatalogSearchInput,
+	ingestOneGame,
+	MarketPriceInput,
+	searchCatalog,
+	sellerMarketPrices,
+	type CatalogSearchHit,
+	type IngestCatalogInput,
+	type IngestSummary,
+	type MarketPriceView,
+} from "./catalog/index.ts";
 import type { EngineEnv } from "./env.ts";
 import { handleQueue, handleScheduled } from "./handlers.ts";
 import { health, type HealthReport } from "./health.ts";
@@ -12,6 +25,14 @@ export type { HealthReport } from "./health.ts";
 export type { EngineEnv } from "./env.ts";
 export type { RpcResult, RuntimeCapabilities } from "./runtime.ts";
 export type { TraceProbeInput, TraceProbeResult } from "./trace-probe.ts";
+export type {
+	CatalogSearchHit,
+	CatalogSearchInput,
+	IngestCatalogInput,
+	IngestSummary,
+	MarketPriceInput,
+	MarketPriceView,
+} from "./catalog/index.ts";
 
 /**
  * The engine Worker. The web Worker calls its methods over Workers RPC through a
@@ -40,6 +61,36 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 		);
 	}
 
+	/** The seller's catalog type-ahead (autofill fields only, no prices). */
+	async searchCatalog(input: CatalogSearchInput): Promise<RpcResult<ReadonlyArray<CatalogSearchHit>>> {
+		return runForRpc(
+			this.env,
+			"engine.catalog.search",
+			Schema.decodeUnknownEffect(CatalogSearchInput)(input).pipe(
+				Effect.flatMap((decoded) => searchCatalog(this.env.DB, decoded)),
+			),
+		);
+	}
+
+	/**
+	 * Market prices for a catalog product, for a seller's price placeholder (D64).
+	 * The web Worker passes the authenticated viewer; non-sellers get a failure.
+	 */
+	async catalogMarketPrices(input: MarketPriceInput): Promise<RpcResult<MarketPriceView>> {
+		return runForRpc(
+			this.env,
+			"engine.catalog.market_prices",
+			Schema.decodeUnknownEffect(MarketPriceInput)(input).pipe(
+				Effect.flatMap((decoded) => sellerMarketPrices(this.env.DB, decoded)),
+			),
+		);
+	}
+
+	/** Runs the catalog ingestion for one game now (admin, or staging on demand). */
+	async ingestCatalog(input: IngestCatalogInput): Promise<RpcResult<IngestSummary>> {
+		return runForRpc(this.env, "engine.catalog.ingest", ingestOneGame(this.env, input));
+	}
+
 	override async queue(batch: MessageBatch): Promise<void> {
 		const options = { probeRecipient: optionalSecret(this.env, "TRACE_PROBE_TO") };
 		await run(
@@ -50,6 +101,10 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 	}
 
 	override async scheduled(controller: ScheduledController): Promise<void> {
+		if (controller.cron === CATALOG_CRON) {
+			await run(this.env, "engine.cron.catalog", catalogCron(this.env));
+			return;
+		}
 		await run(this.env, "engine.cron.sweep", handleScheduled(controller));
 	}
 }

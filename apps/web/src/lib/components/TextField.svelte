@@ -6,7 +6,7 @@
 		name: string;
 		/** Defaults to `field-<name>`; set it when one page has two fields with the same name. */
 		id?: string | undefined;
-		type?: "text" | "email" | "password" | "url";
+		type?: "text" | "email" | "password" | "url" | "tel";
 		value?: string | null | undefined;
 		error?: string | undefined;
 		hint?: string | undefined;

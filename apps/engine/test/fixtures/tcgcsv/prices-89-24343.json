@@ -1,0 +1,52 @@
+{
+	"_fixture": "Synthetic, in TCGCSV's shape. The last row's product is not in the catalog.",
+	"success": true,
+	"errors": [],
+	"results": [
+		{
+			"productId": 990001,
+			"lowPrice": 10.5,
+			"midPrice": 13,
+			"highPrice": 20,
+			"marketPrice": 12.4,
+			"directLowPrice": null,
+			"subTypeName": "Normal"
+		},
+		{
+			"productId": 990001,
+			"lowPrice": 22,
+			"midPrice": 27.5,
+			"highPrice": 40,
+			"marketPrice": 25.03,
+			"directLowPrice": null,
+			"subTypeName": "Foil"
+		},
+		{
+			"productId": 990002,
+			"lowPrice": 1,
+			"midPrice": 2,
+			"highPrice": 3,
+			"marketPrice": null,
+			"directLowPrice": null,
+			"subTypeName": "Normal"
+		},
+		{
+			"productId": 990003,
+			"lowPrice": 3.5,
+			"midPrice": 4.25,
+			"highPrice": 6,
+			"marketPrice": 3.99,
+			"directLowPrice": null,
+			"subTypeName": "Normal"
+		},
+		{
+			"productId": 123456789,
+			"lowPrice": 1,
+			"midPrice": 1,
+			"highPrice": 1,
+			"marketPrice": 1,
+			"directLowPrice": null,
+			"subTypeName": "Normal"
+		}
+	]
+}

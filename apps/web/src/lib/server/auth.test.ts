@@ -39,6 +39,42 @@ describe("createAuth", () => {
 		expect(options.socialProviders).toEqual({});
 	});
 
+	it("[AUTH-signup-captcha] guards email sign-up with Turnstile when configured, and turns it off otherwise", () => {
+		const withCaptcha = createAuth({
+			db,
+			mailer,
+			origin: "http://x",
+			secret: "s".repeat(32),
+			captcha: { secretKey: "k" },
+		});
+		const plugin = withCaptcha.options.plugins?.find((p) => p.id === "captcha") as
+			| { options: Record<string, unknown> }
+			| undefined;
+		expect(plugin?.options).toMatchObject({
+			provider: "cloudflare-turnstile",
+			secretKey: "k",
+			endpoints: ["/sign-up/email"],
+		});
+		expect(withCaptcha.options.emailAndPassword?.disableSignUp).toBe(false);
+
+		// The form now goes through the router, so Better Auth's sign-up limit applies to it;
+		// only throwaway environments (E2E signs up many accounts from one address) raise it.
+		expect(withCaptcha.options.rateLimit?.customRules?.["/sign-up/email"]).toEqual({ window: 60, max: 5 });
+		const throwaway = createAuth({
+			db,
+			mailer,
+			origin: "http://x",
+			secret: "s".repeat(32),
+			captcha: { secretKey: "k" },
+			throwawayData: true,
+		});
+		expect(throwaway.options.rateLimit?.customRules?.["/sign-up/email"]).toEqual({ window: 60, max: 200 });
+
+		const without = createAuth({ db, mailer, origin: "http://x", secret: "s".repeat(32) });
+		expect(without.options.plugins?.some((p) => p.id === "captcha")).toBe(false);
+		expect(without.options.emailAndPassword?.disableSignUp).toBe(true);
+	});
+
 	it("turns on Discord only with credentials, and plain-HTTP cookies only for http origins", () => {
 		const auth = createAuth({
 			db,
@@ -148,6 +184,8 @@ async function setup() {
 		mailer: outbox,
 		origin: "http://localhost:8787",
 		secret: "s".repeat(32),
+		// The captcha plugin runs in the router only; these tests call auth.api directly.
+		captcha: { secretKey: "unused" },
 	});
 	return { auth, sqlDb, emailOutbox, users };
 }

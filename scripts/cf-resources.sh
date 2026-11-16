@@ -9,6 +9,8 @@
 #   scripts/cf-resources.sh delete-queue <name>
 #   scripts/cf-resources.sh delete-worker <name>
 #   scripts/cf-resources.sh delete-preview-pair <pr-number>   # web, queue, engine, D1
+#   scripts/cf-resources.sh ensure-r2 <name> [location]
+#   scripts/cf-resources.sh set-r2-expiry <name> <days>       # delete objects older than <days>
 set -euo pipefail
 
 # CF_BIN overrides the CLI (tests use a fake); by default the repo's pinned cf.
@@ -39,9 +41,15 @@ worker_id() {
 	done
 }
 
+# `cf r2 buckets list` answers {"buckets": [...]}; filter server-side, then match exactly.
+r2_exists() {
+	cf r2 buckets list --name-contains "$1" \
+		| jq -e --arg n "$1" '(.buckets // .result.buckets // [])[] | select(.name == $n)' > /dev/null
+}
+
 cmd="${1:-}"
 name="${2:-}"
-[ -n "$cmd" ] && [ -n "$name" ] || { sed -n '5,10p' "$0" >&2; exit 2; }
+[ -n "$cmd" ] && [ -n "$name" ] || { sed -n '5,12p' "$0" >&2; exit 2; }
 
 # --force everywhere: cf asks for confirmation otherwise, and aborts when nobody can answer (CI).
 delete_d1() {
@@ -81,6 +89,24 @@ case "$cmd" in
 		;;
 	delete-queue) delete_queue "$name" ;;
 	delete-worker) delete_worker "$name" ;;
+	ensure-r2)
+		if ! r2_exists "$name"; then
+			cf r2 buckets create --name "$name" --location-hint "${3:-enam}" > /dev/null
+		fi
+		;;
+	set-r2-expiry)
+		days="${3:-}"
+		[[ "$days" =~ ^[1-9][0-9]*$ ]] || { echo "set-r2-expiry needs a number of days" >&2; exit 2; }
+		# The update replaces every rule, so restate R2's default rule (abort unfinished
+		# multipart uploads after 7 days) next to ours. Running it again changes nothing.
+		rules="$(jq -nc --argjson age "$((days * 86400))" '[
+			{id: "Default Multipart Abort Rule", enabled: true, conditions: {},
+			 abortMultipartUploadsTransition: {condition: {type: "Age", maxAge: 604800}}},
+			{id: "Delete objects after \($age / 86400) days", enabled: true, conditions: {prefix: ""},
+			 deleteObjectsTransition: {condition: {type: "Age", maxAge: $age}}}
+		]')"
+		cf r2 buckets lifecycle update "$name" --rules "$rules" --force > /dev/null
+		;;
 	delete-preview-pair)
 		# Order matters. Web binds to the engine. The engine both consumes and produces to
 		# the queue: the API won't delete a Worker that consumes a queue (10064), nor a queue

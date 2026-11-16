@@ -7,13 +7,18 @@
 </script>
 
 <header class="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-	<nav class="mx-auto flex max-w-4xl items-center justify-between gap-4" aria-label="Main">
+	<!-- Wraps instead of overflowing: handles are up to 20 characters and phones start at 320px. -->
+	<nav
+		class="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-x-4 gap-y-2"
+		aria-label="Main"
+	>
 		<a href="/" class="font-bold tracking-tight">ClaimSale</a>
 		{#if user}
-			<div class="flex items-center gap-4 text-sm">
+			<div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm">
 				{#if user.handle}
-					<a href="/u/{user.handle}" class="hover:underline">@{user.handle}</a>
+					<a href="/u/{user.handle}" class="max-w-40 truncate hover:underline">@{user.handle}</a>
 				{/if}
+				<a href="/sell" class="hover:underline">Sell</a>
 				<a href="/me/settings" class="hover:underline">Settings</a>
 				<form method="POST" action="/logout">
 					<button type="submit" class="hover:underline">Sign out</button>
