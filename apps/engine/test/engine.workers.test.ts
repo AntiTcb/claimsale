@@ -240,12 +240,22 @@ const migrationsBefore = (prefix: string) => env.TEST_MIGRATIONS.filter((m) => m
 
 describe("D1 migrations (expand/contract)", () => {
 	const authTables = ["users", "sessions", "auth_accounts", "verifications", "rate_limits", "email_outbox"];
+	const catalogTables = [
+		"games",
+		"catalog_sets",
+		"catalog_products",
+		"market_prices",
+		"want_list_items",
+		"catalog_search",
+	];
 
 	it("apply to an empty database: every auth table exists", async () => {
 		const { results } = await env.DB.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all<{
 			name: string;
 		}>();
-		expect(results.map((r) => r.name)).toEqual(expect.arrayContaining(["app_meta", ...authTables]));
+		expect(results.map((r) => r.name)).toEqual(
+			expect.arrayContaining(["app_meta", ...authTables, ...catalogTables]),
+		);
 	});
 
 	it("apply on top of the previous schema without touching existing data", async () => {
@@ -262,7 +272,7 @@ describe("D1 migrations (expand/contract)", () => {
 				.exec("SELECT name FROM sqlite_master WHERE type = 'table'")
 				.toArray()
 				.map((r) => r["name"]);
-			expect(tables).toEqual(expect.arrayContaining(authTables));
+			expect(tables).toEqual(expect.arrayContaining([...authTables, ...catalogTables]));
 		});
 	});
 
@@ -355,5 +365,31 @@ describe("D1 migrations (expand/contract)", () => {
 		await entry("e2", "open");
 		await expect(entry("e3", "countered")).rejects.toThrow(/UNIQUE/);
 		await entry("e4", "withdrawn");
+	});
+
+	it("the catalog migrations only add tables, indexes, the FTS index, its triggers and seed rows", () => {
+		const catalog = env.TEST_MIGRATIONS.filter((m) => /^000[34]_catalog/.test(m.name));
+		expect(catalog.map((m) => m.name)).toHaveLength(2);
+		const statements = catalog
+			.flatMap((m) => m.queries)
+			.map((q) => q.replace(/^--.*$/gm, "").trim())
+			.filter(Boolean);
+		for (const statement of statements) {
+			expect(statement).toMatch(
+				/^(CREATE (UNIQUE )?(TABLE|INDEX|VIRTUAL TABLE|TRIGGER) |INSERT OR IGNORE INTO `games`)/i,
+			);
+		}
+	});
+
+	it("seed the launch games, enabled, with their TCGplayer category IDs", async () => {
+		const { results } = await env.DB.prepare(
+			"SELECT id, tcgplayer_category_id FROM games WHERE id IN ('yugioh', 'pokemon', 'mtg', 'riftbound') ORDER BY sort_order",
+		).all();
+		expect(results).toEqual([
+			{ id: "yugioh", tcgplayer_category_id: 2 },
+			{ id: "pokemon", tcgplayer_category_id: 3 },
+			{ id: "mtg", tcgplayer_category_id: 1 },
+			{ id: "riftbound", tcgplayer_category_id: 89 },
+		]);
 	});
 });

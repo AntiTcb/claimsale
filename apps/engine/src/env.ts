@@ -17,4 +17,8 @@ export interface EngineEnv {
 	readonly MAIL_FROM: string;
 	/** Sentry DSN for error reports; empty disables reporting. A DSN is public by design. */
 	readonly SENTRY_DSN: string;
+	/** TCGCSV base URL for the catalog ingestion (TECH_STACK S32). */
+	readonly TCGCSV_BASE_URL: string;
+	/** Sets (TCGCSV groups) ingested per run, as a decimal string. */
+	readonly CATALOG_GROUPS_PER_RUN: string;
 }
