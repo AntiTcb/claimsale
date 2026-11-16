@@ -2,6 +2,7 @@ import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
 	dialect: "sqlite",
-	schema: "./src/schema.ts",
+	// The catalog tables (WS-C) live in their own file to keep merges with the core tables simple.
+	schema: ["./src/schema.ts", "./src/catalog.ts"],
 	out: "./migrations",
 });

@@ -1,0 +1,272 @@
+{
+	"totalItems": 9,
+	"success": true,
+	"errors": [],
+	"results": [
+		{
+			"productId": 635460,
+			"name": "Origins - Proving Grounds Box Set",
+			"cleanName": "Origins Proving Grounds Box Set",
+			"imageUrl": "https://tcgplayer-cdn.tcgplayer.com/product/635460_200w.jpg",
+			"categoryId": 89,
+			"groupId": 24439,
+			"url": "https://www.tcgplayer.com/product/635460/riftbound-league-of-legends-trading-card-game-origins-proving-grounds-origins-proving-grounds-box-set",
+			"modifiedOn": "2025-11-14T16:39:52.227",
+			"imageCount": 1,
+			"presaleInfo": {
+				"isPresale": false,
+				"releasedOn": null,
+				"note": null
+			},
+			"extendedData": []
+		},
+		{
+			"productId": 653136,
+			"name": "Annie, Fiery",
+			"cleanName": "Annie Fiery",
+			"imageUrl": "https://tcgplayer-cdn.tcgplayer.com/product/653136_200w.jpg",
+			"categoryId": 89,
+			"groupId": 24439,
+			"url": "https://www.tcgplayer.com/product/653136/riftbound-league-of-legends-trading-card-game-origins-proving-grounds-annie-fiery",
+			"modifiedOn": "2026-08-12T20:22:46.327",
+			"imageCount": 1,
+			"presaleInfo": {
+				"isPresale": false,
+				"releasedOn": null,
+				"note": null
+			},
+			"extendedData": [
+				{
+					"name": "Rarity",
+					"displayName": "Rarity",
+					"value": "Epic"
+				},
+				{
+					"name": "Number",
+					"displayName": "Number",
+					"value": "001/024"
+				},
+				{
+					"name": "Card Type",
+					"displayName": "Card Type",
+					"value": "Champion Unit"
+				}
+			]
+		},
+		{
+			"productId": 653137,
+			"name": "Firestorm",
+			"cleanName": "Firestorm",
+			"imageUrl": "https://tcgplayer-cdn.tcgplayer.com/product/653137_200w.jpg",
+			"categoryId": 89,
+			"groupId": 24439,
+			"url": "https://www.tcgplayer.com/product/653137/riftbound-league-of-legends-trading-card-game-origins-proving-grounds-firestorm",
+			"modifiedOn": "2025-10-31T18:48:20.573",
+			"imageCount": 1,
+			"presaleInfo": {
+				"isPresale": false,
+				"releasedOn": null,
+				"note": null
+			},
+			"extendedData": [
+				{
+					"name": "Rarity",
+					"displayName": "Rarity",
+					"value": "Uncommon"
+				},
+				{
+					"name": "Number",
+					"displayName": "Number",
+					"value": "002/024"
+				},
+				{
+					"name": "Card Type",
+					"displayName": "Card Type",
+					"value": "Spell"
+				}
+			]
+		},
+		{
+			"productId": 653139,
+			"name": "Master Yi, Meditative",
+			"cleanName": "Master Yi Meditative",
+			"imageUrl": "https://tcgplayer-cdn.tcgplayer.com/product/653139_200w.jpg",
+			"categoryId": 89,
+			"groupId": 24439,
+			"url": "https://www.tcgplayer.com/product/653139/riftbound-league-of-legends-trading-card-game-origins-proving-grounds-master-yi-meditative",
+			"modifiedOn": "2026-08-12T20:22:46.483",
+			"imageCount": 1,
+			"presaleInfo": {
+				"isPresale": false,
+				"releasedOn": null,
+				"note": null
+			},
+			"extendedData": [
+				{
+					"name": "Rarity",
+					"displayName": "Rarity",
+					"value": "Rare"
+				},
+				{
+					"name": "Number",
+					"displayName": "Number",
+					"value": "004/024"
+				},
+				{
+					"name": "Card Type",
+					"displayName": "Card Type",
+					"value": "Champion Unit"
+				}
+			]
+		},
+		{
+			"productId": 653144,
+			"name": "Master Yi, Honed",
+			"cleanName": "Master Yi Honed",
+			"imageUrl": "https://tcgplayer-cdn.tcgplayer.com/product/653144_200w.jpg",
+			"categoryId": 89,
+			"groupId": 24439,
+			"url": "https://www.tcgplayer.com/product/653144/riftbound-league-of-legends-trading-card-game-origins-proving-grounds-master-yi-honed",
+			"modifiedOn": "2026-08-12T20:22:46.857",
+			"imageCount": 1,
+			"presaleInfo": {
+				"isPresale": false,
+				"releasedOn": null,
+				"note": null
+			},
+			"extendedData": [
+				{
+					"name": "Rarity",
+					"displayName": "Rarity",
+					"value": "Epic"
+				},
+				{
+					"name": "Number",
+					"displayName": "Number",
+					"value": "009/024"
+				},
+				{
+					"name": "Card Type",
+					"displayName": "Card Type",
+					"value": "Champion Unit"
+				}
+			]
+		},
+		{
+			"productId": 653152,
+			"name": "Annie, Dark Child (Starter)",
+			"cleanName": "Annie Dark Child Starter",
+			"imageUrl": "https://tcgplayer-cdn.tcgplayer.com/product/653152_200w.jpg",
+			"categoryId": 89,
+			"groupId": 24439,
+			"url": "https://www.tcgplayer.com/product/653152/riftbound-league-of-legends-trading-card-game-origins-proving-grounds-annie-dark-child-starter",
+			"modifiedOn": "2026-08-12T20:22:47.55",
+			"imageCount": 1,
+			"presaleInfo": {
+				"isPresale": false,
+				"releasedOn": null,
+				"note": null
+			},
+			"extendedData": [
+				{
+					"name": "Rarity",
+					"displayName": "Rarity",
+					"value": "Rare"
+				},
+				{
+					"name": "Number",
+					"displayName": "Number",
+					"value": "017/024"
+				},
+				{
+					"name": "Card Type",
+					"displayName": "Card Type",
+					"value": "Legend"
+				}
+			]
+		},
+		{
+			"productId": 653153,
+			"name": "Tibbers",
+			"cleanName": "Tibbers",
+			"imageUrl": "https://tcgplayer-cdn.tcgplayer.com/product/653153_200w.jpg",
+			"categoryId": 89,
+			"groupId": 24439,
+			"url": "https://www.tcgplayer.com/product/653153/riftbound-league-of-legends-trading-card-game-origins-proving-grounds-tibbers",
+			"modifiedOn": "2025-10-31T19:14:16.447",
+			"imageCount": 1,
+			"presaleInfo": {
+				"isPresale": false,
+				"releasedOn": null,
+				"note": null
+			},
+			"extendedData": [
+				{
+					"name": "Rarity",
+					"displayName": "Rarity",
+					"value": "Epic"
+				},
+				{
+					"name": "Number",
+					"displayName": "Number",
+					"value": "018/024"
+				},
+				{
+					"name": "Card Type",
+					"displayName": "Card Type",
+					"value": "Signature Unit"
+				}
+			]
+		},
+		{
+			"productId": 663920,
+			"name": "Origins - Proving Grounds Box Set Case",
+			"cleanName": "Origins Proving Grounds Box Set Case",
+			"imageUrl": "https://tcgplayer-cdn.tcgplayer.com/product/663920_200w.jpg",
+			"categoryId": 89,
+			"groupId": 24439,
+			"url": "https://www.tcgplayer.com/product/663920/riftbound-league-of-legends-trading-card-game-origins-proving-grounds-origins-proving-grounds-box-set-case",
+			"modifiedOn": "2025-12-31T21:02:59.72",
+			"imageCount": 0,
+			"presaleInfo": {
+				"isPresale": false,
+				"releasedOn": null,
+				"note": null
+			},
+			"extendedData": []
+		},
+		{
+			"productId": 664567,
+			"name": "Fortified Position (Oversized)",
+			"cleanName": "Fortified Position Oversized",
+			"imageUrl": "https://tcgplayer-cdn.tcgplayer.com/product/664567_200w.jpg",
+			"categoryId": 89,
+			"groupId": 24439,
+			"url": "https://www.tcgplayer.com/product/664567/riftbound-league-of-legends-trading-card-game-origins-proving-grounds-fortified-position-oversized",
+			"modifiedOn": "2025-11-20T18:39:56.22",
+			"imageCount": 1,
+			"presaleInfo": {
+				"isPresale": false,
+				"releasedOn": null,
+				"note": null
+			},
+			"extendedData": [
+				{
+					"name": "Rarity",
+					"displayName": "Rarity",
+					"value": "Uncommon"
+				},
+				{
+					"name": "Number",
+					"displayName": "Number",
+					"value": "279/298"
+				},
+				{
+					"name": "Card Type",
+					"displayName": "Card Type",
+					"value": "Battlefield"
+				}
+			]
+		}
+	]
+}
