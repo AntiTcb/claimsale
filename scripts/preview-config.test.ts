@@ -66,6 +66,10 @@ describe("preview-config", () => {
 		expect(web["vars"]).toMatchObject({ SMS: "capture", TURNSTILE_SITE_KEY: "1x00000000000000000000AA" });
 	});
 
+	it("keeps web's placement next to the database (TECH_STACK S42)", () => {
+		expect(web["placement"]).toEqual({ region: "aws:us-east-1" });
+	});
+
 	it("points web at the shared preview photo bucket, never staging's or production's", () => {
 		expect(web["r2_buckets"]).toEqual([{ binding: "IMAGES", bucket_name: "claimsale-images-preview" }]);
 	});

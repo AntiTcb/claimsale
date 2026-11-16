@@ -7,6 +7,12 @@
 	"compatibility_date": "2026-10-01",
 	"compatibility_flags": ["nodejs_compat"],
 	"assets": { "binding": "ASSETS", "directory": ".svelte-kit/cloudflare" },
+	// Run the Worker next to its D1 database, not next to the visitor (TECH_STACK S42). Every
+	// page load makes several sequential D1 queries; from a far colo each one is a long round
+	// trip (about 1 s per request from Tokyo against ~0.1 s from Virginia). D1 databases are
+	// created with the "enam" location hint (scripts/cf-resources.sh); aws:us-east-1 sits there.
+	// Static assets are still served from the visitor's nearest colo. Local dev ignores this.
+	"placement": { "region": "aws:us-east-1" },
 	"observability": {
 		"logs": { "enabled": true },
 		"traces": { "enabled": true },
@@ -50,6 +56,7 @@
 	"env": {
 		"staging": {
 			"name": "claimsale-web-staging",
+			"placement": { "region": "aws:us-east-1" },
 			"vars": {
 				"APP_ENV": "staging",
 				"VERSION": "set-by-ci",
@@ -79,6 +86,8 @@
 			// version, so web Previews run against the staging engine and its data.
 			// Production (top level and env.production) has no previews block on purpose.
 			"previews": {
+				// Previews inherit nothing, so the placement too (staging's database).
+				"placement": { "region": "aws:us-east-1" },
 				// Staging data, so real email, never the capture outbox.
 				"vars": {
 					"APP_ENV": "preview",
@@ -107,6 +116,7 @@
 		"production": {
 			"name": "claimsale-web",
 			"workers_dev": false,
+			"placement": { "region": "aws:us-east-1" },
 			"vars": {
 				"APP_ENV": "production",
 				"VERSION": "set-by-ci",
