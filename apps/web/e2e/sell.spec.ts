@@ -41,12 +41,24 @@ function localDateTime(page: Page, days: number): Promise<string> {
 	}, days);
 }
 
+/** Signs up a new 18+ seller and waits until the post-sign-up redirect has fully loaded. */
+async function signedUpSeller(page: Page): Promise<void> {
+	const seller = newIdentity("seller");
+	await signUp(page, seller);
+	// WebKit: navigating before this load finishes interrupts it ("/?welcome=1").
+	await page.waitForURL(/\/\?welcome=1$/, { waitUntil: "load" });
+	await page.waitForLoadState("networkidle");
+	await expect(page.getByRole("link", { name: `@${seller.handle}` })).toBeVisible();
+}
+
 async function startSale(page: Page, title: string): Promise<void> {
 	await page.goto("/sell");
 	await page.getByRole("link", { name: "New sale" }).click();
 	await page.getByLabel("Title").fill(title);
 	await page.getByRole("button", { name: "Continue to terms" }).click();
 	await expect(page.getByRole("heading", { name: "Terms" })).toBeVisible();
+	// The terms form is enhanced; in WebKit a click while it hydrates can be dropped.
+	await page.waitForLoadState("networkidle");
 	await page.getByRole("button", { name: "Continue to items" }).click();
 	await expect(page.getByRole("heading", { name: "Items" })).toBeVisible();
 	// Fast entry is enhanced by JavaScript; without it Enter is a plain POST (which also works).
@@ -71,9 +83,7 @@ test.describe("selling", () => {
 		browser,
 		expectAccessible,
 	}) => {
-		const seller = newIdentity("seller");
-		await signUp(page, seller);
-		await expect(page.getByRole("link", { name: `@${seller.handle}` })).toBeVisible();
+		await signedUpSeller(page);
 
 		const title = `Weekend YGO singles ${Date.now().toString(36)}`;
 		await startSale(page, title);
@@ -90,18 +100,30 @@ test.describe("selling", () => {
 			await expect(page.getByRole("img", { name: `Photo 1 of ${item}` })).toBeVisible();
 		}
 		const img = page.getByRole("img", { name: "Photo 1 of Dark Magician SDY-006" });
-		expect(await img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBe(2000);
+		// Thumbnails load lazily: on a phone the photo column sits off-screen in the table's
+		// horizontal scroll, and WebKit only fetches lazy images once they are near the viewport.
+		await img.scrollIntoViewIfNeeded();
+		await expect
+			.poll(() => img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth))
+			.toBe(2000);
 
 		// Regression: the dropzone's visually hidden (absolute) input escaped the table's scroll
-		// box and widened the whole page on phones, so taps landed on the wrong elements.
+		// box and widened the whole page on phones, so taps landed on the wrong elements. (So did a
+		// long handle in the site header; see SiteHeader.svelte.test.ts.)
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 			page.viewportSize()!.width,
 		);
-		// Reorder with the keyboard-accessible buttons; the order is saved.
+		// Reorder with the keyboard-accessible buttons; the order is saved before the reload.
+		const saved = page.waitForResponse(
+			(r) => r.url().includes("?/reorder") && r.request().method() === "POST",
+		);
 		await page.getByRole("button", { name: "Move Dark Magician SDY-006 up" }).click();
+		expect((await saved).ok()).toBe(true);
 		await expect(page.getByTestId("item-row").first().getByRole("textbox", { name: "Title" })).toHaveValue(
 			"Dark Magician SDY-006",
 		);
+		// Let the post-save data refresh finish; WebKit aborts a reload that races it.
+		await page.waitForLoadState("networkidle");
 		await page.reload();
 		await expect(page.getByTestId("item-row").first().getByRole("textbox", { name: "Title" })).toHaveValue(
 			"Dark Magician SDY-006",
@@ -126,6 +148,7 @@ test.describe("selling", () => {
 		await expect(cards.first()).toContainText("Dark Magician SDY-006");
 		await expect(cards.first()).toContainText("$12.50");
 		const thumb = cards.first().locator("img");
+		await thumb.scrollIntoViewIfNeeded();
 		await expect
 			.poll(() => thumb.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth))
 			.toBe(2000);
@@ -140,9 +163,7 @@ test.describe("selling", () => {
 	});
 
 	test("a draft and its photos stay hidden from everyone but the seller", async ({ page, browser }) => {
-		const seller = newIdentity("seller");
-		await signUp(page, seller);
-		await expect(page.getByRole("link", { name: `@${seller.handle}` })).toBeVisible();
+		await signedUpSeller(page);
 		await startSale(page, "Secret draft");
 		await addItem(page, "Charizard Base Set", "300");
 		await page.getByLabel("Add photos for Charizard Base Set").setInputFiles(await photo(page, "#ee5511"));
@@ -163,9 +184,7 @@ test.describe("selling", () => {
 	});
 
 	test("publishing explains what's missing", async ({ page }) => {
-		const seller = newIdentity("seller");
-		await signUp(page, seller);
-		await expect(page.getByRole("link", { name: `@${seller.handle}` })).toBeVisible();
+		await signedUpSeller(page);
 		await startSale(page, "Not ready yet");
 		await addItem(page, "Pikachu promo", "5");
 		await page.getByRole("link", { name: "Next: schedule the sale" }).click();
