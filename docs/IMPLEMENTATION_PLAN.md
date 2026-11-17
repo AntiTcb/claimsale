@@ -127,7 +127,7 @@ Pure part can start now; wiring needs WS-A.
   - Owner to confirm: review needs both hashes ≤ 12, each hash takes its own minimum
     over the variants, and mirror + 90° together isn't covered.
 - Notes from F2 (built with the F1 defaults above):
-  - Tables (migration `0006_image_hashes`): `image_hashes` (hex hashes, 8 band columns
+  - Tables (migration `0007_image_hashes`): `image_hashes` (hex hashes, 8 band columns
     with one index each, `decision`, `reason`; no foreign keys to photo, item or sale, so
     another seller's image still counts after it is deleted), `account_flags`
     (IMG-repeat-offender), `users.role` (`admin` opens `/admin`; set with SQL).
@@ -252,16 +252,35 @@ Wave 4:                     WS-L → pilot sale
   checked in web). WS-H can use it or call `placeEntry` from a remote function.
 - Committed events go to the notifications queue as `{ kind: "sale_events", sale_id, events }`;
   the consumer only acknowledges them until WS-K.
-- Import batches (WS-G): `ENGINE.applyImportBatch({ saleId, sellerId, importId, rows })`,
-  ≤ 100 mapped rows `{ row, cells }` per call; idempotent per (`importId`, row) via the
-  `import_rows` table; outcomes carry the created item IDs for photo attaching.
-  "Remove items not in file" isn't supported in batch mode.
+- Import batches: see the WS-G notes below (WS-G replaced this first version).
 - The publish photo check stays in web (`itemsWithoutPhotos`, `#lib/server/engine.ts`);
   WS-F2 tightens it there.
 - Not built yet: rescind contests / mutual-agreement answers and their 72h timer (WS-I),
   a test-only clock endpoint for E2E time travel, WebSocket broadcast (WS-H).
 - Locally on Windows, Playwright's `webServer` command fails (cmd.exe has no subshell for
   `(cd ../engine && …)`); start the stack by hand and Playwright reuses it.
+
+### Wave 2 integration notes (WS-G, item import)
+- Import batches go through the engine:
+  `ENGINE.applyImportBatch({ saleId, sellerId, ...ImportBatchBody })` (core's body: `importId`
+  UUID, `format`, `totalRows`, ≤ 100 `rows`, optional `removeMissing` keep-lists) returns
+  `RpcResult<Outcome<ImportBatchResult>>`: per-row results, `removed`, and `removedR2Keys`
+  for the web to delete. It runs under the sale lock (`apps/engine/src/sale/import.ts`) with
+  job tracking in `io_jobs`, per-row results and idempotency in `io_job_rows` (migration
+  `0008_io_jobs`), the opted-in removal once per import with its first batch, catalog
+  autofill, and one D1 batch per call.
+- **Contract step owed:** WS-E's `import_rows` table (`0006_engine_write_path`) is no longer
+  written. It stays while deployed code may still write it; a later contract migration
+  drops it (and `importRows` in `packages/db/src/schema.ts`).
+- Items without a game store `game_id = 'none'` (core `NO_GAME_ID`); `isNoGame` also treats
+  the older `'other'` as no game.
+- WS-G dropped "Other TCG": the item form lists the enabled registry games, plus
+  "Not game-specific" (`game_id = 'none'`) for accessories only. Items stored as
+  `other` still display as "Other TCG" and must pick a game when next saved.
+- Market prices reach the web from D1 directly (`marketPricesFor`, seller-gated /sell
+  pages and endpoints); the type-ahead uses the engine's `searchCatalog` RPC.
+- The hand-entry item form still takes free-form attributes (catalog autofill fills
+  them); moving it onto core's per-game field lists is open.
 
 ### Merge rules for parallel work
 - **Migrations:** WS-A owns the core tables, WS-C owns catalog tables, WS-F2 owns

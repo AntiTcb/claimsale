@@ -1,6 +1,5 @@
-import { RESCIND_REASONS, type RescindReasonCode } from "@claimsale/core";
+import { ImportBatchBody, RESCIND_REASONS, type RescindReasonCode } from "@claimsale/core";
 import { Schema } from "effect";
-import { MAX_IMPORT_BATCH } from "./import.ts";
 
 /**
  * Input schemas of the engine's sale RPC methods. The web Worker authenticates the
@@ -149,15 +148,10 @@ export const ShipInput = Schema.Struct({
 });
 export type ShipInput = typeof ShipInput.Type;
 
+/** One batch of an item import (WS-G): core's batch body plus the sale and the seller. */
 export const ImportBatchInput = Schema.Struct({
 	saleId: Id,
 	sellerId: Id,
-	importId: Id,
-	rows: Schema.Array(
-		Schema.Struct({
-			row: Schema.Int.check(Schema.isGreaterThan(1)),
-			cells: Schema.Record(Schema.String, Schema.String.check(Schema.isMaxLength(10_000))),
-		}),
-	).check(Schema.isMaxLength(MAX_IMPORT_BATCH)),
+	...ImportBatchBody.fields,
 });
 export type ImportBatchInput = typeof ImportBatchInput.Type;

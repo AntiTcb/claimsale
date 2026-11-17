@@ -57,6 +57,13 @@
       "when": 1794947192299,
       "tag": "0007_image_hashes",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794950190729,
+      "tag": "0008_io_jobs",
+      "breakpoints": true
     }
   ]
 }

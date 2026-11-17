@@ -1,10 +1,16 @@
 <script lang="ts">
 	import { enhance } from "$app/forms";
 	import { invalidateAll } from "$app/navigation";
+	import { type BulkPricePreview } from "@claimsale/core";
+	import BulkMarketPrice from "#lib/components/BulkMarketPrice.svelte";
+	import CatalogPicker from "#lib/components/CatalogPicker.svelte";
+	import MarketPriceAid from "#lib/components/MarketPriceAid.svelte";
 	import PhotoDropzone from "#lib/components/PhotoDropzone.svelte";
 	import WizardSteps from "#lib/components/WizardSteps.svelte";
+	import { autofillForm } from "#lib/catalog-autofill.ts";
+	import { CONDITIONS, GAMES, ITEM_KINDS, NO_GAME, parsePrice, priceInputValue } from "#lib/listing-input.ts";
+	import { readAttributes, sellerMarketHint, type CatalogHit, type MarketPrice } from "#lib/market.ts";
 	import { moveId } from "#lib/reorder.ts";
-	import { CONDITIONS, GAMES, ITEM_KINDS } from "#lib/listing-input.ts";
 	import type { PageProps } from "./$types";
 
 	let { data, form }: PageProps = $props();
@@ -22,13 +28,120 @@
 			? form.errors
 			: {};
 	const reorderError = $derived(form?.action === "reorder" && "errors" in form ? form.errors.form : null);
+	const bulkError = $derived(form?.action === "bulkPrice" && "errors" in form ? form.errors.form : null);
+	const games = [...GAMES, NO_GAME];
 
 	// Sticky choices for fast entry: game, kind and condition carry over to the next item.
-	let game = $state<string>(GAMES[0]?.id ?? "other");
+	let game = $state<string>(GAMES[0]?.id ?? NO_GAME.id);
 	let kind = $state<string>(ITEM_KINDS[0].id);
 	let condition = $state<string>("NM");
+	let addTitle = $state("");
+	let addPrice = $state("");
+	let addAttributes = $state("");
+	let addPrices = $state.raw<MarketPrice[] | null>(null);
+	let linked = $state<string | null>(null);
 	let titleInput: HTMLInputElement | undefined = $state();
 	let status = $state("");
+
+	/** Market prices for a picked product (seller-only endpoint, TCG-market-placeholder). */
+	async function marketPrices(productId: number): Promise<MarketPrice[] | null> {
+		try {
+			const response = await fetch(`/sell/${data.sale.id}/catalog/market?product=${productId}`);
+			if (!response.ok) return null;
+			return ((await response.json()) as { prices: MarketPrice[] }).prices;
+		} catch {
+			return null;
+		}
+	}
+
+	const addHint = $derived(
+		sellerMarketHint({
+			kind,
+			attributes: readAttributes(addAttributes),
+			prices: addPrices,
+			defaultPercent: data.defaultPercent,
+		}),
+	);
+
+	async function pickForAdd(hit: CatalogHit) {
+		const result = autofillForm({ title: addTitle, gameId: game, kind, attributes: addAttributes }, hit);
+		if (!result.ok) {
+			status = result.message;
+			return;
+		}
+		addTitle = result.value.title;
+		game = result.value.gameId;
+		addAttributes = result.value.attributes;
+		linked = [hit.name, hit.setCode, hit.number].filter(Boolean).join(" · ");
+		addPrices = await marketPrices(hit.productId);
+	}
+
+	// Table edits that autofill and the % buttons change; cleared when the row is saved.
+	let rowTitle = $state<Record<string, string>>({});
+	let rowGame = $state<Record<string, string>>({});
+	let rowAttributes = $state<Record<string, string>>({});
+	let rowPrice = $state<Record<string, string>>({});
+	let rowPrices = $state<Record<string, MarketPrice[] | null>>({});
+	let selected = $state<Record<string, boolean>>({});
+
+	function clearRow(id: string) {
+		for (const record of [rowTitle, rowGame, rowAttributes, rowPrice, rowPrices, selected]) delete record[id];
+	}
+
+	async function pickForRow(item: (typeof data.items)[number], hit: CatalogHit) {
+		const result = autofillForm(
+			{
+				title: rowTitle[item.id] ?? item.title,
+				gameId: rowGame[item.id] ?? item.gameId,
+				kind: item.kind,
+				attributes: rowAttributes[item.id] ?? item.attributes,
+			},
+			hit,
+		);
+		if (!result.ok) {
+			status = result.message;
+			return;
+		}
+		rowTitle[item.id] = result.value.title;
+		rowGame[item.id] = result.value.gameId;
+		rowAttributes[item.id] = result.value.attributes;
+		rowPrices[item.id] = await marketPrices(hit.productId);
+		status = `Filled in ${hit.name} for ${item.title}. Save to keep it.`;
+	}
+
+	const rowHint = (item: (typeof data.items)[number]) =>
+		sellerMarketHint({
+			kind: item.kind,
+			attributes: readAttributes(rowAttributes[item.id] ?? item.attributes),
+			prices: item.id in rowPrices ? (rowPrices[item.id] ?? null) : item.marketPrices,
+			defaultPercent: data.defaultPercent,
+		});
+
+	// Bulk "N % of market" over the selected rows (D64), applied through ?/bulkPrice.
+	let bulkForm: HTMLFormElement | undefined = $state();
+	let changesInput: HTMLInputElement | undefined = $state();
+	const bulkCandidates = $derived(
+		data.items
+			.filter((item) => !item.locked)
+			.map((item) => {
+				const price = parsePrice(item.price);
+				return {
+					id: item.id,
+					label: item.title,
+					priceCents: price.ok ? price.value : null,
+					marketCents: rowHint(item)?.marketCents ?? null,
+					selected: selected[item.id] === true,
+				};
+			}),
+	);
+	const anyMarket = $derived(bulkCandidates.some((c) => c.marketCents !== null));
+
+	function applyBulk(preview: BulkPricePreview) {
+		if (!changesInput) return;
+		changesInput.value = preview.changes.map((c) => `${c.itemId}:${c.toCents}`).join(",");
+		status = `Setting ${preview.changes.length} prices to ${preview.percent}% of market.`;
+		bulkForm?.requestSubmit();
+	}
 
 	// Drag-and-drop and the move buttons reorder locally, then save the whole order.
 	let order: readonly string[] = $derived(data.items.map((i) => i.id));
@@ -70,6 +183,7 @@
 		<p class="text-sm text-zinc-600 dark:text-zinc-400">
 			{data.items.length}{#if data.itemCap !== null}
 				of {data.itemCap}{/if} items · up to {data.photoCap} photos each
+			{#if data.canAdd}· <a href="/sell/{data.sale.id}/import" class="underline">Import from a file</a>{/if}
 		</p>
 	</div>
 	<p class="sr-only" role="status" aria-live="polite">{status}</p>
@@ -82,22 +196,51 @@
 			aria-label="Add an item"
 			novalidate
 			use:enhance={() =>
-				async ({ result, update, formElement }) => {
+				async ({ result, update }) => {
 					await update({ reset: false });
 					if (result.type === "success") {
-						for (const name of ["title", "price", "quantity", "attributes"]) {
-							const el = formElement.elements.namedItem(name);
-							if (el instanceof HTMLInputElement) el.value = "";
-						}
+						addTitle = "";
+						addPrice = "";
+						addAttributes = "";
+						addPrices = null;
+						linked = null;
+						const qty = document.querySelector<HTMLInputElement>(
+							'form[aria-label="Add an item"] [name="quantity"]',
+						);
+						if (qty) qty.value = "";
 						status = "Item added.";
 					}
 					titleInput?.focus();
 				}}
 		>
+			<div class="col-span-full">
+				<CatalogPicker
+					saleId={data.sale.id}
+					game={game === NO_GAME.id ? "" : game}
+					{kind}
+					onpick={(hit) => void pickForAdd(hit)}
+				/>
+				{#if linked}
+					<p class="mt-1 text-xs">
+						Catalog: {linked}
+						<button
+							type="button"
+							class="underline"
+							onclick={() => {
+								addAttributes = "";
+								addPrices = null;
+								linked = null;
+							}}>Unlink</button
+						>
+					</p>
+				{/if}
+			</div>
+			<input type="hidden" name="attributes" value={addAttributes} />
 			<label class="col-span-2 flex min-w-0 flex-col gap-1 text-sm md:col-span-1">
 				Title
 				<input
 					bind:this={titleInput}
+					bind:value={addTitle}
 					name="title"
 					required
 					maxlength="120"
@@ -105,16 +248,21 @@
 					aria-invalid={addErrors["title"] ? "true" : undefined}
 				/>
 			</label>
-			<label class="flex min-w-0 flex-col gap-1 text-sm">
-				Price ($)
-				<input
-					name="price"
-					inputmode="decimal"
-					required
-					class={input}
-					aria-invalid={addErrors["price"] ? "true" : undefined}
-				/>
-			</label>
+			<div class="flex min-w-0 flex-col gap-1 text-sm">
+				<label class="flex min-w-0 flex-col gap-1">
+					Price ($)
+					<input
+						name="price"
+						inputmode="decimal"
+						required
+						bind:value={addPrice}
+						placeholder={addHint?.placeholder}
+						class={input}
+						aria-invalid={addErrors["price"] ? "true" : undefined}
+					/>
+				</label>
+				<MarketPriceAid hint={addHint} onpick={(cents) => (addPrice = priceInputValue(cents))} />
+			</div>
 			<label class="flex min-w-0 flex-col gap-1 text-sm">
 				Qty
 				<input
@@ -128,7 +276,7 @@
 			<label class="flex min-w-0 flex-col gap-1 text-sm">
 				Game
 				<select name="gameId" bind:value={game} class={input}>
-					{#each GAMES as g (g.id)}<option value={g.id}>{g.name}</option>{/each}
+					{#each games as g (g.id)}<option value={g.id}>{g.name}</option>{/each}
 				</select>
 			</label>
 			<label class="flex min-w-0 flex-col gap-1 text-sm">
@@ -163,11 +311,42 @@
 	<form method="POST" action="?/reorder" bind:this={reorderForm} use:enhance class="hidden">
 		<input type="hidden" name="order" bind:this={orderInput} />
 	</form>
+	<form
+		method="POST"
+		action="?/bulkPrice"
+		bind:this={bulkForm}
+		use:enhance={() =>
+			async ({ result, update }) => {
+				await update({ reset: false });
+				if (result.type === "success") {
+					selected = {};
+					rowPrice = {};
+					status = "Prices updated.";
+				}
+			}}
+		class="hidden"
+	>
+		<input type="hidden" name="changes" bind:this={changesInput} />
+	</form>
 	{#if reorderError}<p role="alert" class="mt-2 text-red-700 dark:text-red-400">{reorderError}</p>{/if}
+	{#if bulkError}<p role="alert" class="mt-2 text-red-700 dark:text-red-400">{bulkError}</p>{/if}
+
+	{#if data.canEdit && anyMarket}
+		<div class="mt-6 max-w-2xl">
+			<BulkMarketPrice
+				candidates={bulkCandidates}
+				scope="selected"
+				defaultPercent={data.defaultPercent}
+				onapply={applyBulk}
+			/>
+		</div>
+	{/if}
 
 	{#if rows.length === 0}
 		<p class="mt-8">
-			No items yet. Type a title and price above and press Enter; add photos once it's in the list.
+			No items yet. Type a title and price above and press Enter, or
+			<a href="/sell/{data.sale.id}/import" class="underline">import a file</a>; add photos once it's in the
+			list.
 		</p>
 	{:else}
 		<div class="relative mt-6 overflow-x-auto">
@@ -188,6 +367,7 @@
 					{#each rows as item, index (item.id)}
 						{@const errors = rowErrors(item.id)}
 						{@const formId = `item-${item.id}`}
+						{@const hint = rowHint(item)}
 						<tr
 							class="border-b border-zinc-100 align-top dark:border-zinc-900 {dragId === item.id
 								? 'opacity-50'
@@ -223,32 +403,48 @@
 										disabled={index === rows.length - 1}
 										onclick={() => move(item.id, 1, item.title)}>↓</button
 									>
+									{#if hint && !item.locked}
+										<label class="mt-1 flex items-center gap-1 text-xs">
+											<input type="checkbox" bind:checked={selected[item.id]} />
+											<span class="sr-only">Select {item.title} for a bulk price</span>
+										</label>
+									{/if}
 								{:else}{index + 1}{/if}
 							</td>
 							<td class="p-2">
 								<input
 									form={formId}
 									name="title"
-									value={item.title}
+									value={rowTitle[item.id] ?? item.title}
 									maxlength="120"
 									aria-label="Title"
 									aria-invalid={errors["title"] ? "true" : undefined}
 									class="{input} w-full min-w-48"
 									disabled={!data.canEdit}
+									oninput={(e) => (rowTitle[item.id] = e.currentTarget.value)}
 								/>
 							</td>
 							<td class="p-2">
 								<input
 									form={formId}
 									name="price"
-									value={item.price}
+									value={rowPrice[item.id] ?? item.price}
 									inputmode="decimal"
+									placeholder={hint?.placeholder}
 									aria-label="Price of {item.title}"
 									aria-invalid={errors["price"] ? "true" : undefined}
 									readonly={item.locked}
 									class="{input} w-24"
 									disabled={!data.canEdit}
+									oninput={(e) => (rowPrice[item.id] = e.currentTarget.value)}
 								/>
+								{#if data.canEdit && !item.locked}
+									<MarketPriceAid
+										{hint}
+										itemTitle={item.title}
+										onpick={(cents) => (rowPrice[item.id] = priceInputValue(cents))}
+									/>
+								{/if}
 							</td>
 							<td class="p-2">
 								<input
@@ -265,15 +461,30 @@
 							</td>
 							<td class="p-2">
 								<div class="flex flex-col gap-1">
+									{#if data.canEdit}
+										<CatalogPicker
+											saleId={data.sale.id}
+											game={(rowGame[item.id] ?? item.gameId) === NO_GAME.id
+												? ""
+												: (rowGame[item.id] ?? item.gameId)}
+											kind={item.kind}
+											itemTitle={item.title}
+											onpick={(hit) => void pickForRow(item, hit)}
+										/>
+									{/if}
 									<select
 										form={formId}
 										name="gameId"
-										value={item.gameId}
+										value={rowGame[item.id] ?? item.gameId}
 										aria-label="Game of {item.title}"
 										class={input}
 										disabled={!data.canEdit}
+										onchange={(e) => (rowGame[item.id] = e.currentTarget.value)}
 									>
-										{#each GAMES as g (g.id)}<option value={g.id}>{g.name}</option>{/each}
+										{#if !games.some((g) => g.id === item.gameId)}
+											<option value={item.gameId}>Choose a game</option>
+										{/if}
+										{#each games as g (g.id)}<option value={g.id}>{g.name}</option>{/each}
 									</select>
 									<div class="flex gap-1">
 										<select
@@ -308,8 +519,9 @@
 											aria-invalid={errors["attributes"] ? "true" : undefined}
 											placeholder={'{"set": "LOB", "edition": "1st"}'}
 											class="{input} mt-1 w-full font-mono text-xs"
-											disabled={!data.canEdit}>{item.attributes}</textarea
-										>
+											disabled={!data.canEdit}
+											value={rowAttributes[item.id] ?? item.attributes}
+											oninput={(e) => (rowAttributes[item.id] = e.currentTarget.value)}></textarea>
 									</details>
 								</div>
 							</td>
@@ -332,8 +544,10 @@
 											method="POST"
 											action="?/update"
 											use:enhance={() =>
-												({ update }) =>
-													update({ reset: false })}
+												async ({ result, update }) => {
+													await update({ reset: false });
+													if (result.type === "success") clearRow(item.id);
+												}}
 										>
 											<input type="hidden" name="itemId" value={item.id} />
 											<button type="submit" class="rounded-md border border-zinc-400 px-2 py-1"

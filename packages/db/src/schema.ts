@@ -659,6 +659,72 @@ export const fees = sqliteTable(
 	(t) => [index("fees_seller").on(t.sellerId, t.createdAt), index("fees_invoice").on(t.invoiceId)],
 );
 
+// ---------------------------------------------------------------------------
+// Import / export jobs (D57, PLAN §3c, §6 "added for import/export").
+
+export const IO_JOB_KINDS = [
+	"item_import",
+	"tracking_import",
+	"export_items",
+	"export_orders",
+	"export_shipping",
+	"export_account",
+] as const;
+export const IO_JOB_STATUSES = ["parsed", "applying", "done", "failed", "expired"] as const;
+export const IO_ROW_OUTCOMES = ["created", "updated", "skipped", "error"] as const;
+
+/**
+ * One import or export. For an item import the browser picks the id (the
+ * `import_id`), so a re-sent batch finds the same job (IO-import-idempotent).
+ */
+export const ioJobs = sqliteTable(
+	"io_jobs",
+	{
+		id: text("id").primaryKey(),
+		sellerId: text("seller_id")
+			.notNull()
+			.references(() => users.id),
+		saleId: text("sale_id").references(() => sales.id, { onDelete: "cascade" }),
+		kind: text("kind", { enum: IO_JOB_KINDS }).notNull(),
+		status: text("status", { enum: IO_JOB_STATUSES }).notNull(),
+		/** `csv` or `xlsx`. */
+		format: text("format"),
+		/** R2 keys of the uploaded file and the results file, when kept. */
+		fileKey: text("file_key"),
+		resultKey: text("result_key"),
+		rowCount: integer("row_count").notNull().default(0),
+		created: integer("created").notNull().default(0),
+		updated: integer("updated").notNull().default(0),
+		skipped: integer("skipped").notNull().default(0),
+		errors: integer("errors").notNull().default(0),
+		/** Items removed because the seller ticked "remove items not in file". */
+		removed: integer("removed").notNull().default(0),
+		createdAt: millis("created_at").notNull(),
+		finishedAt: millis("finished_at"),
+		expiresAt: millis("expires_at"),
+	},
+	(t) => [index("io_jobs_seller_created").on(t.sellerId, t.createdAt), index("io_jobs_sale").on(t.saleId)],
+);
+
+/** Each applied row of a job: its result, and the idempotency record for re-sent batches. */
+export const ioJobRows = sqliteTable(
+	"io_job_rows",
+	{
+		jobId: text("job_id")
+			.notNull()
+			.references(() => ioJobs.id, { onDelete: "cascade" }),
+		/** The row's line in the file (the header is row 1). */
+		rowNumber: integer("row_number").notNull(),
+		outcome: text("outcome", { enum: IO_ROW_OUTCOMES }).notNull(),
+		/** The item (or invoice) the row created or changed. */
+		targetId: text("target_id"),
+		/** The column an error is about ("" for the whole row). */
+		field: text("field"),
+		message: text("message"),
+	},
+	(t) => [primaryKey({ columns: [t.jobId, t.rowNumber] })],
+);
+
 /**
  * Applied rows of item imports (PLAN §3c.4): a re-sent batch with the same
  * `import_id` and row is answered from here and changes nothing (IO-import-idempotent).

@@ -40,6 +40,11 @@ export function engine(): Engine {
 	return rpcEngine(env.ENGINE);
 }
 
+/** The engine Worker's RPC binding for the catalog type-ahead and item import batches. */
+export function engineRpc(): Pick<Env["ENGINE"], "searchCatalog" | "applyImportBatch"> {
+	return env.ENGINE;
+}
+
 /** The key for sale unlock cookies (shared with Better Auth's signing secret). */
 export function cookieSecret(): string {
 	return authSecret(env.APP_ENV, env.BETTER_AUTH_SECRET);
