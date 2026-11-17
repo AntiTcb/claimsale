@@ -17,3 +17,5 @@ __screenshots__/**/*-actual.*
 __screenshots__/**/*-diff.*
 .vitest/
 apps/*/wrangler.preview.jsonc
+# Load test sessions (live cookies, see load/claim-rush.js)
+load/sessions*.json

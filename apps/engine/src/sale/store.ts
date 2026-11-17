@@ -132,15 +132,16 @@ export function entriesQuery(db: D1Database, saleId: string, itemIds: readonly s
 				.bind(ids(itemIds));
 }
 
-export function buyerQuery(db: D1Database, buyerId: string, sellerId: string, now: Millis) {
+export function buyerQuery(db: D1Database, buyerId: string, saleId: string, now: Millis) {
 	return db
 		.prepare(
 			`SELECT u.id, u.email_verified, u.created_at,
-				EXISTS (SELECT 1 FROM blocks b WHERE b.seller_id = ?2 AND b.blocked_user_id = u.id) AS blocked,
+				EXISTS (SELECT 1 FROM blocks b WHERE b.blocked_user_id = u.id
+					AND b.seller_id = (SELECT seller_id FROM sales WHERE id = ?2)) AS blocked,
 				${PRO_SQL("u.id", "buyer", "?3")} AS buyer_pro
 			FROM users u WHERE u.id = ?1`,
 		)
-		.bind(buyerId, sellerId, now);
+		.bind(buyerId, saleId, now);
 }
 
 export function toBuyer(row: BuyerRow): BuyerRecord {
@@ -184,11 +185,16 @@ export async function loadSaleAndItems(
 	now: Millis,
 	buyer?: { readonly id: string },
 ): Promise<{ sale: SaleRecord | undefined; items: Map<string, LoadedItem>; buyer: BuyerRecord | undefined }> {
-	const sale = await saleQuery(db, saleId, now).first<SaleRow>();
+	// One read round trip: a claim is this batch, then the write batch.
+	const statements = [
+		saleQuery(db, saleId, now),
+		itemsQuery(db, saleId, itemIds),
+		entriesQuery(db, saleId, itemIds),
+	];
+	if (buyer) statements.push(buyerQuery(db, buyer.id, saleId, now));
+	const [sales, items, entries, buyers] = await db.batch(statements);
+	const sale = rowsOf<SaleRow>(sales)[0];
 	if (!sale || sale.status === "deleted") return { sale: undefined, items: new Map(), buyer: undefined };
-	const statements = [itemsQuery(db, saleId, itemIds), entriesQuery(db, saleId, itemIds)];
-	if (buyer) statements.push(buyerQuery(db, buyer.id, sale.seller_id, now));
-	const [items, entries, buyers] = await db.batch(statements);
 	const buyerRow = rowsOf<BuyerRow>(buyers)[0];
 	return {
 		sale: toSaleRecord(sale),

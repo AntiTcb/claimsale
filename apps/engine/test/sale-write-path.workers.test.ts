@@ -153,6 +153,12 @@ describe("placing entries through the engine", () => {
 		const unverified = await addUser(uid("b"), { emailVerified: false });
 		const pro = await addUser(uid("b"), { emailVerified: false, buyerPro: true });
 		expect(rejection(await claim(sale, unverified))).toBe("email_not_verified");
+		const blocked = await addUser(uid("b"), { buyerPro: true });
+		await db
+			.prepare("INSERT INTO blocks (seller_id, blocked_user_id, created_at) VALUES (?1, ?2, 1)")
+			.bind(sale.sellerId, blocked)
+			.run();
+		expect(rejection(await claim(sale, blocked))).toBe("buyer_blocked");
 		expect(value(await claim(sale, pro, sale.itemIds[1])).entry?.status).toBe("won");
 	});
 
