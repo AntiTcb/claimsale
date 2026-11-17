@@ -21,6 +21,9 @@
 		"@claimsale/observability": "workspace:*",
 		"better-auth": "catalog:",
 		"effect": "catalog:",
+		"fflate": "catalog:",
+		"papaparse": "catalog:",
+		"read-excel-file": "catalog:",
 		"uuidv7": "catalog:"
 	},
 	"devDependencies": {
@@ -32,6 +35,7 @@
 		"@sveltejs/kit": "catalog:",
 		"@sveltejs/vite-plugin-svelte": "catalog:",
 		"@tailwindcss/vite": "catalog:",
+		"@types/papaparse": "catalog:",
 		"@vitest/browser-playwright": "catalog:",
 		"svelte": "catalog:",
 		"svelte-check": "catalog:",

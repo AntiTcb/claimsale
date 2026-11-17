@@ -9,6 +9,9 @@
 		{ href: base, label: "Overview" },
 		{ href: `${base}/terms`, label: "Terms" },
 		{ href: `${base}/items`, label: "Items" },
+		...(data.sale.status === "draft" || data.sale.status === "scheduled"
+			? [{ href: `${base}/import`, label: "Import" }]
+			: []),
 	]);
 </script>
 

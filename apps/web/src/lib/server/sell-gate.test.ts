@@ -23,6 +23,7 @@ const ROUTES = {
 	"/sell/[saleId]": await import("../../routes/sell/[saleId]/+page.server.ts"),
 	"/sell/[saleId]/terms": await import("../../routes/sell/[saleId]/terms/+page.server.ts"),
 	"/sell/[saleId]/items": await import("../../routes/sell/[saleId]/items/+page.server.ts"),
+	"/sell/[saleId]/import": await import("../../routes/sell/[saleId]/import/+page.server.ts"),
 };
 
 type TestUser = SessionUser;

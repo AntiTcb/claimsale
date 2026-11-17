@@ -83,12 +83,12 @@ describe("games table and registry", () => {
 		expect(results).toEqual([]);
 	});
 
-	it("offers the sell form a game row for every option but 'other'", async () => {
+	it("offers the sell form only games with a row (no 'Other TCG')", async () => {
 		const { results } = await testD1()
 			.prepare("SELECT id FROM games WHERE enabled = 1")
 			.all<{ id: string }>();
 		const seeded = new Set(results.map((row) => row.id));
-		expect(FORM_GAMES.map((g) => g.id).filter((id) => !seeded.has(id))).toEqual(["other"]);
+		expect(FORM_GAMES.map((g) => g.id).filter((id) => !seeded.has(id))).toEqual([]);
 	});
 
 	it("moves items stored under the old 'magic' id to the registry slug 'mtg', and reruns safely", async () => {

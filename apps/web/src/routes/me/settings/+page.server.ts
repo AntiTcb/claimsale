@@ -1,5 +1,6 @@
 import { maskPhoneForOwner, validateDisplayName, validateFacebookUrl, validateHandle } from "@claimsale/core";
 import { fail, redirect } from "@sveltejs/kit";
+import { defaultMarketPercent, setDefaultMarketPercent } from "#lib/server/catalog.ts";
 import { auth, db, phoneVerifier } from "#lib/server/context.ts";
 import { type FormErrors, authErrorMessage, field, fieldError } from "#lib/server/forms.ts";
 import {
@@ -23,6 +24,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			pending: pending ? maskPhoneForOwner(pending) : null,
 			available: phoneVerifier().available,
 		},
+		/** The highlighted % of market button (D64). */
+		defaultMarketPercent: await defaultMarketPercent(db(), user.id),
 		profile: {
 			email: user.email,
 			emailVerified: user.emailVerified,
@@ -72,6 +75,19 @@ export const actions: Actions = {
 			throw error;
 		}
 		return { action: "profile" as const, saved: true };
+	},
+
+	marketPct: async ({ request, locals }) => {
+		if (!locals.user) redirect(303, "/login");
+		const raw = field(await request.formData(), "percent");
+		const saved = await setDefaultMarketPercent(
+			db(),
+			locals.user.id,
+			raw === "" ? null : Number(raw),
+			Date.now(),
+		);
+		if (!saved) return fail(400, { action: "marketPct" as const, message: "Choose one of the % buttons" });
+		return { action: "marketPct" as const, saved: true };
 	},
 
 	verify: async ({ request, locals, url }) => {

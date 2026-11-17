@@ -4,9 +4,11 @@ import { enabledGames, type Cents, type SaleVisibility, type Validated } from "@
  * Form input for sales and items, shared by the pages (client) and the form
  * actions (server, which always re-validates).
  *
- * **Seam for WS-G:** `GAMES` comes from the core games registry. Kinds, conditions
- * and `validateAttributes` are still minimal; WS-G moves them onto core's
- * per-game schemas (`TCG-attribute-schema`), and callers keep the same signatures.
+ * `GAMES` comes from the core games registry. Item imports validate with core's
+ * per-game schemas (`TCG-attribute-schema`, `validateImportRow`); the hand-entry form
+ * here still takes free-form attributes, which catalog autofill fills in (WS-G).
+ * Moving the form onto the per-game field lists is open, and callers keep the same
+ * signatures when it happens.
  */
 
 const valid = <T>(value: T): Validated<T> => ({ ok: true, value });
@@ -14,13 +16,22 @@ const invalid = (message: string): Validated<never> => ({ ok: false, message });
 
 /**
  * The games a seller can pick: the core registry's enabled games (D61), whose slugs
- * are the `games` table's ids, then "Other TCG" for anything outside it. WS-G
- * replaces "other" when the form moves to the per-game schemas.
+ * are the `games` table's ids. There is no "Other TCG": every kind but accessories
+ * needs a registry game (core's attribute schemas, catalog autofill and the market
+ * price aid are all per game), and a game outside the registry is added there first.
  */
-export const GAMES: readonly { readonly id: string; readonly name: string }[] = [
-	...enabledGames().map((game) => ({ id: game.slug, name: game.name })),
-	{ id: "other", name: "Other TCG" },
-];
+export const GAMES: readonly { readonly id: string; readonly name: string }[] = enabledGames().map(
+	(game) => ({ id: game.slug, name: game.name }),
+);
+
+/**
+ * Accessories may skip the game (PLAN §3 item kinds: "optional game"). `items.game_id`
+ * is NOT NULL, so they store this id; it matches no game, so browse by game skips them.
+ */
+export const NO_GAME = { id: "none", name: "Not game-specific" } as const;
+
+/** Names for ids that aren't games: NO_GAME, and WS-A's "Other TCG" placeholder on older items. */
+const OTHER_GAME_NAMES: Readonly<Record<string, string>> = { [NO_GAME.id]: NO_GAME.name, other: "Other TCG" };
 
 export type GameId = string;
 
@@ -45,7 +56,8 @@ export const CONDITIONS = [
 
 export type Condition = (typeof CONDITIONS)[number]["id"];
 
-export const gameName = (id: string): string => GAMES.find((g) => g.id === id)?.name ?? id;
+export const gameName = (id: string): string =>
+	GAMES.find((g) => g.id === id)?.name ?? OTHER_GAME_NAMES[id] ?? id;
 export const kindName = (id: string): string => ITEM_KINDS.find((k) => k.id === id)?.name ?? id;
 /** "Yu-Gi-Oh! · Single · Lightly Played": the one-line summary under an item's title. */
 export const describeItem = (gameId: string, kind: string, condition: string | null): string =>
@@ -234,6 +246,11 @@ export interface ItemFields {
 	readonly kind: ItemKind;
 	readonly condition: Condition | null;
 	readonly attributes: Record<string, string | number | boolean>;
+	/**
+	 * The linked catalog product (`catalog_products.id`), resolved on the server from the
+	 * `tcgplayer_product_id` attribute. Undefined leaves the stored link as it is.
+	 */
+	readonly catalogProductId?: string | null;
 }
 
 export type ItemErrors = FieldErrors<keyof ItemInput>;
@@ -288,10 +305,13 @@ export function validateItem(
 	if (!price.ok) errors.price = price.message;
 	const quantity = parseQuantity(input.quantity);
 	if (!quantity.ok) errors.quantity = quantity.message;
-	const game = GAMES.find((g) => g.id === input.gameId);
-	if (!game) errors.gameId = "Choose a game";
 	const kind = ITEM_KINDS.find((k) => k.id === input.kind);
 	if (!kind) errors.kind = "Choose a kind";
+	const game =
+		GAMES.find((g) => g.id === input.gameId) ??
+		(input.gameId === NO_GAME.id && kind?.id === "accessory" ? NO_GAME : undefined);
+	if (!game)
+		errors.gameId = input.gameId === NO_GAME.id ? "Only accessories can skip the game" : "Choose a game";
 	const condition =
 		input.condition === "" ? null : (CONDITIONS.find((c) => c.id === input.condition) ?? undefined);
 	if (condition === undefined) errors.condition = "Choose a condition";

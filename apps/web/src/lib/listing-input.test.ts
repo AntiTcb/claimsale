@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_TERMS,
 	describeItem,
+	gameName,
+	GAMES,
 	parseLocalDateTime,
 	parsePrice,
 	parseQuantity,
@@ -150,6 +152,34 @@ describe("listing input", () => {
 			ok: false,
 			errors: { attributes: expect.any(String) },
 		});
+	});
+
+	it("has no 'Other TCG': only accessories may skip the game", () => {
+		const input = {
+			title: "Playmat",
+			price: "20",
+			quantity: "",
+			gameId: "none",
+			kind: "accessory",
+			condition: "",
+			attributes: "",
+		};
+		expect(GAMES.some((g) => g.id === "other")).toBe(false);
+		expect(validateItem(input)).toMatchObject({ ok: true, value: { gameId: "none", kind: "accessory" } });
+		expect(validateItem({ ...input, kind: "single" })).toMatchObject({
+			ok: false,
+			errors: { gameId: "Only accessories can skip the game" },
+		});
+		expect(validateItem({ ...input, gameId: "other" })).toMatchObject({
+			ok: false,
+			errors: { gameId: "Choose a game" },
+		});
+		// Items saved with WS-A's placeholder still read sensibly.
+		expect([gameName("other"), gameName("none"), gameName("mtg")]).toEqual([
+			"Other TCG",
+			"Not game-specific",
+			"Magic: The Gathering",
+		]);
 	});
 
 	it("reads datetime-local values in the browser's time zone", () => {

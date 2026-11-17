@@ -220,6 +220,20 @@ Wave 4:                     WS-L → pilot sale
   first on PATH. Seen on every wave-1 branch, including WS-B, WS-C and WS-F1, which don't
   touch `scripts/` (WS-D only adds preview-pair vars in `preview-config.ts`).
 
+### Wave 2 integration notes
+- WS-G (item import): `applyImportBatch` in `apps/web/src/lib/server/import.ts` is the
+  only import writer. It writes D1 directly in one `db.batch()` per 100 rows, with the
+  `io_job_rows` idempotency records in the same batch (migration `0006_io_jobs`). WS-E
+  swaps its body (or the apply route's one call) for an engine RPC taking the same
+  `ImportBatchBody` and returning the same `ImportBatchResult`.
+- WS-G dropped "Other TCG": the item form lists the enabled registry games, plus
+  "Not game-specific" (`game_id = 'none'`) for accessories only. Items stored as
+  `other` still display as "Other TCG" and must pick a game when next saved.
+- Market prices reach the web from D1 directly (`marketPricesFor`, seller-gated /sell
+  pages and endpoints); the type-ahead uses the engine's `searchCatalog` RPC.
+- The hand-entry item form still takes free-form attributes (catalog autofill fills
+  them); moving it onto core's per-game field lists is open.
+
 ### Merge rules for parallel work
 - **Migrations:** WS-A owns the core tables, WS-C owns catalog tables, WS-F2 owns
   `image_hashes`. Whoever merges second regenerates their migration on top of `dev`

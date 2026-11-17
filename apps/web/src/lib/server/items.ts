@@ -94,6 +94,8 @@ function attributeRows(itemId: string, fields: ItemFields) {
 	const rows: Array<typeof itemAttributes.$inferInsert> = [];
 	if (fields.condition) rows.push({ itemId, key: "condition", valueText: fields.condition });
 	for (const [key, value] of Object.entries(fields.attributes)) {
+		// One row per key: the condition column wins over an attribute of the same name.
+		if (key === "condition" && fields.condition) continue;
 		if (typeof value === "number" && Number.isSafeInteger(value)) rows.push({ itemId, key, valueNum: value });
 		else rows.push({ itemId, key, valueText: String(value) });
 	}
@@ -148,6 +150,7 @@ export async function addItem(
 			kind: fields.kind,
 			condition: fields.condition,
 			attributes: fields.attributes,
+			catalogProductId: fields.catalogProductId ?? null,
 			createdAt: now,
 			updatedAt: now,
 		})
@@ -196,6 +199,7 @@ export async function updateItem(
 			kind: fields.kind,
 			condition: fields.condition,
 			attributes: fields.attributes,
+			...(fields.catalogProductId === undefined ? {} : { catalogProductId: fields.catalogProductId }),
 			version: sql`${items.version} + 1`,
 			updatedAt: now,
 		})
@@ -223,6 +227,44 @@ export async function updateItem(
 		...audit,
 	]);
 	return ok(rows[0]!);
+}
+
+/**
+ * Sets several items' prices at once: the bulk "N % of market" apply (D64), with the
+ * prices from the preview the seller confirmed. Items with entries keep their price.
+ *
+ * @spec SM-2-lock-price-qty
+ */
+export async function setPrices(
+	db: Db,
+	sellerId: string,
+	saleId: string,
+	changes: readonly { readonly itemId: string; readonly priceCents: number }[],
+	now: Millis,
+): Promise<Result<{ updated: number }, ItemRejection>> {
+	const sale = await ownedSale(db, sellerId, saleId);
+	if (!sale) return reject("not_found", "No such sale");
+	if (!EDITABLE.has(sale.status))
+		return reject("invalid_status", "Items can't be edited after the sale closes");
+	const ids = [...new Set(changes.map((c) => c.itemId))];
+	if (ids.length === 0) return ok({ updated: 0 });
+	const own = await db
+		.select({ id: items.id })
+		.from(items)
+		.where(and(eq(items.saleId, saleId), inArray(items.id, ids)))
+		.all();
+	if (own.length !== ids.length) return notFound();
+	if ((await itemsWithEntries(db, ids)).size > 0) {
+		return reject("price_qty_locked", "Price and quantity are locked once an item has claims or offers");
+	}
+	const [first, ...rest] = changes.map((c) =>
+		db
+			.update(items)
+			.set({ priceCents: c.priceCents, version: sql`${items.version} + 1`, updatedAt: now })
+			.where(and(eq(items.id, c.itemId), eq(items.saleId, saleId))),
+	);
+	if (first) await db.batch([first, ...rest]);
+	return ok({ updated: changes.length });
 }
 
 /** Puts the sale's items in the given order. Every item must be listed exactly once. */

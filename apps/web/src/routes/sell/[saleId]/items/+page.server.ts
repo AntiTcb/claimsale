@@ -1,6 +1,7 @@
 import { FREE_ITEM_CAP, photoCap } from "@claimsale/core";
 import { fail } from "@sveltejs/kit";
-import { priceInputValue, validateItem, type ItemInput } from "#lib/listing-input.ts";
+import { MAX_PRICE_CENTS, priceInputValue, validateItem, type ItemInput } from "#lib/listing-input.ts";
+import { catalogProductIdFor, defaultMarketPercent, marketPricesFor } from "#lib/server/catalog.ts";
 import { db, imageStore } from "#lib/server/context.ts";
 import { field } from "#lib/server/forms.ts";
 import { photosByItem } from "#lib/server/images.ts";
@@ -10,6 +11,7 @@ import {
 	itemsWithEntries,
 	listItems,
 	reorderItems,
+	setPrices,
 	updateItem,
 } from "#lib/server/items.ts";
 import { requireOwnSale, requireSeller } from "#lib/server/sell.ts";
@@ -21,14 +23,26 @@ export const load: PageServerLoad = async (event) => {
 	const sale = await requireOwnSale(seller.id, event.params.saleId);
 	const rows = await listItems(db(), sale.id);
 	const ids = rows.map((r) => r.id);
-	const [photos, withEntries] = await Promise.all([photosByItem(db(), ids), itemsWithEntries(db(), ids)]);
+	const productIds = rows
+		.map((r) => Number(r.catalogProductId))
+		.filter((id) => Number.isSafeInteger(id) && id > 0);
+	// TCG-market-placeholder: this is the seller's own page (requireOwnSale above).
+	const [photos, withEntries, market, defaultPercent] = await Promise.all([
+		photosByItem(db(), ids),
+		itemsWithEntries(db(), ids),
+		marketPricesFor(db(), productIds),
+		defaultMarketPercent(db(), seller.id),
+	]);
 	return {
 		wizard: event.url.searchParams.get("wizard") === "1",
 		canAdd: sale.status === "draft" || sale.status === "scheduled",
 		canEdit: sale.status === "draft" || sale.status === "scheduled" || sale.status === "live",
 		itemCap: seller.tier === "free" ? FREE_ITEM_CAP : null,
 		photoCap: photoCap(seller.tier),
+		defaultPercent,
 		items: rows.map((item) => ({
+			/** The seller's market prices for the linked catalog product (D64); null when unlinked. */
+			marketPrices: item.catalogProductId ? (market.get(Number(item.catalogProductId)) ?? []) : null,
 			id: item.id,
 			title: item.title,
 			price: priceInputValue(item.priceCents),
@@ -68,7 +82,11 @@ export const actions: Actions = {
 		const values = readItem(await event.request.formData());
 		const valid = validateItem(values);
 		if (!valid.ok) return fail(400, { action: "add" as const, values, errors: valid.errors });
-		const added = await addItem(db(), seller, sale.id, valid.value, Date.now());
+		const fields = {
+			...valid.value,
+			catalogProductId: await catalogProductIdFor(db(), valid.value.attributes),
+		};
+		const added = await addItem(db(), seller, sale.id, fields, Date.now());
 		if (!added.ok)
 			return fail(400, { action: "add" as const, values, errors: { form: added.error.message } });
 		return {
@@ -87,7 +105,11 @@ export const actions: Actions = {
 		const values = readItem(data);
 		const valid = validateItem(values);
 		if (!valid.ok) return fail(400, { action: "update" as const, itemId, values, errors: valid.errors });
-		const updated = await updateItem(db(), seller.id, sale.id, itemId, valid.value, Date.now());
+		const fields = {
+			...valid.value,
+			catalogProductId: await catalogProductIdFor(db(), valid.value.attributes),
+		};
+		const updated = await updateItem(db(), seller.id, sale.id, itemId, fields, Date.now());
 		if (!updated.ok)
 			return fail(400, {
 				action: "update" as const,
@@ -118,5 +140,32 @@ export const actions: Actions = {
 		const result = await reorderItems(db(), seller.id, sale.id, order, Date.now());
 		if (!result.ok) return fail(400, { action: "reorder" as const, errors: { form: result.error.message } });
 		return { action: "reorder" as const, saved: true };
+	},
+
+	/**
+	 * Applies a confirmed "N % of market" preview: `changes` is "itemId:cents,…", the
+	 * prices the seller saw (TCG-market-pct; the browser computed them with core).
+	 */
+	bulkPrice: async (event) => {
+		const seller = await requireSeller(event);
+		const sale = await requireOwnSale(seller.id, event.params.saleId);
+		const changes = field(await event.request.formData(), "changes")
+			.split(",")
+			.filter(Boolean)
+			.map((pair) => {
+				const [itemId = "", cents = ""] = pair.split(":");
+				return { itemId, priceCents: Number(cents) };
+			});
+		if (
+			changes.some(
+				(c) => !Number.isSafeInteger(c.priceCents) || c.priceCents <= 0 || c.priceCents > MAX_PRICE_CENTS,
+			)
+		) {
+			return fail(400, { action: "bulkPrice" as const, errors: { form: "Those prices aren't valid" } });
+		}
+		const result = await setPrices(db(), seller.id, sale.id, changes, Date.now());
+		if (!result.ok)
+			return fail(400, { action: "bulkPrice" as const, errors: { form: result.error.message } });
+		return { action: "bulkPrice" as const, updated: result.value.updated };
 	},
 };
