@@ -97,6 +97,9 @@ export async function waitForChecks(page: Page): Promise<void> {
 	await expect
 		.poll(
 			async () => {
+				// WebKit: a reload while the page is still navigating or refreshing its data (after an
+				// upload, or the previous reload's startup) fails with "Frame load interrupted".
+				await page.waitForLoadState("networkidle");
 				await page.reload();
 				return (
 					(await page.getByText(/being checked/i).count()) +

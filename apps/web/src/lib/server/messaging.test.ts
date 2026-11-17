@@ -175,7 +175,10 @@ describe("posting", () => {
 		const data = new FormData();
 		data.set("body", "hello");
 		data.append("photos", new File([], ""));
-		data.append("photos", new File([jpegBytes(4, 4) as Uint8Array<ArrayBuffer>], "a.jpg", { type: "image/jpeg" }));
+		data.append(
+			"photos",
+			new File([jpegBytes(4, 4) as Uint8Array<ArrayBuffer>], "a.jpg", { type: "image/jpeg" }),
+		);
 		const form = await readMessageForm(data);
 		expect(form.body).toBe("hello");
 		expect(form.images).toHaveLength(1);

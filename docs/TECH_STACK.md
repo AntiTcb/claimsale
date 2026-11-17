@@ -327,6 +327,16 @@ and a suppression list are all managed by Cloudflare.
   - `LogMailer`: local `wrangler dev`, where the binding is simulated and the message
     is printed to the console and saved to a file.
 
+**As built (WS-K, 2026-11-17):** the engine's mode is a var, `MAILER`, like the web
+Worker's: `capture` (local, tests, PR pairs; `scripts/preview-config.ts` forces it) writes to
+`email_outbox` through `CapturingMailer`, `cloudflare` (staging, production) sends; any other
+value fails closed to sending. `SITE_URL` (engine var) is the origin for links in email; PR
+pairs leave it empty, so their links are site-relative. Locally, wrangler's simulated binding
+plays the `LogMailer` role. Templates are Svelte components in `packages/emails/src/templates`;
+wrangler's esbuild can't load `.svelte`, so they are compiled to server JS in
+`packages/emails/src/generated` (committed; `pnpm --filter @claimsale/emails generate` after
+changing a template or upgrading Svelte; a test fails when it is stale).
+
 **Consequences:**
 - **The domain is needed earlier.** Until a sending domain is onboarded, Email Service
   can only send to **verified destination addresses** in the account. That's fine,

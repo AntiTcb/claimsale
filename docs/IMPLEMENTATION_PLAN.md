@@ -282,6 +282,24 @@ Wave 4:                     WS-L → pilot sale
 - The hand-entry item form still takes free-form attributes (catalog autofill fills
   them); moving it onto core's per-game field lists is open.
 
+### Wave 3 integration notes (WS-K, notifications and messaging)
+- The notifications queue now carries `sale_events` (WS-E), `notify_deliver`, `notify_digest`,
+  `allowlist_invites` and WS-F2's `photo_verify`. The consumer (`apps/engine/src/notifications`)
+  maps events to `notifications` rows with core's `notificationsForSaleEvents`; to notify about a
+  new event type, add a case there and its copy in `describeNotification` (one place for the bell
+  and email). Invoice links point at the sale page until WS-J's buyer invoice page exists.
+- Email: per-category preferences, verified addresses only, seller activity as a 5-minute digest,
+  message emails only if unread after 10 minutes; the cron sweep sends what a lost message left.
+  Delivery state lives on `notifications` (migration `0009_notifications_messaging`).
+- Followers and want lists are told about **public** sales only, when scheduled and when live.
+  Items added to an already-published sale aren't matched against want lists yet.
+- Messaging is server load + form actions; `#lib/messaging/live.ts` polls today. **WS-H seam:**
+  swap its `pollTransport` for a subscription on the sale DO's broadcast; the thread page keeps
+  calling `watchConversation`.
+- Allowlist invites go out when a private sale is published, and when the invite list of a
+  published sale is saved (`ENGINE.sendAllowlistInvites`); `setPrivateAccess` keeps `invited_at`.
+- Seller blocks reuse `blocks`, so a blocked buyer can neither message nor claim.
+
 ### Merge rules for parallel work
 - **Migrations:** WS-A owns the core tables, WS-C owns catalog tables, WS-F2 owns
   `image_hashes`. Whoever merges second regenerates their migration on top of `dev`
