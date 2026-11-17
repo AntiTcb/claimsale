@@ -8,6 +8,9 @@
 	"scripts": {
 		"typecheck": "tsc --noEmit"
 	},
+	"dependencies": {
+		"effect": "catalog:"
+	},
 	"devDependencies": {
 		"fast-check": "catalog:",
 		"typescript": "catalog:",

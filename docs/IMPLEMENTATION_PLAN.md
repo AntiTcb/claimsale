@@ -208,6 +208,13 @@ Wave 4:                     WS-L → pilot sale
   production today. Turnstile keys must exist before WS-D ships to production.
 - WS-D's Turnstile browser test failed once in a full run and didn't reproduce in 13
   reruns; find the cause before merging (CLAUDE.md: no flaky tests).
+- Games (2026-11-16, WS-B × WS-C): the core registry (`packages/core/src/games.ts`) is
+  the source of truth, and migration `0005_games_registry` makes the `games` table match
+  it (`games-seed.test.ts` checks this). Launch: the ten games WS-C enabled; Final Fantasy
+  and five others are disabled until turned on with a migration. Japanese Pokémon is a
+  language of `pokemon`; the disabled `pokemon-japan` row marks TCGCSV category 85 for
+  later ingestion. The sell form lists the enabled registry games plus "Other TCG",
+  which WS-G replaces; Magic's id is `mtg` (0005 renames stored `magic` items).
 - `pnpm test` times out in `scripts/` tests that spawn `node` on the owner's machine
   (Node takes ~3–4 s to start), and `cf-resources.test.ts` fails when WSL's `bash` is
   first on PATH. Seen on every wave-1 branch, including WS-B, WS-C and WS-F1, which don't
