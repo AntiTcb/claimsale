@@ -282,6 +282,24 @@ Wave 4:                     WS-L → pilot sale
 - The hand-entry item form still takes free-form attributes (catalog autofill fills
   them); moving it onto core's per-game field lists is open.
 
+### Wave 3 integration notes (WS-I, control room and admin)
+- New engine RPCs: `contestRescind` (buyer), `answerMutualRescind` (buyer), `resolveRescind`
+  (admin; the engine checks `users.role`). The 72h mutual-agreement answer is a sale timer
+  (`mutual_answer_due`) in the alarm and the cron sweep. Committed events now include
+  `rescind_recorded`, `rescind_contested`, `rescind_mutual_agreed` / `_disputed` /
+  `_timed_out` and `rescind_resolved` for WS-K's notifications.
+- Migration `0009_control_room` (expand only): `rescinds.phase` / `answered_at` /
+  `resolution_note`, `users.banned_at` / `banned_reason` / `banned_by`, and `reports`.
+  Rows from before `phase` get it derived (core `fromStored`).
+- Bans: the engine treats a banned account as a blocked buyer; Better Auth refuses a new
+  session (`ACCOUNT_SUSPENDED`); banning deletes the account's sessions.
+- `POST /api/reports` takes `{ targetKind: user | sale | item | message, targetId, reason,
+  details? }` for WS-H's and WS-K's report buttons; messages aren't checked to exist yet.
+- `/me/rescinds` is the buyer's side of rescinds (reason, contest, agree / dispute); WS-K
+  should link it from the rescind notification.
+- The terms form now writes `decisionWindowHours` (Pro), `requireVerifiedEmail` and
+  `minAccountAgeDays`; WS-J adds its own fields to the same `SaleTerms`.
+
 ### Merge rules for parallel work
 - **Migrations:** WS-A owns the core tables, WS-C owns catalog tables, WS-F2 owns
   `image_hashes`. Whoever merges second regenerates their migration on top of `dev`
