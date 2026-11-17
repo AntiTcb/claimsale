@@ -576,8 +576,29 @@ export const notifications = sqliteTable(
 		payload: json<Record<string, unknown>>("payload"),
 		readAt: millis("read_at"),
 		createdAt: millis("created_at").notNull(),
+		// WS-K (milestone 9): delivery state, added expand-only (nullable).
+		/** Makes a redelivered queue message a no-op (NOTIF-idempotent). */
+		dedupeKey: text("dedupe_key"),
+		/** `pending` | `batched` | `sent` | `off` | `skipped` | `failed` (core EmailStatus). */
+		emailStatus: text("email_status"),
+		/** When a `pending` email may go out (messages) or a `batched` digest is due. */
+		emailDueAt: millis("email_due_at"),
+		emailedAt: millis("emailed_at"),
+		/** Failed sends so far; the email is given up (`failed`) after a few. */
+		emailAttempts: integer("email_attempts").notNull().default(0),
 	},
-	(t) => [index("notifications_user_created").on(t.userId, t.createdAt)],
+	(t) => [
+		index("notifications_user_created").on(t.userId, t.createdAt),
+		uniqueIndex("notifications_dedupe")
+			.on(t.dedupeKey)
+			.where(sql`${t.dedupeKey} IS NOT NULL`),
+		index("notifications_user_unread")
+			.on(t.userId)
+			.where(sql`${t.readAt} IS NULL`),
+		index("notifications_email_due")
+			.on(t.emailStatus, t.emailDueAt)
+			.where(sql`${t.emailStatus} IN ('pending', 'batched')`),
+	],
 );
 
 /** D41: follow a seller, notified of new sales. */

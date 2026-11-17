@@ -329,6 +329,9 @@ importers:
       '@claimsale/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@claimsale/emails':
+        specifier: workspace:*
+        version: link:../../packages/emails
       '@claimsale/imagehash':
         specifier: workspace:*
         version: link:../../packages/imagehash
@@ -480,6 +483,22 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
+
+  packages/emails:
+    dependencies:
+      svelte:
+        specifier: 'catalog:'
+        version: 5.57.1
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@types/node@26.6.4)(@vitest/browser-playwright@5.0.3)(@vitest/coverage-v8@5.0.3)(@vitest/ui@5.0.3)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
 
   packages/imagehash:
     dependencies:

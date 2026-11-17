@@ -123,13 +123,14 @@ describe("queue consumer", () => {
 		warn.mockRestore();
 	});
 
-	it("acknowledges the sale events a SaleEngine publishes (no handlers until WS-K)", async () => {
+	it("retries the sale events a SaleEngine publishes when the notification bindings are missing", async () => {
+		// The consumer itself is tested in notifications.workers.test.ts.
 		const { result, sent } = await consume(
 			[{ kind: "sale_events", sale_id: "sale_1", events: [{ type: "entry_won" }], traceparent }],
 			"owner@example.com",
 		);
 		expect(sent).toEqual([]);
-		expect(result.explicitAcks).toEqual(["m0"]);
+		expect(result.retryMessages).toEqual([{ msgId: "m0" }]);
 	});
 
 	it("acknowledges and drops messages it doesn't understand", async () => {

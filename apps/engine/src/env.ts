@@ -20,6 +20,13 @@ export interface EngineEnv {
 	readonly VERSION: string;
 	/** Sender for notification email (TECH_STACK S31). */
 	readonly MAIL_FROM: string;
+	/**
+	 * `capture` writes notification email to `email_outbox` (local, tests, PR pairs; E2E reads it);
+	 * `cloudflare` sends it. Anything else fails closed to `cloudflare` (TECH_STACK §10, S40).
+	 */
+	readonly MAILER: string;
+	/** The web app's origin for links in email, e.g. `https://claimsale.net`; empty → site-relative links. */
+	readonly SITE_URL: string;
 	/** Sentry DSN for error reports; empty disables reporting. A DSN is public by design. */
 	readonly SENTRY_DSN: string;
 	/** TCGCSV base URL for the catalog ingestion (TECH_STACK S32). */

@@ -14,6 +14,11 @@
 		"APP_ENV": "local",
 		"VERSION": "dev",
 		"MAIL_FROM": "no-reply@notify.claimsale.net",
+		// Notification email (WS-K): "capture" writes it to email_outbox (E2E reads it), "cloudflare"
+		// sends it. Never "capture" where the data is shared with real users (staging, production).
+		"MAILER": "capture",
+		// The web app's origin, for links in notification email.
+		"SITE_URL": "http://localhost:8787",
 		// Sentry DSN (public by design); empty disables error reports (TECH_STACK S38).
 		"SENTRY_DSN": "",
 		// TCG catalog ingestion (TECH_STACK S32). Tests stub fetch and serve fixtures.
@@ -53,6 +58,8 @@
 				"APP_ENV": "staging",
 				"VERSION": "set-by-ci",
 				"MAIL_FROM": "no-reply@notify.claimsale.net",
+				"MAILER": "cloudflare",
+				"SITE_URL": "https://staging.claimsale.net",
 				"SENTRY_DSN": "",
 				"TCGCSV_BASE_URL": "https://tcgcsv.com",
 				"CATALOG_GROUPS_PER_RUN": "300",
@@ -87,6 +94,8 @@
 				"APP_ENV": "production",
 				"VERSION": "set-by-ci",
 				"MAIL_FROM": "no-reply@notify.claimsale.net",
+				"MAILER": "cloudflare",
+				"SITE_URL": "https://claimsale.net",
 				"SENTRY_DSN": "",
 				"TCGCSV_BASE_URL": "https://tcgcsv.com",
 				"CATALOG_GROUPS_PER_RUN": "300",

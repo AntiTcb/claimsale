@@ -496,4 +496,14 @@ IDs stay in the table, marked ~~struck~~.
 | `SM-2-photo-cap` | Photos per item: 4 for free sellers, 12 for Pro, checked server-side on upload | 2, D33 |
 | `TCG-catalog-ingest` | Catalog ingestion is idempotent and resumable: re-ingesting the same TCGCSV build writes no rows, sets that fail or don't fit in a run are retried by the next one, and only autofill fields plus the latest market price per product + subtype are stored (no images, no card text) | PLAN 3 (TCG catalog), TECH_STACK S32 |
 | `SM-9-entry-rate-limit` | Claims and offers are rate-limited per buyer before the Durable Object; over the limit → `rate_limited`, nothing written | 9 |
+| `NOTIF-idempotent` | A redelivered event batch creates no second notification or email (rows keyed by batch and event; follower and want-list keys by sale/phase and want/item) | PLAN 5 (Notifications), WS-K |
+| `NOTIF-preferences` | In-app notifications are always written; email goes only to a verified address and only for categories the user left on | PLAN 5 (Notifications), WS-K |
+| `NOTIF-seller-batch` | A seller's activity (claims, offers, decisions, payments, take-backs) is emailed as one digest per 5-minute window; activity already read isn't emailed | PLAN 5 (Notifications), WS-K |
+| `NOTIF-allowlist-invite` | Each address on a private sale's invite list gets one invite email: when the sale is published, or when added to a published sale; drafts invite nobody | D5, WS-A/WS-K |
+| `MSG-one-conversation` | One conversation per buyer per sale, between that buyer and the seller only; a seller can't open one on their own sale | PLAN 3 (Messaging), D18 |
+| `MSG-payment-warning` | A message that looks like an off-platform payment request (payment apps, handles, "friends and family") is shown with a warning | PLAN 3 (Messaging) |
+| `MSG-attachment-access` | Message photos are served only to the conversation's buyer and seller (and admins), never cached publicly | PLAN 3 (Messaging) |
+| `MSG-block` | A seller can block a user: the blocked user can't message the seller (or claim, `SM-4.1-buyer-requirements`); the seller can unblock | PLAN 3 (Messaging), PLAN 9 |
+| `MSG-report` | Any participant can report a message (one open report per message per reporter); reports go to the admin queue | PLAN 3 (Messaging), PLAN 9 |
+| `MSG-email-unread` | A new message notifies the other side in-app at once and by email only if still unread 10 minutes later; bodies are never emailed or logged | PLAN 3 (Messaging) |
 

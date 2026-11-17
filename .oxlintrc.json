@@ -54,6 +54,7 @@
 	],
 	"ignorePatterns": [
 		"**/worker-configuration.d.ts",
+		"packages/emails/src/generated/**",
 		"**/.svelte-kit/**",
 		"**/.wrangler/**",
 		"**/node_modules/**",
