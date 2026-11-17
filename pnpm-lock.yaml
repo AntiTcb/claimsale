@@ -311,6 +311,9 @@ importers:
 
   apps/engine:
     dependencies:
+      '@claimsale/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@claimsale/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -320,6 +323,9 @@ importers:
       effect:
         specifier: 'catalog:'
         version: 4.0.1
+      uuidv7:
+        specifier: 'catalog:'
+        version: 1.2.1
     devDependencies:
       '@cloudflare/vitest-plugin':
         specifier: catalog:workers-test
