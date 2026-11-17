@@ -1,7 +1,8 @@
 import { PASSWORD_MAX, PASSWORD_MIN } from "@claimsale/core";
-import type { Db } from "@claimsale/db";
+import { eq, type Db } from "@claimsale/db";
 import { authAccounts, rateLimits, sessions, users, verifications } from "@claimsale/db/schema";
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { captcha } from "better-auth/plugins/captcha";
 import { magicLink } from "better-auth/plugins/magic-link";
@@ -74,6 +75,23 @@ export function createAuth(deps: AuthDeps) {
 		// and onboarding, and a cached copy would be stale. One D1 read per page view.
 		account: {
 			accountLinking: { enabled: true, trustedProviders: ["discord"] },
+		},
+		databaseHooks: {
+			session: {
+				create: {
+					/** @spec ADMIN-ban — a banned account can't start a session by any sign-in method. */
+					before: async (session) => {
+						const row = await deps.db
+							.select({ bannedAt: users.bannedAt })
+							.from(users)
+							.where(eq(users.id, session.userId))
+							.get();
+						if (row?.bannedAt) {
+							throw new APIError("FORBIDDEN", { code: "ACCOUNT_SUSPENDED", message: "Account suspended" });
+						}
+					},
+				},
+			},
 		},
 		emailAndPassword: {
 			enabled: true,

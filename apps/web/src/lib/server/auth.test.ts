@@ -221,6 +221,19 @@ describe("Better Auth against the real schema", () => {
 		});
 	});
 
+	it("[ADMIN-ban] a banned account can't sign in; unbanned, it can again", async () => {
+		const { auth, sqlDb, users } = await setup();
+		const { eq } = await import("@claimsale/db");
+		const body = { email: "gary@example.test", password: "eevee-eevee-eevee" };
+		await auth.api.signUpEmail({ body: { name: "Gary", ...body } });
+		await sqlDb.update(users).set({ bannedAt: new Date() }).where(eq(users.email, body.email));
+		const refused = await auth.api.signInEmail({ body }).catch((e: unknown) => e);
+		expect(refused).toBeInstanceOf(APIError);
+		expect(authErrorMessage(refused)).toMatch(/suspended/);
+		await sqlDb.update(users).set({ bannedAt: null }).where(eq(users.email, body.email));
+		expect((await auth.api.signInEmail({ body })).user.email).toBe(body.email);
+	});
+
 	it("rejects profile fields sent in a sign-up body", async () => {
 		const { auth } = await setup();
 		await expect(

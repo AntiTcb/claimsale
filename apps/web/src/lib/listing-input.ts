@@ -153,6 +153,12 @@ export interface SaleTerms {
 	readonly reviewEveryClaim: boolean;
 	/** D43, on by default. */
 	readonly allowBackupOffers: boolean;
+	/** D25: Pro sellers only; null is the default 24h window. */
+	readonly decisionWindowHours: number | null;
+	/** D20: claims need a verified email; on by default (Pro buyers bypass it, D29). */
+	readonly requireVerifiedEmail: boolean;
+	/** D29: the youngest account that may claim, in days; 0 allows any (Pro buyers bypass it). */
+	readonly minAccountAgeDays: number;
 }
 
 export const DEFAULT_TERMS: SaleTerms = {
@@ -163,7 +169,14 @@ export const DEFAULT_TERMS: SaleTerms = {
 	offerVisibility: "blind",
 	reviewEveryClaim: false,
 	allowBackupOffers: true,
+	decisionWindowHours: null,
+	requireVerifiedEmail: true,
+	minAccountAgeDays: 0,
 };
+
+/** The longest decision window a Pro seller can set: the longest a sale can run (D42). */
+export const DECISION_WINDOW_MAX_HOURS = 14 * 24;
+export const MIN_ACCOUNT_AGE_MAX_DAYS = 365;
 
 export interface TermsInput {
 	readonly paymentMethods: readonly string[];
@@ -173,15 +186,41 @@ export interface TermsInput {
 	readonly offerVisibility: string;
 	readonly reviewEveryClaim: boolean;
 	readonly allowBackupOffers: boolean;
+	/** Empty for the default 24h. */
+	readonly decisionWindowHours?: string;
+	readonly requireVerifiedEmail?: boolean;
+	/** Empty for no minimum. */
+	readonly minAccountAgeDays?: string;
 }
 
+type TermsField =
+	| "paymentMethods"
+	| "paymentDeadlineHours"
+	| "shipsTo"
+	| "rulesMd"
+	| "decisionWindowHours"
+	| "minAccountAgeDays";
+
+/** A whole number from `min` to `max`; empty is null. */
+function wholeNumber(text: string | undefined, min: number, max: number): number | null | "invalid" {
+	const trimmed = (text ?? "").trim();
+	if (trimmed === "") return null;
+	if (!/^\d{1,4}$/.test(trimmed)) return "invalid";
+	const n = Number(trimmed);
+	return n >= min && n <= max ? n : "invalid";
+}
+
+/**
+ * The sale's terms form.
+ *
+ * @spec SM-4.2-window-length — only Pro sellers set the decision window.
+ * @spec SM-4.1-buyer-requirements — the verified-email and account-age requirements.
+ */
 export function validateTerms(
 	input: TermsInput,
 	sellerIsPro: boolean,
-):
-	| Validated<SaleTerms>
-	| { ok: false; errors: FieldErrors<"paymentMethods" | "paymentDeadlineHours" | "shipsTo" | "rulesMd"> } {
-	const errors: FieldErrors<"paymentMethods" | "paymentDeadlineHours" | "shipsTo" | "rulesMd"> = {};
+): Validated<SaleTerms> | { ok: false; errors: FieldErrors<TermsField> } {
+	const errors: FieldErrors<TermsField> = {};
 	const known = new Set<string>(PAYMENT_METHODS.map((m) => m.id));
 	const methods = [...new Set(input.paymentMethods)].filter((m) => known.has(m));
 	if (methods.length === 0) errors.paymentMethods = "Choose at least one payment method";
@@ -192,7 +231,17 @@ export function validateTerms(
 	if (shipsTo.length > 200) errors.shipsTo = "Use at most 200 characters";
 	const rulesMd = input.rulesMd.trim();
 	if (rulesMd.length > DESCRIPTION_MAX) errors.rulesMd = `Use at most ${DESCRIPTION_MAX} characters`;
-	if (Object.keys(errors).length > 0 || hours === null) return { ok: false, errors };
+	const window = wholeNumber(input.decisionWindowHours, 1, DECISION_WINDOW_MAX_HOURS);
+	if (window === "invalid")
+		errors.decisionWindowHours = `Enter whole hours from 1 to ${DECISION_WINDOW_MAX_HOURS}, or leave it empty`;
+	else if (window !== null && !sellerIsPro)
+		errors.decisionWindowHours = "Setting the decision window is a Pro feature";
+	const minAge = wholeNumber(input.minAccountAgeDays, 0, MIN_ACCOUNT_AGE_MAX_DAYS);
+	if (minAge === "invalid")
+		errors.minAccountAgeDays = `Enter whole days from 0 to ${MIN_ACCOUNT_AGE_MAX_DAYS}, or leave it empty`;
+	if (Object.keys(errors).length > 0 || hours === null || window === "invalid" || minAge === "invalid") {
+		return { ok: false, errors };
+	}
 	return valid({
 		paymentMethods: methods,
 		paymentDeadlineHours: hours,
@@ -201,6 +250,9 @@ export function validateTerms(
 		offerVisibility: input.offerVisibility === "visible" ? "visible" : "blind",
 		reviewEveryClaim: input.reviewEveryClaim,
 		allowBackupOffers: input.allowBackupOffers,
+		decisionWindowHours: window,
+		requireVerifiedEmail: input.requireVerifiedEmail ?? true,
+		minAccountAgeDays: minAge ?? 0,
 	});
 }
 
@@ -218,8 +270,14 @@ export function readTerms(stored: Record<string, unknown> | null | undefined): S
 		offerVisibility: t["offerVisibility"] === "visible" ? "visible" : "blind",
 		reviewEveryClaim: t["reviewEveryClaim"] === true,
 		allowBackupOffers: t["allowBackupOffers"] !== false,
+		decisionWindowHours: positiveInt(t["decisionWindowHours"]),
+		requireVerifiedEmail: t["requireVerifiedEmail"] !== false,
+		minAccountAgeDays: positiveInt(t["minAccountAgeDays"]) ?? 0,
 	};
 }
+
+const positiveInt = (value: unknown): number | null =>
+	typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
 
 // ---------------------------------------------------------------------------
 // Items

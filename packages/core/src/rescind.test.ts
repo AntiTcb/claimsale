@@ -106,14 +106,15 @@ describe("contest and answer windows", () => {
 	});
 });
 
-describe("abuse guard and records", () => {
-	const overturned = (to: "seller" | "neutral" | "buyer"): Rescind => {
-		const contested = expectOk(
-			contest(createRescind("buyer_nonpayment", false, T0), buyerActor("b1"), "b1", T0),
-		);
-		return expectOk(resolve(contested, admin, to));
-	};
+/** A contested non-payment rescind the admin resolved to `to`. */
+function overturned(to: "seller" | "neutral" | "buyer"): Rescind {
+	const contested = expectOk(
+		contest(createRescind("buyer_nonpayment", false, T0), buyerActor("b1"), "b1", T0),
+	);
+	return expectOk(resolve(contested, admin, to));
+}
 
+describe("abuse guard and records", () => {
 	it("[SM-4.3.1-abuse-guard] a contested buyer-fault rescind moved off the buyer is overturned", () => {
 		expect(isOverturned(overturned("seller"))).toBe(true);
 		expect(isOverturned(overturned("neutral"))).toBe(true);

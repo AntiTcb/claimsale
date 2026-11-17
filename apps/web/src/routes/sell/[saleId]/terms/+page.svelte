@@ -116,6 +116,55 @@
 			</label>
 		</div>
 
+		<div class="flex flex-col gap-1">
+			<label for="field-decisionWindowHours" class="text-sm font-medium"
+				>Decision window (hours){#if data.tier !== "pro"}<span class="font-normal"> · Pro</span>{/if}</label
+			>
+			<input
+				id="field-decisionWindowHours"
+				name="decisionWindowHours"
+				inputmode="numeric"
+				placeholder="24"
+				value={t.decisionWindowHours ?? ""}
+				disabled={data.tier !== "pro"}
+				aria-describedby="window-hint{errors['decisionWindowHours'] ? ' window-error' : ''}"
+				aria-invalid={errors["decisionWindowHours"] ? "true" : undefined}
+				class="w-32 {fieldClass}"
+			/>
+			<p id="window-hint" class="text-sm text-zinc-600 dark:text-zinc-400">
+				How long you have to pick between a full-price claim and offers before the earliest claim wins. Empty
+				is 24 hours{data.tier !== "pro" ? ", which is fixed for free sellers" : ""}.
+			</p>
+			{#if errors["decisionWindowHours"]}<p id="window-error" class="text-sm text-red-700 dark:text-red-400">
+					{errors["decisionWindowHours"]}
+				</p>{/if}
+		</div>
+
+		<fieldset class="flex flex-col gap-2">
+			<legend class="text-sm font-medium">Who can claim</legend>
+			<label class="flex items-center gap-2">
+				<input type="checkbox" name="requireVerifiedEmail" checked={t.requireVerifiedEmail} /> Buyers need a verified
+				email
+			</label>
+			<label for="field-minAccountAgeDays" class="text-sm">Minimum account age (days)</label>
+			<input
+				id="field-minAccountAgeDays"
+				name="minAccountAgeDays"
+				inputmode="numeric"
+				placeholder="0"
+				value={t.minAccountAgeDays === 0 ? "" : t.minAccountAgeDays}
+				aria-describedby="age-hint{errors['minAccountAgeDays'] ? ' age-error' : ''}"
+				aria-invalid={errors["minAccountAgeDays"] ? "true" : undefined}
+				class="w-32 {fieldClass}"
+			/>
+			<p id="age-hint" class="text-sm text-zinc-600 dark:text-zinc-400">
+				Pro buyers skip both requirements. Empty allows new accounts.
+			</p>
+			{#if errors["minAccountAgeDays"]}<p id="age-error" class="text-sm text-red-700 dark:text-red-400">
+					{errors["minAccountAgeDays"]}
+				</p>{/if}
+		</fieldset>
+
 		<TextField label="Ships to" name="shipsTo" maxlength={200} value={t.shipsTo} error={errors["shipsTo"]} />
 
 		<div class="flex flex-col gap-1">

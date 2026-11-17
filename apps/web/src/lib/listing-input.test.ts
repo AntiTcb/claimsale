@@ -100,6 +100,61 @@ describe("listing input", () => {
 		});
 	});
 
+	const terms = {
+		paymentMethods: ["venmo"],
+		paymentDeadlineHours: "48",
+		shipsTo: "US",
+		rulesMd: "",
+		offerVisibility: "blind",
+		reviewEveryClaim: false,
+		allowBackupOffers: true,
+	};
+
+	it("[SM-4.2-window-length] only Pro sellers set the decision window, in whole hours", () => {
+		expect(validateTerms({ ...terms, decisionWindowHours: " 6 " }, true)).toMatchObject({
+			ok: true,
+			value: { decisionWindowHours: 6 },
+		});
+		expect(validateTerms({ ...terms, decisionWindowHours: "" }, false)).toMatchObject({
+			ok: true,
+			value: { decisionWindowHours: null },
+		});
+		expect(validateTerms({ ...terms, decisionWindowHours: "6" }, false)).toMatchObject({
+			ok: false,
+			errors: { decisionWindowHours: "Setting the decision window is a Pro feature" },
+		});
+		for (const bad of ["0", "1.5", "337", "-2", "abc"]) {
+			expect(validateTerms({ ...terms, decisionWindowHours: bad }, true)).toMatchObject({
+				ok: false,
+				errors: { decisionWindowHours: expect.stringContaining("whole hours") },
+			});
+		}
+		expect(readTerms({ decisionWindowHours: 12 }).decisionWindowHours).toBe(12);
+		expect(readTerms({ decisionWindowHours: -1 }).decisionWindowHours).toBeNull();
+	});
+
+	it("[SM-4.1-buyer-requirements] sets the verified-email and account-age requirements", () => {
+		expect(
+			validateTerms({ ...terms, requireVerifiedEmail: false, minAccountAgeDays: "30" }, false),
+		).toMatchObject({ ok: true, value: { requireVerifiedEmail: false, minAccountAgeDays: 30 } });
+		expect(validateTerms({ ...terms, minAccountAgeDays: "" }, false)).toMatchObject({
+			ok: true,
+			value: { requireVerifiedEmail: true, minAccountAgeDays: 0 },
+		});
+		expect(validateTerms({ ...terms, minAccountAgeDays: "400" }, false)).toMatchObject({
+			ok: false,
+			errors: { minAccountAgeDays: expect.any(String) },
+		});
+		expect(readTerms({ requireVerifiedEmail: false, minAccountAgeDays: 7 })).toMatchObject({
+			requireVerifiedEmail: false,
+			minAccountAgeDays: 7,
+		});
+		expect(readTerms({ minAccountAgeDays: "7" })).toMatchObject({
+			requireVerifiedEmail: true,
+			minAccountAgeDays: 0,
+		});
+	});
+
 	it("validates items, with free-form attributes until the per-game schemas land", () => {
 		const input = {
 			title: "Charizard",

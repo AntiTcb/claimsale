@@ -75,7 +75,10 @@ export interface FlaggedAccount {
 	readonly createdAt: Millis;
 }
 
-/** Open account flags (IMG-repeat-offender), oldest first. */
+/**
+ * Open photo flags (IMG-repeat-offender), oldest first. Rescind abuse-guard flags are
+ * on /admin/rescinds (`overturnedFlags` in moderation.ts).
+ */
 export async function openFlags(db: Db, limit = 50): Promise<FlaggedAccount[]> {
 	return db
 		.select({
@@ -89,7 +92,7 @@ export async function openFlags(db: Db, limit = 50): Promise<FlaggedAccount[]> {
 		})
 		.from(accountFlags)
 		.innerJoin(users, eq(users.id, accountFlags.userId))
-		.where(isNull(accountFlags.resolvedAt))
+		.where(and(isNull(accountFlags.resolvedAt), eq(accountFlags.reason, "repeat_photo_rejections")))
 		.orderBy(asc(accountFlags.createdAt))
 		.limit(limit)
 		.all();
