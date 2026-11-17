@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "fcc569d3-9119-418e-85db-c51bd005b008",
+  "id": "caf0252f-b872-442d-8817-05f726f4b3f6",
   "prevId": "a15d8367-eeee-44c0-8b4b-7ca3e93d9cd2",
   "tables": {
     "addresses": {
@@ -629,6 +629,14 @@
           ],
           "isUnique": true,
           "where": "\"entries\".\"status\" IN ('open', 'countered')"
+        },
+        "entries_counter_expiry": {
+          "name": "entries_counter_expiry",
+          "columns": [
+            "counter_expires_at"
+          ],
+          "isUnique": false,
+          "where": "\"entries\".\"status\" = 'countered'"
         }
       },
       "foreignKeys": {
@@ -842,6 +850,101 @@
             "seller_id"
           ],
           "name": "follows_follower_id_seller_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "import_rows": {
+      "name": "import_rows",
+      "columns": {
+        "import_id": {
+          "name": "import_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "row": {
+          "name": "row",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sale_id": {
+          "name": "sale_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "import_rows_sale": {
+          "name": "import_rows_sale",
+          "columns": [
+            "sale_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "import_rows_sale_id_sales_id_fk": {
+          "name": "import_rows_sale_id_sales_id_fk",
+          "tableFrom": "import_rows",
+          "tableTo": "sales",
+          "columnsFrom": [
+            "sale_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "import_rows_item_id_items_id_fk": {
+          "name": "import_rows_item_id_items_id_fk",
+          "tableFrom": "import_rows",
+          "tableTo": "items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "import_rows_import_id_row_pk": {
+          "columns": [
+            "import_id",
+            "row"
+          ],
+          "name": "import_rows_import_id_row_pk"
         }
       },
       "uniqueConstraints": {},
@@ -1160,6 +1263,22 @@
           ],
           "isUnique": true,
           "where": "\"invoices\".\"invoice_number\" IS NOT NULL"
+        },
+        "invoices_status_due": {
+          "name": "invoices_status_due",
+          "columns": [
+            "status",
+            "due_at"
+          ],
+          "isUnique": false
+        },
+        "invoices_status_shipped": {
+          "name": "invoices_status_shipped",
+          "columns": [
+            "status",
+            "shipped_at"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
@@ -1423,14 +1542,6 @@
           "columns": [
             "seller_id",
             "status"
-          ],
-          "isUnique": false
-        },
-        "item_images_status_created": {
-          "name": "item_images_status_created",
-          "columns": [
-            "status",
-            "created_at"
           ],
           "isUnique": false
         }
@@ -1735,6 +1846,22 @@
             "kind"
           ],
           "isUnique": false
+        },
+        "items_decision_deadline": {
+          "name": "items_decision_deadline",
+          "columns": [
+            "decision_deadline"
+          ],
+          "isUnique": false,
+          "where": "\"items\".\"decision_deadline\" IS NOT NULL"
+        },
+        "items_offers_lapse_at": {
+          "name": "items_offers_lapse_at",
+          "columns": [
+            "offers_lapse_at"
+          ],
+          "isUnique": false,
+          "where": "\"items\".\"offers_lapse_at\" IS NOT NULL"
         }
       },
       "foreignKeys": {
@@ -2870,14 +2997,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "role": {
-          "name": "role",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'user'"
-        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -3482,319 +3601,6 @@
           "tableTo": "catalog_products",
           "columnsFrom": [
             "product_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "account_flags": {
-      "name": "account_flags",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "count": {
-          "name": "count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "resolved_at": {
-          "name": "resolved_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "resolved_by": {
-          "name": "resolved_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "account_flags_open": {
-          "name": "account_flags_open",
-          "columns": [
-            "user_id",
-            "reason"
-          ],
-          "isUnique": true,
-          "where": "\"account_flags\".\"resolved_at\" IS NULL"
-        },
-        "account_flags_created": {
-          "name": "account_flags_created",
-          "columns": [
-            "resolved_at",
-            "created_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "account_flags_user_id_users_id_fk": {
-          "name": "account_flags_user_id_users_id_fk",
-          "tableFrom": "account_flags",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "image_hashes": {
-      "name": "image_hashes",
-      "columns": {
-        "image_id": {
-          "name": "image_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "seller_id": {
-          "name": "seller_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "sale_id": {
-          "name": "sale_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "item_id": {
-          "name": "item_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "dhash": {
-          "name": "dhash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "phash": {
-          "name": "phash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "d0": {
-          "name": "d0",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "d1": {
-          "name": "d1",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "d2": {
-          "name": "d2",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "d3": {
-          "name": "d3",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "p0": {
-          "name": "p0",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "p1": {
-          "name": "p1",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "p2": {
-          "name": "p2",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "p3": {
-          "name": "p3",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "decision": {
-          "name": "decision",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "decided_at": {
-          "name": "decided_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "decided_by": {
-          "name": "decided_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "image_hashes_d0": {
-          "name": "image_hashes_d0",
-          "columns": [
-            "d0"
-          ],
-          "isUnique": false
-        },
-        "image_hashes_d1": {
-          "name": "image_hashes_d1",
-          "columns": [
-            "d1"
-          ],
-          "isUnique": false
-        },
-        "image_hashes_d2": {
-          "name": "image_hashes_d2",
-          "columns": [
-            "d2"
-          ],
-          "isUnique": false
-        },
-        "image_hashes_d3": {
-          "name": "image_hashes_d3",
-          "columns": [
-            "d3"
-          ],
-          "isUnique": false
-        },
-        "image_hashes_p0": {
-          "name": "image_hashes_p0",
-          "columns": [
-            "p0"
-          ],
-          "isUnique": false
-        },
-        "image_hashes_p1": {
-          "name": "image_hashes_p1",
-          "columns": [
-            "p1"
-          ],
-          "isUnique": false
-        },
-        "image_hashes_p2": {
-          "name": "image_hashes_p2",
-          "columns": [
-            "p2"
-          ],
-          "isUnique": false
-        },
-        "image_hashes_p3": {
-          "name": "image_hashes_p3",
-          "columns": [
-            "p3"
-          ],
-          "isUnique": false
-        },
-        "image_hashes_seller_decision": {
-          "name": "image_hashes_seller_decision",
-          "columns": [
-            "seller_id",
-            "decision"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "image_hashes_seller_id_users_id_fk": {
-          "name": "image_hashes_seller_id_users_id_fk",
-          "tableFrom": "image_hashes",
-          "tableTo": "users",
-          "columnsFrom": [
-            "seller_id"
           ],
           "columnsTo": [
             "id"

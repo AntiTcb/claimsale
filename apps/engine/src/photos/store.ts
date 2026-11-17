@@ -3,7 +3,12 @@
  * writes of a verdict. Raw D1 like the catalog: one statement per query, verdict
  * writes in one atomic `db.batch()`.
  */
-import { isRepeatOffender } from "@claimsale/core";
+import {
+	COMPLETED_SALE_STATUSES,
+	isRepeatOffender,
+	type PhotoStatus,
+	type PublishPhotoState,
+} from "@claimsale/core";
 import {
 	type BandKey,
 	hashFromHex,
@@ -278,6 +283,52 @@ export const resolveReview = (db: D1Database, resolution: ReviewResolution, admi
 		if (changed && resolution.decision === "rejected") yield* flagIfRepeatOffender(db, photo.seller_id, now);
 		return changed;
 	});
+
+const COMPLETED_IN = COMPLETED_SALE_STATUSES.map((s) => `'${s}'`).join(", ");
+
+/**
+ * Everything `checkPublishPhotos` needs about one sale: each item's photo statuses, the
+ * sale's timestamp photo, and the seller's completed sales. Read by the SaleEngine's
+ * publish command under the sale lock.
+ *
+ * @spec IMG-required
+ * @spec IMG-timestamp-required — completed sales are closed and archived ones.
+ */
+export async function readPublishPhotoState(
+	db: D1Database,
+	saleId: string,
+	sellerId: string,
+): Promise<PublishPhotoState> {
+	const [photos, timestamp, completed] = await Promise.all([
+		db
+			.prepare(
+				"SELECT i.id AS item_id, p.status FROM items i LEFT JOIN item_images p ON p.item_id = i.id WHERE i.sale_id = ?1",
+			)
+			.bind(saleId)
+			.all<{ item_id: string; status: PhotoStatus | null }>(),
+		db
+			.prepare(
+				"SELECT p.status FROM sales s JOIN item_images p ON p.id = s.timestamp_image_id WHERE s.id = ?1",
+			)
+			.bind(saleId)
+			.first<{ status: PhotoStatus }>(),
+		db
+			.prepare(`SELECT count(*) AS n FROM sales WHERE seller_id = ?1 AND status IN (${COMPLETED_IN})`)
+			.bind(sellerId)
+			.first<{ n: number }>(),
+	]);
+	const byItem = new Map<string, PhotoStatus[]>();
+	for (const row of photos.results) {
+		const list = byItem.get(row.item_id) ?? [];
+		if (row.status) list.push(row.status);
+		byItem.set(row.item_id, list);
+	}
+	return {
+		items: [...byItem.values()].map((statuses) => ({ photos: statuses })),
+		timestamp: timestamp?.status ?? null,
+		completedSales: completed?.n ?? 0,
+	};
+}
 
 /** Pending photos the queue may have lost (a failed send, retries exhausted), newest first. */
 export const stalePendingPhotos = (db: D1Database, olderThan: number, newerThan: number, limit: number) =>

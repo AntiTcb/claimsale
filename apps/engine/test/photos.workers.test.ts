@@ -424,8 +424,8 @@ describe("photo queue messages", () => {
 });
 
 describe("image_hashes migration (expand/contract)", () => {
-	it("0006 only adds tables, indexes and a defaulted column", () => {
-		const migration = env.TEST_MIGRATIONS.find((m) => m.name.startsWith("0006_"));
+	it("0007 only adds tables, indexes and a defaulted column", () => {
+		const migration = env.TEST_MIGRATIONS.find((m) => m.name.startsWith("0007_"));
 		const statements = migration!.queries.map((q) => q.replace(/^--.*$/gm, "").trim()).filter(Boolean);
 		expect(statements.length).toBeGreaterThan(0);
 		for (const statement of statements) {
@@ -436,15 +436,15 @@ describe("image_hashes migration (expand/contract)", () => {
 	});
 
 	it("applies on top of the previous schema, keeping its data; existing users get the user role", async () => {
-		const stub = env.SALE_ENGINE.get(env.SALE_ENGINE.idFromName("migration-check-0006"));
+		const stub = env.SALE_ENGINE.get(env.SALE_ENGINE.idFromName("migration-check-0007"));
 		await runInDurableObject(stub, (_instance, state) => {
 			const sql = state.storage.sql;
-			for (const migration of env.TEST_MIGRATIONS.filter((m) => m.name < "0006_"))
+			for (const migration of env.TEST_MIGRATIONS.filter((m) => m.name < "0007_"))
 				for (const query of migration.queries) sql.exec(query);
 			sql.exec(
 				"INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES ('u1', 'a@example.test', 'A', 1, 1)",
 			);
-			for (const migration of env.TEST_MIGRATIONS.filter((m) => m.name >= "0006_"))
+			for (const migration of env.TEST_MIGRATIONS.filter((m) => m.name >= "0007_"))
 				for (const query of migration.queries) sql.exec(query);
 			expect(sql.exec("SELECT id, role FROM users").toArray()).toEqual([{ id: "u1", role: "user" }]);
 			const tables = sql

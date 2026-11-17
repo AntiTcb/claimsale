@@ -1,31 +1,11 @@
-import {
-	checkPublishPhotos,
-	type PhotoPublishRejection,
-	publish as publishSale,
-	unpublish as unpublishSale,
-	ok,
-	reject,
-	type Millis,
-	type Rejection,
-	type Result,
-	type Sale,
-	type SaleRejection,
-	type SaleStatus,
-} from "@claimsale/core";
-import { and, eq, sql, type Db } from "@claimsale/db";
-import { auditLog, sales } from "@claimsale/db/schema";
-import { uuidv7 } from "uuidv7";
-import { entitlements } from "./entitlements.ts";
-import { publishPhotoState } from "./images.ts";
-import { countItems } from "./items.ts";
-import { countActiveSales } from "./sales.ts";
+import { reject, type Millis, type Rejection, type Result, type SaleStatus } from "@claimsale/core";
+import type { Outcome, RpcResult } from "@claimsale/engine";
 
 /**
  * The web Worker's view of the sale engine (STATE_MACHINES §9). Every sale
- * transition goes through this interface. Today `localEngine` runs the core
- * transition and writes D1 directly; WS-E swaps in an implementation that calls
- * the SaleEngine Durable Object over RPC (which owns the alarm at `liveAt`), and
- * callers don't change.
+ * transition goes through the SaleEngine Durable Object over Workers RPC: the engine
+ * runs the core transition under the sale's lock, sets the server time, writes D1 and
+ * the audit row in one batch, and owns the alarm at `live_at` / `closes_at`.
  */
 
 export interface PublishRequest {
@@ -36,7 +16,8 @@ export interface PublishRequest {
 	readonly closesAt: Millis;
 }
 
-export type EngineRejection = SaleRejection | PhotoPublishRejection | Rejection<"not_found" | "conflict">;
+/** A rule said no (the engine's code and message), or the engine didn't answer. */
+export type EngineRejection = Rejection;
 
 export interface PublishOutcome {
 	readonly status: SaleStatus;
@@ -45,125 +26,68 @@ export interface PublishOutcome {
 }
 
 export interface Engine {
-	publish(request: PublishRequest, now: Millis): Promise<Result<PublishOutcome, EngineRejection>>;
-	unpublish(
-		request: { saleId: string; sellerId: string },
-		now: Millis,
-	): Promise<Result<PublishOutcome, EngineRejection>>;
+	publish(request: PublishRequest): Promise<Result<PublishOutcome, EngineRejection>>;
+	unpublish(request: { saleId: string; sellerId: string }): Promise<Result<PublishOutcome, EngineRejection>>;
+	close(request: { saleId: string; sellerId: string }): Promise<Result<PublishOutcome, EngineRejection>>;
 }
 
-async function loadSale(db: Db, saleId: string, sellerId: string, now: Millis) {
-	const row = await db
-		.select()
-		.from(sales)
-		.where(and(eq(sales.id, saleId), eq(sales.sellerId, sellerId)))
-		.get();
-	if (!row || row.status === "deleted") return undefined;
-	const tier = (await entitlements(db, sellerId, now)).seller;
-	const sale: Sale = {
-		status: row.status,
-		liveAt: row.liveAt,
-		closesAt: row.closesAt,
-		sellerTier: tier,
-		itemCount: await countItems(db, saleId),
-	};
-	return { row, sale };
+/** The engine methods this module calls (the `ENGINE` service binding has them all). */
+export type EngineBinding = Pick<Env["ENGINE"], "publishSale" | "unpublishSale" | "closeSale">;
+
+const unavailable = () =>
+	reject("engine_unavailable", "The sale engine didn't answer. Try again in a moment.");
+
+/** Unwraps the RPC layer: a defect on the engine's side becomes a retryable rejection. */
+function settle<A>(result: RpcResult<Outcome<A>>): Result<A, EngineRejection> {
+	if (!result.ok) return unavailable();
+	return result.value;
 }
+
+const outcome = (sale: PublishOutcome): PublishOutcome => ({
+	status: sale.status,
+	liveAt: sale.liveAt,
+	closesAt: sale.closesAt,
+});
 
 /**
- * Applies a sale transition with a status check (a concurrent change makes the
- * update match no row) and its audit row in one batch (SM-9-audit, done fully by WS-E).
+ * The engine over RPC. Every publish check runs in the engine's command, including the
+ * photo checks (IMG-required, IMG-timestamp-required), so the web Worker only passes
+ * requests through.
  */
-async function commit(
-	db: Db,
-	saleId: string,
-	expected: SaleStatus,
-	next: Sale,
-	actorId: string,
-	action: string,
-	now: Millis,
-): Promise<Result<PublishOutcome, EngineRejection>> {
-	const [updated] = await db.batch([
-		db
-			.update(sales)
-			.set({
-				status: next.status,
-				liveAt: next.liveAt,
-				closesAt: next.closesAt,
-				...(action === "sale_published" ? { publishedAt: now } : {}),
-				updatedAt: now,
-			})
-			.where(and(eq(sales.id, saleId), eq(sales.status, expected)))
-			.returning({ id: sales.id }),
-		// Written only if the update above applied (same batch, so same transaction).
-		db.insert(auditLog).select(
-			db
-				.select({
-					id: sql<string>`${uuidv7()}`.as("id"),
-					saleId: sales.id,
-					itemId: sql<null>`NULL`.as("item_id"),
-					actorId: sql<string>`${actorId}`.as("actor_id"),
-					action: sql<string>`${action}`.as("action"),
-					data: sql<string>`${JSON.stringify({ status: next.status, liveAt: next.liveAt, closesAt: next.closesAt })}`.as(
-						"data",
-					),
-					createdAt: sql<number>`${now}`.as("created_at"),
-				})
-				.from(sales)
-				.where(and(eq(sales.id, saleId), eq(sales.status, next.status), eq(sales.updatedAt, now))),
-		),
-	]);
-	if (updated.length === 0) {
-		return reject("conflict", "The sale changed while you were publishing it. Reload and try again.");
-	}
-	return ok({ status: next.status, liveAt: next.liveAt, closesAt: next.closesAt });
-}
-
-/** The stub engine: core transitions over D1, no Durable Object (replaced by WS-E). */
-export function localEngine(db: Db): Engine {
+export function rpcEngine(binding: EngineBinding): Engine {
 	return {
 		/**
-		 * @spec SM-2-publish-scheduled — a future go-live time schedules the sale (claims stay closed).
-		 * @spec SM-2-publish-now — no go-live time makes it live now.
-		 * @spec SM-2-preview-window — go-live at most 7 days ahead.
-		 * @spec SM-2-free-sale-cap — at most 2 scheduled or live sales for free sellers.
-		 * @spec SM-2-free-item-cap — at most 10 items, checked again on publish.
-		 * @spec IMG-required — through core's checkPublishPhotos (WS-E's publish RPC calls the same).
-		 * @spec IMG-timestamp-required
+		 * The engine enforces SM-2-publish-scheduled, SM-2-publish-now, SM-2-preview-window,
+		 * SM-2-max-duration, SM-2-free-sale-cap, SM-2-free-item-cap and the photo checks.
 		 */
-		async publish(request, now) {
-			const loaded = await loadSale(db, request.saleId, request.sellerId, now);
-			if (!loaded) return reject("not_found", "No such sale");
-			// D63, D66: approved photos for every item, and a timestamp photo for newer sellers.
-			const photos = checkPublishPhotos(await publishPhotoState(db, request.saleId, request.sellerId));
-			if (!photos.ok) return photos;
-			const result = publishSale(
-				loaded.sale,
-				{
+		async publish(request) {
+			const result = settle(
+				(await binding.publishSale({
+					saleId: request.saleId,
+					sellerId: request.sellerId,
 					liveAt: request.liveAt,
 					closesAt: request.closesAt,
-					activeSaleCount: await countActiveSales(db, request.sellerId, request.saleId),
-				},
-				now,
+				})) as RpcResult<Outcome<PublishOutcome>>,
 			);
-			if (!result.ok) return result;
-			return commit(db, request.saleId, "draft", result.value.sale, request.sellerId, "sale_published", now);
+			return result.ok ? { ok: true, value: outcome(result.value) } : result;
 		},
 
-		async unpublish(request, now) {
-			const loaded = await loadSale(db, request.saleId, request.sellerId, now);
-			if (!loaded) return reject("not_found", "No such sale");
-			const result = unpublishSale(loaded.sale);
-			if (!result.ok) return result;
-			return commit(
-				db,
-				request.saleId,
-				"scheduled",
-				result.value.sale,
-				request.sellerId,
-				"sale_unpublished",
-				now,
+		async unpublish(request) {
+			const result = settle(
+				(await binding.unpublishSale({ saleId: request.saleId, sellerId: request.sellerId })) as RpcResult<
+					Outcome<PublishOutcome>
+				>,
 			);
+			return result.ok ? { ok: true, value: outcome(result.value) } : result;
+		},
+
+		async close(request) {
+			const result = settle(
+				(await binding.closeSale({ saleId: request.saleId, sellerId: request.sellerId })) as RpcResult<
+					Outcome<PublishOutcome>
+				>,
+			);
+			return result.ok ? { ok: true, value: outcome(result.value) } : result;
 		},
 	};
 }

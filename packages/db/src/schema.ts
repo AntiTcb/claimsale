@@ -274,6 +274,13 @@ export const items = sqliteTable(
 			.where(sql`${t.sku} IS NOT NULL`),
 		index("items_catalog_product").on(t.catalogProductId),
 		index("items_game").on(t.gameId, t.kind),
+		// The engine's cron sweep looks for due timers (STATE_MACHINES §7).
+		index("items_decision_deadline")
+			.on(t.decisionDeadline)
+			.where(sql`${t.decisionDeadline} IS NOT NULL`),
+		index("items_offers_lapse_at")
+			.on(t.offersLapseAt)
+			.where(sql`${t.offersLapseAt} IS NOT NULL`),
 	],
 );
 
@@ -379,6 +386,9 @@ export const entries = sqliteTable(
 		uniqueIndex("entries_one_pending")
 			.on(t.itemId, t.userId)
 			.where(sql`${t.status} IN ('open', 'countered')`),
+		index("entries_counter_expiry")
+			.on(t.counterExpiresAt)
+			.where(sql`${t.status} = 'countered'`),
 	],
 );
 
@@ -492,6 +502,8 @@ export const invoices = sqliteTable(
 		uniqueIndex("invoices_seller_number")
 			.on(t.sellerId, t.invoiceNumber)
 			.where(sql`${t.invoiceNumber} IS NOT NULL`),
+		index("invoices_status_due").on(t.status, t.dueAt),
+		index("invoices_status_shipped").on(t.status, t.shippedAt),
 	],
 );
 
@@ -645,4 +657,25 @@ export const fees = sqliteTable(
 		createdAt: millis("created_at").notNull(),
 	},
 	(t) => [index("fees_seller").on(t.sellerId, t.createdAt), index("fees_invoice").on(t.invoiceId)],
+);
+
+/**
+ * Applied rows of item imports (PLAN §3c.4): a re-sent batch with the same
+ * `import_id` and row is answered from here and changes nothing (IO-import-idempotent).
+ * Written only by the engine.
+ */
+export const importRows = sqliteTable(
+	"import_rows",
+	{
+		importId: text("import_id").notNull(),
+		/** The row's line in the seller's spreadsheet (the header is row 1). */
+		row: integer("row").notNull(),
+		saleId: text("sale_id")
+			.notNull()
+			.references(() => sales.id, { onDelete: "cascade" }),
+		itemId: text("item_id").references(() => items.id, { onDelete: "set null" }),
+		outcome: text("outcome", { enum: ["created", "updated", "skipped"] }).notNull(),
+		createdAt: millis("created_at").notNull(),
+	},
+	(t) => [primaryKey({ columns: [t.importId, t.row] }), index("import_rows_sale").on(t.saleId)],
 );

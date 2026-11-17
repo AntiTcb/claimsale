@@ -14,6 +14,8 @@ export interface EngineEnv {
 	/** Seller photos (the web Worker's bucket), read by the photo verify job. */
 	readonly IMAGES: R2Bucket;
 	readonly EMAIL: SendEmail;
+	/** Claims and offers per buyer (SM-9-entry-rate-limit). */
+	readonly ENTRY_LIMITER: RateLimit;
 	readonly APP_ENV: string;
 	readonly VERSION: string;
 	/** Sender for notification email (TECH_STACK S31). */

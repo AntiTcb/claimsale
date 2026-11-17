@@ -351,6 +351,10 @@ adapter changes; the transition functions stay the same.
 
 Every transition writes an `audit_log` row in the same batch.
 
+Claims and offers are also **rate-limited per buyer** (Workers Rate Limiting binding,
+20 per 10 seconds) before they reach the Durable Object, so one client can't flood a
+sale's write path; a limited command is rejected with `rate_limited` and writes nothing.
+
 ---
 
 ## 9a. Clarifications from the domain core (2026-11-13)
@@ -491,4 +495,5 @@ IDs stay in the table, marked ~~struck~~.
 | `SM-2-private-images` | Photos are served only through an access-checked route; photos of private sales and drafts are never publicly cacheable | 2, PLAN 3 (Sale) |
 | `SM-2-photo-cap` | Photos per item: 4 for free sellers, 12 for Pro, checked server-side on upload | 2, D33 |
 | `TCG-catalog-ingest` | Catalog ingestion is idempotent and resumable: re-ingesting the same TCGCSV build writes no rows, sets that fail or don't fit in a run are retried by the next one, and only autofill fields plus the latest market price per product + subtype are stored (no images, no card text) | PLAN 3 (TCG catalog), TECH_STACK S32 |
+| `SM-9-entry-rate-limit` | Claims and offers are rate-limited per buyer before the Durable Object; over the limit → `rate_limited`, nothing written | 9 |
 

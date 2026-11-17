@@ -11,6 +11,20 @@ export const NotificationMessage = Schema.Struct({
 });
 export type NotificationMessage = typeof NotificationMessage.Type;
 
+/**
+ * Domain events a SaleEngine committed (STATE_MACHINES §9). WS-K turns them into
+ * notifications; until then the consumer acknowledges them.
+ */
+export const SaleEventsMessage = Schema.Struct({
+	kind: Schema.Literal("sale_events"),
+	sale_id: Schema.String,
+	events: Schema.Array(Schema.Unknown),
+	traceparent: Schema.optional(Schema.String),
+});
+export type SaleEventsMessage = typeof SaleEventsMessage.Type;
+
+const decodeSaleEvents = Schema.decodeUnknownOption(SaleEventsMessage);
+
 export interface QueueOptions {
 	/** Where trace probe emails go; unset means the probe stops at the consumer. */
 	readonly probeRecipient: string | undefined;
@@ -75,6 +89,14 @@ export const handleQueue = (batch: MessageBatch, options: QueueOptions) =>
 			if (isPhotoVerifyMessage(message.body)) {
 				if (options.photos) yield* handlePhotoMessage(message, message.body, options.photos);
 				else message.retry();
+				continue;
+			}
+			const saleEvents = decodeSaleEvents(message.body);
+			if (Option.isSome(saleEvents)) {
+				yield* Effect.logDebug("sale events received; no notification handlers yet").pipe(
+					Effect.annotateLogs({ sale_id: saleEvents.value.sale_id, events: saleEvents.value.events.length }),
+				);
+				message.ack();
 				continue;
 			}
 			const body = decodeMessage(message.body);
