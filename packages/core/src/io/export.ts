@@ -299,3 +299,55 @@ export function genericShippingExport(orders: readonly OrderSource[]): Table {
 
 /** The table as rows for `encodeCsv`. */
 export const tableRows = (table: Table): (readonly string[])[] => [table.headers, ...table.rows];
+
+// ---------------------------------------------------------------------------
+// Export jobs (generated on a queue, kept in R2 for 24h)
+
+/** The exports a seller can request for one sale (PLAN §3c.2). */
+export const EXPORT_KINDS = ["items", "orders", "pirate_ship", "shipping_generic"] as const;
+export type ExportKind = (typeof EXPORT_KINDS)[number];
+
+export const EXPORT_KIND_LABELS: Readonly<Record<ExportKind, string>> = {
+	items: "Sale items",
+	orders: "Orders / buyers",
+	pirate_ship: "Pirate Ship labels",
+	shipping_generic: "Shipping labels (generic)",
+};
+
+export const isExportKind = (value: string): value is ExportKind =>
+	(EXPORT_KINDS as readonly string[]).includes(value);
+
+/** How long a finished export can be downloaded. */
+export const EXPORT_LINK_TTL: Millis = 24 * 60 * 60 * 1000;
+
+/** When a job finished at `finishedAt` stops being downloadable. */
+export const exportExpiresAt = (finishedAt: Millis): Millis => finishedAt + EXPORT_LINK_TTL;
+
+export interface ExportJobState {
+	readonly status: string;
+	readonly expiresAt: Millis | null;
+}
+
+/**
+ * Whether an export's download link still works.
+ *
+ * @spec IO-export-expiry — a finished export can be downloaded for 24h, then never again.
+ */
+export function exportDownloadable(job: ExportJobState, now: Millis): boolean {
+	return job.status === "done" && job.expiresAt !== null && now < job.expiresAt;
+}
+
+/** `claimsale-orders-weekend-ygo-2026-11-17.csv` */
+export function exportFileName(kind: ExportKind, saleSlug: string, at: Millis): string {
+	const day = new Date(at).toISOString().slice(0, 10);
+	const slug = saleSlug.replace(/[^a-z0-9-]+/gi, "-").slice(0, 60);
+	return `claimsale-${kind.replace("_", "-")}-${slug}-${day}.csv`;
+}
+
+/** The table for an export kind (items exports are built from items, the rest from orders). */
+export function shippingExport(
+	kind: "pirate_ship" | "shipping_generic",
+	orders: readonly OrderSource[],
+): Table {
+	return kind === "pirate_ship" ? pirateShipExport(orders) : genericShippingExport(orders);
+}

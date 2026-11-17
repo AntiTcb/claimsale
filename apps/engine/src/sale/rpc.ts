@@ -132,21 +132,51 @@ export const MarkPaidInput = Schema.Struct({
 	buyerId: Id,
 	shippingOptionId: Id,
 	paymentRef: Schema.NullOr(Schema.String.check(Schema.isMaxLength(200))),
+	/** One of the buyer's saved addresses; the invoice keeps a snapshot (SM-6-address-snapshot). */
+	addressId: Id,
 });
 export type MarkPaidInput = typeof MarkPaidInput.Type;
+
+const Tracking = Schema.Struct({
+	carrier: Schema.String.check(Schema.isMaxLength(40)),
+	number: Schema.String.check(Schema.isMaxLength(64)),
+});
 
 export const ShipInput = Schema.Struct({
 	saleId: Id,
 	invoiceId: Id,
 	sellerId: Id,
-	tracking: Schema.NullOr(
-		Schema.Struct({
-			carrier: Schema.String.check(Schema.isMaxLength(40)),
-			number: Schema.String.check(Schema.isMaxLength(64)),
-		}),
-	),
+	tracking: Schema.NullOr(Tracking),
 });
 export type ShipInput = typeof ShipInput.Type;
+
+/** A confirmed tracking replacement on a shipped invoice (IO-tracking-replace). */
+export const ReplaceTrackingInput = Schema.Struct({
+	saleId: Id,
+	invoiceId: Id,
+	sellerId: Id,
+	tracking: Tracking,
+});
+export type ReplaceTrackingInput = typeof ReplaceTrackingInput.Type;
+
+/** The most rows one tracking re-import call applies. */
+export const TRACKING_BATCH_MAX = 200;
+
+/** Matched tracking re-import rows for one sale (PLAN §3c.3). */
+export const ApplyTrackingInput = Schema.Struct({
+	saleId: Id,
+	sellerId: Id,
+	rows: Schema.Array(
+		Schema.Struct({
+			row: Schema.Int.check(Schema.isGreaterThan(0)),
+			invoiceId: Id,
+			carrier: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40)),
+			number: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+			replace: Schema.Boolean,
+		}),
+	).check(Schema.isMaxLength(TRACKING_BATCH_MAX)),
+});
+export type ApplyTrackingInput = typeof ApplyTrackingInput.Type;
 
 /** One batch of an item import (WS-G): core's batch body plus the sale and the seller. */
 export const ImportBatchInput = Schema.Struct({

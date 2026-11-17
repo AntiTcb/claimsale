@@ -1,8 +1,14 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
+	EXPORT_LINK_TTL,
+	exportDownloadable,
+	exportExpiresAt,
+	exportFileName,
 	genericShippingExport,
+	isExportKind,
 	itemsExport,
+	shippingExport,
 	ordersExport,
 	ORDER_COLUMNS,
 	pirateShipExport,
@@ -179,5 +185,33 @@ describe("shipping-tool layouts [IO-export-privacy]", () => {
 			"Charizard ex",
 			"Ground Advantage",
 		]);
+	});
+});
+
+describe("export jobs [IO-export-expiry]", () => {
+	const finished = Date.UTC(2026, 10, 17, 12);
+
+	it("a finished export can be downloaded for 24 hours, then never again [IO-export-expiry]", () => {
+		const job = { status: "done", expiresAt: exportExpiresAt(finished) };
+		expect(job.expiresAt - finished).toBe(EXPORT_LINK_TTL);
+		expect(EXPORT_LINK_TTL).toBe(24 * 60 * 60 * 1000);
+		expect(exportDownloadable(job, finished)).toBe(true);
+		expect(exportDownloadable(job, job.expiresAt - 1)).toBe(true);
+		expect(exportDownloadable(job, job.expiresAt)).toBe(false);
+		expect(exportDownloadable({ status: "expired", expiresAt: job.expiresAt }, finished)).toBe(false);
+		expect(exportDownloadable({ status: "applying", expiresAt: null }, finished)).toBe(false);
+	});
+
+	it("names files after the kind, the sale and the day [IO-export-expiry]", () => {
+		expect(exportFileName("pirate_ship", "weekend-ygo-k3x9", finished)).toBe(
+			"claimsale-pirate-ship-weekend-ygo-k3x9-2026-11-17.csv",
+		);
+		expect(isExportKind("orders")).toBe(true);
+		expect(isExportKind("account")).toBe(false);
+	});
+
+	it("picks the shipping layout by kind [IO-export-privacy]", () => {
+		expect(shippingExport("pirate_ship", [order()]).headers[0]).toBe("Order ID");
+		expect(shippingExport("shipping_generic", [order()]).headers[0]).toBe("order_reference");
 	});
 });

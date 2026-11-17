@@ -496,4 +496,7 @@ IDs stay in the table, marked ~~struck~~.
 | `SM-2-photo-cap` | Photos per item: 4 for free sellers, 12 for Pro, checked server-side on upload | 2, D33 |
 | `TCG-catalog-ingest` | Catalog ingestion is idempotent and resumable: re-ingesting the same TCGCSV build writes no rows, sets that fail or don't fit in a run are retried by the next one, and only autofill fields plus the latest market price per product + subtype are stored (no images, no card text) | PLAN 3 (TCG catalog), TECH_STACK S32 |
 | `SM-9-entry-rate-limit` | Claims and offers are rate-limited per buyer before the Durable Object; over the limit → `rate_limited`, nothing written | 9 |
+| `SM-6-shipping-menu` | The seller's shipping menu has 1–10 options, each with a label and a flat price of $0–$100 in cents and a tracked flag; option IDs stay stable across edits | 6, D15 |
+| `SM-6-address-snapshot` | "I've paid" needs one of the buyer's saved addresses; the invoice keeps a snapshot (and the shipping option's label), which later address-book edits don't change; the seller sees it only on that buyer's invoices | 6, PLAN 3 (Invoice) |
+| `SM-6-overdue-rescind` | On an overdue invoice the seller can, in one click, rescind every line for non-payment and pass each item to the next backup | 6, D13 |
 
