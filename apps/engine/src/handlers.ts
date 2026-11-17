@@ -1,6 +1,7 @@
 import { parseTraceparent } from "@claimsale/observability";
 import { Effect, Option, Schema, Tracer } from "effect";
 import { Mailer } from "./mailer.ts";
+import { handlePhotoMessage, isPhotoVerifyMessage, type VerifyDeps } from "./photos/index.ts";
 
 /** Queue message envelope (TECH_STACK §4: messages carry `traceparent`). */
 export const NotificationMessage = Schema.Struct({
@@ -13,6 +14,8 @@ export type NotificationMessage = typeof NotificationMessage.Type;
 export interface QueueOptions {
 	/** Where trace probe emails go; unset means the probe stops at the consumer. */
 	readonly probeRecipient: string | undefined;
+	/** The photo verify job's bindings (WS-F2); without them `photo_verify` messages are retried. */
+	readonly photos?: VerifyDeps;
 }
 
 const decodeMessage = Schema.decodeUnknownOption(NotificationMessage);
@@ -68,6 +71,12 @@ export const handleQueue = (batch: MessageBatch, options: QueueOptions) =>
 	Effect.gen(function* () {
 		yield* Effect.annotateCurrentSpan({ queue: batch.queue, "queue.batch_size": batch.messages.length });
 		for (const message of batch.messages) {
+			// Photo checks share this queue (WS-F2), so no new queue has to be provisioned.
+			if (isPhotoVerifyMessage(message.body)) {
+				if (options.photos) yield* handlePhotoMessage(message, message.body, options.photos);
+				else message.retry();
+				continue;
+			}
 			const body = decodeMessage(message.body);
 			if (Option.isNone(body)) {
 				// Milestone 9 adds the real notification kinds. Unknown messages can't be

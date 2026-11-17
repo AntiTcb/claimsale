@@ -1,8 +1,9 @@
 import { drizzle } from "drizzle-orm/d1";
 import * as catalog from "./catalog.ts";
+import * as photos from "./photos.ts";
 import * as coreSchema from "./schema.ts";
 
-const schema = { ...coreSchema, ...catalog };
+const schema = { ...coreSchema, ...catalog, ...photos };
 
 export { schema };
 // Query helpers, re-exported so every package uses this package's drizzle-orm

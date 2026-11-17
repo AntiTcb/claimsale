@@ -17,6 +17,14 @@ import type { EngineEnv } from "./env.ts";
 import { handleQueue, handleScheduled } from "./handlers.ts";
 import { health, type HealthReport } from "./health.ts";
 import { CloudflareMailer } from "./mailer.ts";
+import {
+	requestVerification,
+	requeueStalePhotos,
+	reviewPhoto,
+	workerDecoder,
+	type PhotoReviewInput,
+	type PhotoVerificationInput,
+} from "./photos/index.ts";
 import { fromRpcResult, optionalSecret, run, runForRpc, type RpcResult } from "./runtime.ts";
 import { disabledProbe, isProbeEnabled, type TraceProbeInput, type TraceProbeResult } from "./trace-probe.ts";
 
@@ -25,6 +33,7 @@ export type { HealthReport } from "./health.ts";
 export type { EngineEnv } from "./env.ts";
 export type { RpcResult, RuntimeCapabilities } from "./runtime.ts";
 export type { TraceProbeInput, TraceProbeResult } from "./trace-probe.ts";
+export type { PhotoReviewInput, PhotoVerificationInput } from "./photos/index.ts";
 export type {
 	CatalogSearchHit,
 	CatalogSearchInput,
@@ -91,8 +100,21 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 		return runForRpc(this.env, "engine.catalog.ingest", ingestOneGame(this.env, input));
 	}
 
+	/** Queues the duplicate check of a new upload (photo authenticity, WS-F2). */
+	async requestPhotoVerification(input: PhotoVerificationInput): Promise<RpcResult<true>> {
+		return runForRpc(this.env, "engine.photos.request", requestVerification(this.env.NOTIFICATIONS, input));
+	}
+
+	/** An admin approves or rejects a photo held for review; false if it wasn't in review. */
+	async reviewPhoto(input: PhotoReviewInput): Promise<RpcResult<boolean>> {
+		return runForRpc(this.env, "engine.photos.review", reviewPhoto(this.env.DB, input));
+	}
+
 	override async queue(batch: MessageBatch): Promise<void> {
-		const options = { probeRecipient: optionalSecret(this.env, "TRACE_PROBE_TO") };
+		const options = {
+			probeRecipient: optionalSecret(this.env, "TRACE_PROBE_TO"),
+			photos: { db: this.env.DB, images: this.env.IMAGES, decode: workerDecoder() },
+		};
 		await run(
 			this.env,
 			"engine.queue.notifications",
@@ -106,5 +128,6 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 			return;
 		}
 		await run(this.env, "engine.cron.sweep", handleScheduled(controller));
+		await run(this.env, "engine.cron.photos", requeueStalePhotos(this.env));
 	}
 }

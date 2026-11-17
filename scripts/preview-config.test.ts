@@ -74,6 +74,10 @@ describe("preview-config", () => {
 		expect(web["r2_buckets"]).toEqual([{ binding: "IMAGES", bucket_name: "claimsale-images-preview" }]);
 	});
 
+	it("gives the engine's photo verify job the same bucket as web, never the local one", () => {
+		expect(engine["r2_buckets"]).toEqual(web["r2_buckets"]);
+	});
+
 	it("copies staging's vars, with preview's APP_ENV and VERSION, and captures web email", () => {
 		expect(engine["vars"]).toMatchObject({
 			APP_ENV: "preview",

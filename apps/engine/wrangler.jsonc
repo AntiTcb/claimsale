@@ -30,6 +30,8 @@
 			"migrations_dir": "../../packages/db/migrations",
 		},
 	],
+	// Seller photos (the web Worker's bucket): the photo verify job reads uploads (S33).
+	"r2_buckets": [{ "binding": "IMAGES", "bucket_name": "claimsale-images-local" }],
 	"durable_objects": {
 		"bindings": [{ "name": "SALE_ENGINE", "class_name": "SaleEngine" }],
 	},
@@ -60,6 +62,7 @@
 					"migrations_dir": "../../packages/db/migrations",
 				},
 			],
+			"r2_buckets": [{ "binding": "IMAGES", "bucket_name": "claimsale-images-staging" }],
 			"durable_objects": {
 				"bindings": [{ "name": "SALE_ENGINE", "class_name": "SaleEngine" }],
 			},
@@ -89,6 +92,7 @@
 					"migrations_dir": "../../packages/db/migrations",
 				},
 			],
+			"r2_buckets": [{ "binding": "IMAGES", "bucket_name": "claimsale-images" }],
 			"durable_objects": {
 				"bindings": [{ "name": "SALE_ENGINE", "class_name": "SaleEngine" }],
 			},

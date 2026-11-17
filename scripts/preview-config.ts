@@ -49,6 +49,8 @@ Object.assign(engine, {
 	},
 	// No cron in previews; tests advance timers through the test-only endpoint instead.
 	triggers: { crons: [] },
+	// The web Worker's photo bucket, which the photo verify job reads (see below).
+	r2_buckets: [{ binding: "IMAGES", bucket_name: "claimsale-images-preview" }],
 });
 
 const web = readWranglerConfig("apps/web/wrangler.jsonc");
