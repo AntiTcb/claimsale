@@ -10,7 +10,7 @@ import type { Work } from "./sale/store.ts";
 import { SaleWriter, type Outcome } from "./sale/writer.ts";
 import { disabledProbe, isProbeEnabled, probeInDurableObject, type TraceProbeResult } from "./trace-probe.ts";
 
-export type { ItemCommandResult, InvoiceView, Outcome, SaleView } from "./sale/writer.ts";
+export type { ItemCommandResult, InvoiceView, Outcome, RescindView, SaleView } from "./sale/writer.ts";
 
 /** How long the alarm waits before retrying a timer that is still due after it ran. */
 const RETRY_DELAY: Millis = 15_000;

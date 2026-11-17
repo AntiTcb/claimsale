@@ -301,6 +301,7 @@ stateDiagram-v2
 | `invoice.due_at` | invoice sent | → `overdue`; auto-rescind if enabled |
 | `invoice.autocomplete_at` | shipped | → `completed` |
 | `closed sale offer expiry` | sale close | unaccepted offers → `lost` |
+| `rescind mutual answer` | a `mutual_agreement` rescind | 72h without an answer → neutral (4.3.1) |
 
 Each sale's Durable Object keeps **one** alarm set to the earliest pending timer
 across the sale's items and invoices. When it fires, it processes everything that
@@ -382,6 +383,21 @@ case open, the code does the following; change the spec and the code together.
 - **Re-attribution by the admin:** if the admin moves a rescind to buyer fault but its
   reason code has no buyer mark (a seller code), the buyer gets `violation`.
 - **A disputed mutual agreement** goes to the admin queue like a contest.
+
+### Clarifications from the control room (WS-I, 2026-11-17)
+
+- **Contests and answers** run in the sale's engine like every other write. A contest
+  needs the buyer's side (10–2000 characters). The 72h mutual-agreement answer is a
+  sale timer (`mutual_answer_due`, §7): the alarm and the cron sweep treat a missing
+  answer as agreement.
+- **The admin resolves** a contested or held rescind to `buyer`, `seller` or `neutral`.
+  Only the admin can (users with `role = admin`, checked by the engine).
+- **Abuse guard:** "overturned" means a contested rescind whose code is buyer-fault and
+  that the admin resolved to seller or neutral. The third one opens an
+  `overturned_rescinds` account flag on the seller (one open flag at a time).
+- **Rows written before the `phase` column** get their phase derived: resolved → final,
+  contested → contested, `suspected_fraud` → admin review, `mutual_agreement` → awaiting
+  the buyer, otherwise final.
 
 ---
 
@@ -496,4 +512,9 @@ IDs stay in the table, marked ~~struck~~.
 | `SM-2-photo-cap` | Photos per item: 4 for free sellers, 12 for Pro, checked server-side on upload | 2, D33 |
 | `TCG-catalog-ingest` | Catalog ingestion is idempotent and resumable: re-ingesting the same TCGCSV build writes no rows, sets that fail or don't fit in a run are retried by the next one, and only autofill fields plus the latest market price per product + subtype are stored (no images, no card text) | PLAN 3 (TCG catalog), TECH_STACK S32 |
 | `SM-9-entry-rate-limit` | Claims and offers are rate-limited per buyer before the Durable Object; over the limit → `rate_limited`, nothing written | 9 |
+| `SM-4.3.1-abuse-guard` | When the admin overturns a seller's third contested buyer-fault rescind (moves it to seller or neutral), the seller is flagged in the admin queue | 4.3.1, 9a |
+| `REP-buyer-record` | The seller sees each claimant's record (completed purchases, non-pay, payment reversed, take-backs, violations, Pro rescinds, member since); only final rescinds count, by their resolved fault | PLAN 3b, 4.3.1 |
+| `ADMIN-ban` | An admin bans an account with a reason: its sessions end, it can't sign in again, and the engine rejects its claims and offers; unbanning restores sign-in. Every ban and unban is audit-logged | PLAN 9, D22 |
+| `ADMIN-pro-grant` | An admin grants seller, buyer or bundle Pro as a `granted` subscription (open-ended or until a date) and can revoke it; tiers follow at once; every grant and revoke is audit-logged | PLAN 3a, 4 (Phase 1) |
+| `ADMIN-report-queue` | A signed-in user reports a user, sale, item or message with a reason; one open report per reporter and target; reports wait in the admin queue until resolved or dismissed with a note | PLAN 9 |
 

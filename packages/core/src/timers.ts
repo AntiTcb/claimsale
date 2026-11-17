@@ -2,6 +2,7 @@ import type { Millis } from "./common.ts";
 import type { Invoice } from "./invoice.ts";
 import { AUTOCOMPLETE_AFTER } from "./plans.ts";
 import type { Item } from "./item.ts";
+import { mutualAnswerDueAt, type Rescind } from "./rescind.ts";
 import type { Sale } from "./sale.ts";
 
 /** Timers (STATE_MACHINES §7). Each sale's Durable Object keeps one alarm. */
@@ -18,11 +19,31 @@ export type Timer =
 			readonly entryId: string;
 	  }
 	| { readonly kind: "invoice_due"; readonly at: Millis; readonly invoiceId: string }
-	| { readonly kind: "invoice_autocomplete"; readonly at: Millis; readonly invoiceId: string };
+	| { readonly kind: "invoice_autocomplete"; readonly at: Millis; readonly invoiceId: string }
+	| { readonly kind: "mutual_answer_due"; readonly at: Millis; readonly rescindId: string };
 
-/** Every pending timer of one sale. */
-export function pendingTimers(sale: Sale, items: readonly Item[], invoices: readonly Invoice[]): Timer[] {
+/** A seller rescind of the sale, with its ID (for the mutual-agreement answer timer). */
+export interface RescindOfSale {
+	readonly id: string;
+	readonly rescind: Rescind;
+}
+
+/**
+ * Every pending timer of one sale.
+ *
+ * @spec SM-4.3.1-mutual — a mutual-agreement rescind waiting for the buyer is a timer at 72h.
+ */
+export function pendingTimers(
+	sale: Sale,
+	items: readonly Item[],
+	invoices: readonly Invoice[],
+	rescinds: readonly RescindOfSale[] = [],
+): Timer[] {
 	const timers: Timer[] = [];
+	for (const { id, rescind } of rescinds) {
+		const at = mutualAnswerDueAt(rescind);
+		if (at !== null) timers.push({ kind: "mutual_answer_due", at, rescindId: id });
+	}
 	if (sale.status === "scheduled" && sale.liveAt !== null)
 		timers.push({ kind: "sale_live", at: sale.liveAt });
 	if ((sale.status === "scheduled" || sale.status === "live") && sale.closesAt !== null) {

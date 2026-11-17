@@ -108,6 +108,34 @@ export type TakebackDecisionInput = typeof TakebackDecisionInput.Type;
 export const TakebackCancelInput = Schema.Struct({ saleId: Id, requestId: Id, buyerId: Id });
 export type TakebackCancelInput = typeof TakebackCancelInput.Type;
 
+/** The buyer contests a rescind's attribution, giving their side (§4.3.1). */
+export const ContestRescindInput = Schema.Struct({
+	saleId: Id,
+	rescindId: Id,
+	buyerId: Id,
+	text: Schema.String.check(Schema.isMaxLength(4000)),
+});
+export type ContestRescindInput = typeof ContestRescindInput.Type;
+
+/** The buyer agrees to or disputes a mutual-agreement rescind (§4.3.1). */
+export const MutualAnswerInput = Schema.Struct({
+	saleId: Id,
+	rescindId: Id,
+	buyerId: Id,
+	agree: Schema.Boolean,
+});
+export type MutualAnswerInput = typeof MutualAnswerInput.Type;
+
+/** An admin resolves a contested or held rescind; the engine checks the admin role. */
+export const ResolveRescindInput = Schema.Struct({
+	saleId: Id,
+	rescindId: Id,
+	adminId: Id,
+	fault: Schema.Literals(["buyer", "seller", "neutral"]),
+	note: Schema.optional(Schema.NullOr(Schema.String.check(Schema.isMaxLength(2000)))),
+});
+export type ResolveRescindInput = typeof ResolveRescindInput.Type;
+
 export const PublishInput = Schema.Struct({
 	saleId: Id,
 	sellerId: Id,

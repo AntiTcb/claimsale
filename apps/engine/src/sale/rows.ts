@@ -10,6 +10,7 @@ import type {
 	ItemState,
 	Millis,
 	SaleStatus,
+	StoredRescind,
 	Tier,
 	TakebackRequest,
 	TakebackStatus,
@@ -107,6 +108,35 @@ export interface TakebackRow {
 	readonly status: TakebackStatus;
 	readonly created_at: Millis;
 	readonly decided_at: Millis | null;
+}
+
+/** A `rescinds` row (§4.3.1). `phase` is null on rows written before WS-I. */
+export interface RescindRow {
+	readonly id: string;
+	readonly entry_id: string;
+	readonly seller_id: string;
+	readonly buyer_id: string;
+	readonly reason_code: string;
+	readonly fault: string;
+	readonly refund_owed: number;
+	readonly phase: string | null;
+	readonly contested_at: Millis | null;
+	readonly resolved_fault: string | null;
+	readonly resolved_at: Millis | null;
+	readonly answered_at: Millis | null;
+	readonly created_at: Millis;
+}
+
+export function toStoredRescind(row: RescindRow): StoredRescind {
+	return {
+		reasonCode: row.reason_code,
+		phase: row.phase,
+		refundOwed: row.refund_owed === 1,
+		createdAt: row.created_at,
+		contestedAt: row.contested_at,
+		resolvedFault: row.resolved_fault,
+		resolvedAt: row.resolved_at,
+	};
 }
 
 export interface BuyerRow {

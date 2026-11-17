@@ -64,6 +64,13 @@
       "when": 1794950190729,
       "tag": "0008_io_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794955848878,
+      "tag": "0009_control_room",
+      "breakpoints": true
     }
   ]
 }

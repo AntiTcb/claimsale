@@ -27,14 +27,21 @@ import {
 } from "./photos/index.ts";
 import { fromRpcResult, optionalSecret, run, runForRpc, type RpcResult } from "./runtime.ts";
 import { disabledProbe, isProbeEnabled, type TraceProbeInput, type TraceProbeResult } from "./trace-probe.ts";
-import type { InvoiceView, ItemCommandResult, Outcome, SaleView } from "./sale-engine.ts";
+import type { InvoiceView, ItemCommandResult, Outcome, RescindView, SaleView } from "./sale-engine.ts";
 import { saleCommand } from "./sale/entrypoint.ts";
 import type { ImportBatchResult } from "./sale/import.ts";
 import * as rpc from "./sale/rpc.ts";
 import { sweepTimers } from "./sale/sweep.ts";
 
 export { SaleEngine } from "./sale-engine.ts";
-export type { InvoiceView, ItemCommandResult, Outcome, SaleView, SweepReport } from "./sale-engine.ts";
+export type {
+	InvoiceView,
+	ItemCommandResult,
+	Outcome,
+	RescindView,
+	SaleView,
+	SweepReport,
+} from "./sale-engine.ts";
 export type { ImportBatchResult, ImportRowResult } from "./sale/import.ts";
 export type * as SaleRpc from "./sale/rpc.ts";
 export type { HealthReport } from "./health.ts";
@@ -177,6 +184,21 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 
 	async cancelTakeback(input: rpc.TakebackCancelInput): Promise<RpcResult<Outcome<{ requestId: string }>>> {
 		return saleCommand(this.env, rpc.TakebackCancelInput, "cancelTakeback", input);
+	}
+
+	/** The buyer contests a rescind's attribution within 7 days (§4.3.1). */
+	async contestRescind(input: rpc.ContestRescindInput): Promise<RpcResult<Outcome<RescindView>>> {
+		return saleCommand(this.env, rpc.ContestRescindInput, "contestRescind", input);
+	}
+
+	/** The buyer agrees to or disputes a mutual-agreement rescind (§4.3.1). */
+	async answerMutualRescind(input: rpc.MutualAnswerInput): Promise<RpcResult<Outcome<RescindView>>> {
+		return saleCommand(this.env, rpc.MutualAnswerInput, "answerMutualRescind", input);
+	}
+
+	/** An admin resolves a contested or held rescind (§4.3.1); the engine checks the role. */
+	async resolveRescind(input: rpc.ResolveRescindInput): Promise<RpcResult<Outcome<RescindView>>> {
+		return saleCommand(this.env, rpc.ResolveRescindInput, "resolveRescind", input);
 	}
 
 	async publishSale(input: rpc.PublishInput): Promise<RpcResult<Outcome<SaleView>>> {

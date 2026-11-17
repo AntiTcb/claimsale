@@ -132,12 +132,17 @@ export function entriesQuery(db: D1Database, saleId: string, itemIds: readonly s
 				.bind(ids(itemIds));
 }
 
+/**
+ * The buyer's standing in this sale. Blocked means blocked by this seller, or banned.
+ *
+ * @spec ADMIN-ban — a banned account's claims and offers are rejected like a blocked buyer's.
+ */
 export function buyerQuery(db: D1Database, buyerId: string, saleId: string, now: Millis) {
 	return db
 		.prepare(
 			`SELECT u.id, u.email_verified, u.created_at,
-				EXISTS (SELECT 1 FROM blocks b WHERE b.blocked_user_id = u.id
-					AND b.seller_id = (SELECT seller_id FROM sales WHERE id = ?2)) AS blocked,
+				(u.banned_at IS NOT NULL OR EXISTS (SELECT 1 FROM blocks b WHERE b.blocked_user_id = u.id
+					AND b.seller_id = (SELECT seller_id FROM sales WHERE id = ?2))) AS blocked,
 				${PRO_SQL("u.id", "buyer", "?3")} AS buyer_pro
 			FROM users u WHERE u.id = ?1`,
 		)
@@ -269,6 +274,8 @@ export class Work {
 	readonly extra: D1PreparedStatement[] = [];
 	readonly audits: AuditRecord[] = [];
 	readonly events: Array<Record<string, unknown>> = [];
+	/** Timers the extra rows create (a mutual-agreement rescind's answer deadline). */
+	readonly extraTimers: Timer[] = [];
 	saleChange: SaleChange | undefined;
 
 	constructor(
@@ -349,7 +356,7 @@ export class Work {
 	touchedTimers(): Timer[] {
 		const sale = this.saleChange?.next ?? this.sale.sale;
 		const items = [...this.items.values()].map((slot) => slot.after);
-		return pendingTimers(sale, items, [...this.invoiceChanges.values()]);
+		return [...pendingTimers(sale, items, [...this.invoiceChanges.values()]), ...this.extraTimers];
 	}
 
 	statements(): D1PreparedStatement[] {
