@@ -59,9 +59,9 @@ describe("toExisting", () => {
 	});
 });
 
-describe("migration 0007_io_jobs", () => {
+describe("migration 0008_io_jobs", () => {
 	const MIGRATIONS = join(import.meta.dirname, "../../../../../packages/db/migrations");
-	const statements = readFileSync(join(MIGRATIONS, "0007_io_jobs.sql"), "utf8")
+	const statements = readFileSync(join(MIGRATIONS, "0008_io_jobs.sql"), "utf8")
 		.split("--> statement-breakpoint")
 		.map((s) => s.replace(/^--.*$/gm, "").trim())
 		.filter(Boolean);
@@ -81,6 +81,7 @@ describe("migration 0007_io_jobs", () => {
 			"0004_catalog_search",
 			"0005_games_registry",
 			"0006_engine_write_path",
+			"0007_image_hashes",
 		];
 		const run = (file: string) => {
 			for (const s of readFileSync(join(MIGRATIONS, `${file}.sql`), "utf8").split("--> statement-breakpoint"))
@@ -90,7 +91,7 @@ describe("migration 0007_io_jobs", () => {
 		sqlite.exec(
 			"INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES ('u1', 'a@example.test', 'A', 1, 1)",
 		);
-		run("0007_io_jobs");
+		run("0008_io_jobs");
 		expect(sqlite.prepare("SELECT id FROM users").all()).toEqual([{ id: "u1" }]);
 		expect(sqlite.prepare("SELECT count(*) AS n FROM io_jobs").get()).toEqual({ n: 0 });
 	});

@@ -1,5 +1,6 @@
 import { imageCacheControl } from "@claimsale/core";
 import { error, json } from "@sveltejs/kit";
+import { isAdmin } from "#lib/server/admin.ts";
 import { cookieSecret, db, imageStore } from "#lib/server/context.ts";
 import { deleteItemPhoto, findImageWithSale } from "#lib/server/images.ts";
 import { accessFor, unlockCookieName } from "#lib/server/sale-access.ts";
@@ -12,13 +13,18 @@ import type { RequestHandler } from "./$types";
  * @spec SM-2-private-images — R2 objects are never public; drafts and private sales
  * are `private, no-store`, so a copied URL stops working once access ends.
  * @spec SM-2-visibility
+ * @spec IMG-public-approved — buyers only get approved photos; the seller and admins see all.
  */
 export const GET: RequestHandler = async ({ params, locals, cookies }) => {
 	const image = await findImageWithSale(db(), params.imageId);
 	if (!image) error(404, "Not found");
 	const isSeller = locals.user?.id === image.sale.sellerId;
-	if (image.status === "rejected" && !isSeller) error(404, "Not found");
-	if (!isSeller) {
+	// Admins review held photos and their matches (IMG-dup-review); nothing is cached for them.
+	const admin = isAdmin(locals.user);
+	const isPrivileged = isSeller || admin;
+	// Buyers only ever get approved photos (IMG-public-approved).
+	if (image.status !== "approved" && !isPrivileged) error(404, "Not found");
+	if (!isPrivileged) {
 		const sale = await findSaleById(db(), image.sale.id);
 		if (!sale) error(404, "Not found");
 		const access = await accessFor(db(), cookieSecret(), sale, {
@@ -32,7 +38,7 @@ export const GET: RequestHandler = async ({ params, locals, cookies }) => {
 	return new Response(object.body, {
 		headers: {
 			"content-type": image.contentType,
-			"cache-control": isSeller ? "private, no-store" : imageCacheControl(image.sale),
+			"cache-control": isPrivileged ? "private, no-store" : imageCacheControl(image.sale),
 			"x-content-type-options": "nosniff",
 		},
 	});

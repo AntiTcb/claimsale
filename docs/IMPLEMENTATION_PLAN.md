@@ -126,6 +126,24 @@ Pure part can start now; wiring needs WS-A.
   - Import the jsquash `.wasm` files in wrangler and pass them to `createJsquashDecoder`.
   - Owner to confirm: review needs both hashes ≤ 12, each hash takes its own minimum
     over the variants, and mirror + 90° together isn't covered.
+- Notes from F2 (built with the F1 defaults above):
+  - Tables (migration `0007_image_hashes`): `image_hashes` (hex hashes, 8 band columns
+    with one index each, `decision`, `reason`; no foreign keys to photo, item or sale, so
+    another seller's image still counts after it is deleted), `account_flags`
+    (IMG-repeat-offender), `users.role` (`admin` opens `/admin`; set with SQL).
+  - The verify job runs on the engine's existing queue as `photo_verify` messages (no new
+    queue to provision); the engine binds the web Worker's `IMAGES` bucket. The web
+    Worker queues a check after each upload over RPC (`requestPhotoVerification`), and
+    the 5-minute cron re-queues photos still `pending` after 10 minutes (up to a day old).
+  - Thresholds live in `@claimsale/imagehash` (`REJECT_MAX_DISTANCE`,
+    `REVIEW_MAX_DISTANCE`) and `@claimsale/core` photos.ts (`TIMESTAMP_EXEMPT_COMPLETED_SALES`
+    = 5, `REPEAT_OFFENDER_REJECTIONS` = 3, `COMPLETED_SALE_STATUSES` = closed, archived).
+  - Own reuse (`decideUpload`): rejected only for a different item of the same sale; reuse
+    in another sale counts as relisting. A timestamp photo already used in any other sale
+    is rejected, even the seller's own.
+  - Publish checks are pure (`checkPublishPhotos` in core); WS-E's publish RPC should call
+    it with `publishPhotoState` (web `images.ts`) or an engine equivalent.
+  - Buyers only see approved photos (`IMG-public-approved`, new registry row).
 
 ### WS-G · Item import UI + catalog picker + market price aid (M4 part 3)
 Needs WS-A, WS-B, WS-C.
@@ -249,7 +267,7 @@ Wave 4:                     WS-L → pilot sale
   `RpcResult<Outcome<ImportBatchResult>>`: per-row results, `removed`, and `removedR2Keys`
   for the web to delete. It runs under the sale lock (`apps/engine/src/sale/import.ts`) with
   job tracking in `io_jobs`, per-row results and idempotency in `io_job_rows` (migration
-  `0007_io_jobs`), the opted-in removal once per import with its first batch, catalog
+  `0008_io_jobs`), the opted-in removal once per import with its first batch, catalog
   autofill, and one D1 batch per call.
 - **Contract step owed:** WS-E's `import_rows` table (`0006_engine_write_path`) is no longer
   written. It stays while deployed code may still write it; a later contract migration

@@ -6,6 +6,7 @@ import {
 	outboxAvailable,
 	signUp,
 	smsCaptureAvailable,
+	waitForWelcome,
 } from "./auth-helpers.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -22,7 +23,7 @@ test.describe("phone verification and seller requirements", () => {
 		const who = newIdentity("ph");
 		const phone = newPhone();
 		await signUp(page, who);
-		await expect(page).toHaveURL(/\/\?welcome=1$/);
+		await waitForWelcome(page);
 
 		// The real /sell pages send an unready seller to the checklist, keeping where they were going.
 		await page.goto("/sell/new");
@@ -63,6 +64,7 @@ test.describe("phone verification and seller requirements", () => {
 		test.skip(!(await smsCaptureAvailable(request)), "Captured phone codes aren't readable here");
 		const phone = newPhone();
 		await signUp(page, newIdentity("ph1"));
+		await waitForWelcome(page);
 		await page.goto("/me/settings");
 		await page.getByLabel("Mobile number").fill(phone.e164);
 		await page.getByRole("button", { name: "Text me a code" }).click();

@@ -4,6 +4,7 @@ import {
 	buyerRescind as coreBuyerRescind,
 	can,
 	cancelTakeback as coreCancelTakeback,
+	checkPublishPhotos,
 	close as closeSale,
 	closeItem,
 	complete as completeInvoice,
@@ -61,6 +62,7 @@ import {
 	type Tier,
 	type Timer,
 } from "@claimsale/core";
+import { readPublishPhotoState } from "../photos/store.ts";
 import { planImportBatch, type ImportBatchInput, type ImportBatchResult } from "./import.ts";
 import { itemKey, KeyedLocks, lockOrder, type LockKey } from "./locks.ts";
 import { toTakeback, type TakebackRow } from "./rows.ts";
@@ -801,6 +803,9 @@ export class SaleWriter {
 	 * @spec SM-2-publish-scheduled
 	 * @spec SM-2-publish-now
 	 * @spec SM-2-free-sale-cap — counted before the transition and re-checked inside the write.
+	 * @spec IMG-required — every item needs an approved photo (after the sale's own checks).
+	 * @spec IMG-dup-review — a photo held for review blocks publishing.
+	 * @spec IMG-timestamp-required — newer sellers need an approved timestamp photo.
 	 */
 	publish(input: PublishInput): Promise<Outcome<SaleView>> {
 		return this.#transact(["sale"], async (_session, now) => {
@@ -816,6 +821,8 @@ export class SaleWriter {
 				now,
 			);
 			if (!result.ok) return result;
+			const photos = checkPublishPhotos(await readPublishPhotoState(this.db, this.saleId, sale.sellerId));
+			if (!photos.ok) return photos;
 			const work = new Work(this.db, sale, now);
 			const next = result.value.sale;
 			work.saleChange = {

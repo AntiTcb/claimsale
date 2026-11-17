@@ -9,7 +9,10 @@ import type { SaleEngine } from "./sale-engine.ts";
 export interface EngineEnv {
 	readonly DB: D1Database;
 	readonly SALE_ENGINE: DurableObjectNamespace<SaleEngine>;
+	/** Notifications, and the photo verify job's `photo_verify` messages (WS-F2). */
 	readonly NOTIFICATIONS: Queue;
+	/** Seller photos (the web Worker's bucket), read by the photo verify job. */
+	readonly IMAGES: R2Bucket;
 	readonly EMAIL: SendEmail;
 	/** Claims and offers per buyer (SM-9-entry-rate-limit). */
 	readonly ENTRY_LIMITER: RateLimit;

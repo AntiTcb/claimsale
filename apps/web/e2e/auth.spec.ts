@@ -1,4 +1,11 @@
-import { linkFromEmail, newIdentity, outboxAvailable, signOut, signUp } from "./auth-helpers.ts";
+import {
+	linkFromEmail,
+	newIdentity,
+	outboxAvailable,
+	signOut,
+	signUp,
+	waitForWelcome,
+} from "./auth-helpers.ts";
 import { expect, test } from "./fixtures.ts";
 
 // Auth (milestone 3): sign-up with handle and age, email verification, password and
@@ -7,7 +14,7 @@ test.describe("accounts", () => {
 	test("sign up, verify the email, sign out and sign back in", async ({ page, request }) => {
 		const who = newIdentity();
 		await signUp(page, who);
-		await expect(page).toHaveURL(/\/\?welcome=1$/);
+		await waitForWelcome(page);
 		await expect(page.getByRole("link", { name: `@${who.handle}` })).toBeVisible();
 
 		await page.goto("/me/settings");

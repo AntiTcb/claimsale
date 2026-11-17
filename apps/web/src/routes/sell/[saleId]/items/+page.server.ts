@@ -28,7 +28,7 @@ export const load: PageServerLoad = async (event) => {
 		.filter((id) => Number.isSafeInteger(id) && id > 0);
 	// TCG-market-placeholder: this is the seller's own page (requireOwnSale above).
 	const [photos, withEntries, market, defaultPercent] = await Promise.all([
-		photosByItem(db(), ids),
+		photosByItem(db(), ids, "all"),
 		itemsWithEntries(db(), ids),
 		marketPricesFor(db(), productIds),
 		defaultMarketPercent(db(), seller.id),
@@ -57,6 +57,7 @@ export const load: PageServerLoad = async (event) => {
 				id: p.id,
 				url: `/api/images/${p.id}`,
 				status: p.status,
+				...(p.rejection ? { rejection: p.rejection } : {}),
 			})),
 		})),
 	};

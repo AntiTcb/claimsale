@@ -1,10 +1,22 @@
 import { createDb, eq, type Db } from "@claimsale/db";
+import { imageHashes, PHOTO_REASONS } from "@claimsale/db/photos";
 import { itemImages, sales } from "@claimsale/db/schema";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testD1 } from "../../../test/d1.ts";
 import { addUser, GPS_MARKER, jpegBytes, memoryStore, webpBytes } from "../../../test/fixtures.ts";
 import { MAX_BYTES, sanitizeImage, sniff } from "./image-sanitize.ts";
-import { addItemPhoto, deleteItemPhoto, findImageWithSale, photosByItem } from "./images.ts";
+import {
+	addItemPhoto,
+	countCompletedSales,
+	deleteItemPhoto,
+	findImageWithSale,
+	findTimestampPhoto,
+	photosByItem,
+	type PhotoView,
+	publishPhotoState,
+	rejectionMessage,
+	setTimestampPhoto,
+} from "./images.ts";
 import { addItem } from "./items.ts";
 import { createDraft } from "./sales.ts";
 
@@ -168,5 +180,99 @@ describe("item photos", () => {
 		expect(store.objects.size).toBe(0);
 		expect(await findImageWithSale(db, added.value.id)).toBeUndefined();
 		expect(await photosByItem(db, [])).toEqual(new Map());
+	});
+
+	const ids = async (view?: PhotoView) =>
+		((await photosByItem(db, [itemId], view)).get(itemId) ?? []).map((p) => p.id);
+
+	async function photoWith(
+		status: "pending" | "approved" | "review" | "rejected",
+		reason?: (typeof PHOTO_REASONS)[number],
+	) {
+		const added = await addItemPhoto(db, store, seller, { saleId, itemId }, jpegBytes(10, 10), 1);
+		if (!added.ok) throw new Error("setup");
+		await db.update(itemImages).set({ status }).where(eq(itemImages.id, added.value.id));
+		if (reason) {
+			await db.insert(imageHashes).values({
+				imageId: added.value.id,
+				sellerId: "seller",
+				saleId,
+				itemId,
+				dhash: "0000000000000000",
+				phash: "0000000000000000",
+				d0: 0,
+				d1: 0,
+				d2: 0,
+				d3: 0,
+				p0: 0,
+				p1: 0,
+				p2: 0,
+				p3: 0,
+				decision: "rejected",
+				reason,
+				createdAt: 1,
+				decidedAt: 1,
+				decidedBy: "system",
+			});
+		}
+		return added.value.id;
+	}
+
+	it("[IMG-public-approved] buyers get approved photos only; the seller's editor lists every photo", async () => {
+		const approved = await photoWith("approved");
+		const pending = await photoWith("pending");
+		const held = await photoWith("review");
+		const rejected = await photoWith("rejected", "duplicate");
+		expect(await ids("approved")).toEqual([approved]);
+		expect(await ids()).toEqual([approved, pending, held]);
+		expect(await ids("all")).toEqual([approved, pending, held, rejected]);
+	});
+
+	it("[IMG-dup-reject] a rejected photo carries the seller's message, never the other seller", async () => {
+		await photoWith("rejected", "duplicate");
+		await photoWith("rejected", "own_reuse");
+		await photoWith("rejected");
+		const photos = (await photosByItem(db, [itemId], "all")).get(itemId) ?? [];
+		expect(photos.map((p) => p.rejection)).toEqual([
+			"This photo matches an image already used on ClaimSale. Please upload your own photo.",
+			"You already used this photo for another item in this sale. Each item needs its own photo.",
+			"This photo couldn't be read. Upload another one.",
+		]);
+		expect(rejectionMessage("timestamp_reuse")).toMatch(/already used/);
+		expect(rejectionMessage("possible_duplicate")).toBe(rejectionMessage("duplicate"));
+	});
+
+	it("[IMG-timestamp-required] stores a timestamp photo, replacing the previous one", async () => {
+		const first = await setTimestampPhoto(db, store, "seller", saleId, jpegBytes(10, 10), 2);
+		if (!first.ok) throw new Error("setup");
+		expect(await findTimestampPhoto(db, saleId)).toEqual({ id: first.value.id, status: "pending" });
+		const second = await setTimestampPhoto(db, store, "seller", saleId, webpBytes(10, 10), 3);
+		if (!second.ok) throw new Error("setup");
+		expect(await findTimestampPhoto(db, saleId)).toEqual({ id: second.value.id, status: "pending" });
+		expect(await findImageWithSale(db, first.value.id)).toBeUndefined();
+		expect([...store.objects.keys()]).toEqual([`sales/${saleId}/timestamp/${second.value.id}.webp`]);
+		// It's no item's photo, and doesn't count toward the item photo cap.
+		expect((await photosByItem(db, [itemId], "all")).get(itemId)).toBeUndefined();
+		expect(await setTimestampPhoto(db, store, "other", saleId, jpegBytes(10, 10), 4)).toMatchObject({
+			error: { code: "not_found" },
+		});
+		expect(await setTimestampPhoto(db, store, "seller", saleId, new Uint8Array([1]), 4)).toMatchObject({
+			error: { code: "unsupported_type" },
+		});
+	});
+
+	it("[IMG-timestamp-required] counts closed and archived sales as completed, and gathers the publish state", async () => {
+		expect(await countCompletedSales(db, "seller")).toBe(0);
+		await db.update(sales).set({ status: "closed" }).where(eq(sales.id, saleId));
+		expect(await countCompletedSales(db, "seller")).toBe(1);
+		await db.update(sales).set({ status: "draft" }).where(eq(sales.id, saleId));
+		await photoWith("approved");
+		await photoWith("rejected");
+		await setTimestampPhoto(db, store, "seller", saleId, jpegBytes(10, 10), 2);
+		expect(await publishPhotoState(db, saleId, "seller")).toEqual({
+			items: [{ photos: expect.arrayContaining(["approved", "rejected"]) }],
+			timestamp: "pending",
+			completedSales: 0,
+		});
 	});
 });

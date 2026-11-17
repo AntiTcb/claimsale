@@ -62,12 +62,16 @@ export interface UploadedPhoto {
 }
 
 /** Sends a prepared photo to the Worker, which stores it in R2 as `pending`. */
-export async function uploadPhoto(
-	saleId: string,
-	itemId: string,
-	photo: PreparedPhoto,
-): Promise<UploadedPhoto> {
-	const params = new URLSearchParams({ sale: saleId, item: itemId });
+export function uploadPhoto(saleId: string, itemId: string, photo: PreparedPhoto): Promise<UploadedPhoto> {
+	return send(new URLSearchParams({ sale: saleId, item: itemId }), photo);
+}
+
+/** The sale's timestamp photo (D66): the cards beside a note with the handle and date. */
+export function uploadTimestampPhoto(saleId: string, photo: PreparedPhoto): Promise<UploadedPhoto> {
+	return send(new URLSearchParams({ sale: saleId, kind: "timestamp" }), photo);
+}
+
+async function send(params: URLSearchParams, photo: PreparedPhoto): Promise<UploadedPhoto> {
 	const response = await fetch(`/api/uploads?${params}`, {
 		method: "POST",
 		headers: { "content-type": photo.blob.type },

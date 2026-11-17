@@ -59,7 +59,11 @@ export interface ItemSetup {
 	readonly title?: string;
 }
 
-/** A sale with items. Default: live since an hour ago, closing in two days. */
+/**
+ * A sale with items. Default: live since an hour ago, closing in two days, every item
+ * with an approved photo and an approved timestamp photo (WS-F2), so publishing passes
+ * the photo checks unless a test asks otherwise.
+ */
 export async function makeSale(
 	options: {
 		status?: "draft" | "scheduled" | "live" | "closed";
@@ -70,6 +74,10 @@ export async function makeSale(
 		items?: ItemSetup[];
 		sellerPro?: boolean;
 		sellerId?: string;
+		/** Each item's photo; "none" adds none. */
+		photos?: PhotoState | "none";
+		/** The sale's timestamp photo; "none" adds none. */
+		timestamp?: PhotoState | "none";
 	} = {},
 ): Promise<SaleSetup> {
 	const now = Date.now();
@@ -116,8 +124,29 @@ export async function makeSale(
 				now,
 			)
 			.run();
+		const photo = options.photos ?? "approved";
+		if (photo !== "none") await addPhoto(saleId, sellerId, id, photo);
+	}
+	const timestamp = options.timestamp ?? "approved";
+	if (timestamp !== "none") {
+		const photoId = await addPhoto(saleId, sellerId, null, timestamp);
+		await db.prepare("UPDATE sales SET timestamp_image_id = ?1 WHERE id = ?2").bind(photoId, saleId).run();
 	}
 	return { saleId, sellerId, itemIds };
+}
+
+export type PhotoState = "pending" | "approved" | "review" | "rejected";
+
+/** A photo row in a given state; `itemId` null is the sale's timestamp photo. No R2 object. */
+export async function addPhoto(saleId: string, sellerId: string, itemId: string | null, status: PhotoState) {
+	const id = uid("img");
+	await db
+		.prepare(
+			"INSERT INTO item_images (id, sale_id, item_id, seller_id, r2_key, content_type, bytes, status, created_at) VALUES (?1, ?2, ?3, ?4, ?5, 'image/jpeg', 1, ?6, 1)",
+		)
+		.bind(id, saleId, itemId, sellerId, `test/${id}.jpg`, status)
+		.run();
+	return id;
 }
 
 export const stubFor = (saleId: string) => env.SALE_ENGINE.get(env.SALE_ENGINE.idFromName(saleId));

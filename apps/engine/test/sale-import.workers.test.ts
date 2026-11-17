@@ -178,6 +178,8 @@ describe("item import batches in the engine (WS-G)", () => {
 		const sale = await makeSale({
 			status: "draft",
 			items: [{ title: "Hand-entered" }, { title: "Has a claim" }],
+			// This test adds the one photo whose R2 key it expects back; skip the fixture's own.
+			photos: "none",
 		});
 		const buyer = await addUser();
 		await db

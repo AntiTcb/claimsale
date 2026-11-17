@@ -12,6 +12,8 @@
 		id: string;
 		url: string;
 		status?: string;
+		/** Why a rejected photo was rejected (photo authenticity), shown to the seller. */
+		rejection?: string;
 	}
 
 	interface Props {
@@ -51,7 +53,10 @@
 	let input: HTMLInputElement | undefined = $state();
 
 	const inputId = $derived(`photos-${itemId}`);
-	const remaining = $derived(Math.max(0, max - photos.length));
+	// Rejected photos stay listed (with the reason) but don't count toward the cap.
+	const counted = $derived(photos.filter((p) => p.status !== "rejected").length);
+	const remaining = $derived(Math.max(0, max - counted));
+	const BADGES: Record<string, string> = { pending: "Checking", review: "In review", rejected: "Rejected" };
 	const full = $derived(remaining === 0);
 
 	async function addFiles(files: FileList | File[]) {
@@ -131,9 +136,13 @@
 				class="h-14 w-14 rounded object-cover"
 				loading="lazy"
 			/>
-			{#if photo.status === "review" || photo.status === "rejected"}
-				<span class="absolute bottom-0 left-0 rounded bg-amber-200 px-1 text-xs text-amber-950">
-					{photo.status === "review" ? "In review" : "Rejected"}
+			{#if photo.status && BADGES[photo.status]}
+				<span
+					class="absolute bottom-0 left-0 rounded px-1 text-xs {photo.status === 'rejected'
+						? 'bg-red-200 text-red-950'
+						: 'bg-amber-200 text-amber-950'}"
+				>
+					{BADGES[photo.status]}
 				</span>
 			{/if}
 			{#if !disabled}
@@ -153,7 +162,7 @@
 			for={inputId}
 			class="flex h-14 cursor-pointer items-center rounded px-2 text-sm underline focus-within:outline-2"
 		>
-			{photos.length === 0 ? "Add photos" : "Add more"}
+			{counted === 0 ? "Add photos" : "Add more"}
 			<span class="sr-only">for {itemTitle}</span>
 		</label>
 		<input
@@ -170,7 +179,14 @@
 			}}
 		/>
 	{/if}
-	<span class="text-xs text-zinc-600 dark:text-zinc-400">{photos.length}/{max}</span>
+	<span class="text-xs text-zinc-600 dark:text-zinc-400">{counted}/{max}</span>
+	{#each photos as photo, index (photo.id)}
+		{#if photo.rejection}
+			<p class="w-full text-sm text-red-700 dark:text-red-400" data-testid="photo-rejection">
+				Photo {index + 1} was rejected: {photo.rejection}
+			</p>
+		{/if}
+	{/each}
 	<p class="sr-only" role="status" aria-live="polite">{status}</p>
 	{#if error}
 		<p class="w-full text-sm text-red-700 dark:text-red-400" role="alert">{error}</p>

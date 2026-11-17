@@ -15,7 +15,11 @@
 	"dependencies": {
 		"@claimsale/core": "workspace:*",
 		"@claimsale/db": "workspace:*",
+		"@claimsale/imagehash": "workspace:*",
 		"@claimsale/observability": "workspace:*",
+		"@jsquash/jpeg": "catalog:",
+		"@jsquash/png": "catalog:",
+		"@jsquash/webp": "catalog:",
 		"effect": "catalog:",
 		"uuidv7": "catalog:"
 	},

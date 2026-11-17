@@ -1,7 +1,5 @@
 import { reject, type Millis, type Rejection, type Result, type SaleStatus } from "@claimsale/core";
-import type { Db } from "@claimsale/db";
 import type { Outcome, RpcResult } from "@claimsale/engine";
-import { itemsWithoutPhotos } from "./items.ts";
 
 /**
  * The web Worker's view of the sale engine (STATE_MACHINES §9). Every sale
@@ -52,19 +50,17 @@ const outcome = (sale: PublishOutcome): PublishOutcome => ({
 });
 
 /**
- * The engine over RPC. `db` serves the checks that stay in the web Worker: every item
- * needs a photo before publishing (D63; WS-F2 tightens it to an approved one).
+ * The engine over RPC. Every publish check runs in the engine's command, including the
+ * photo checks (IMG-required, IMG-timestamp-required), so the web Worker only passes
+ * requests through.
  */
-export function rpcEngine(binding: EngineBinding, db: Db): Engine {
+export function rpcEngine(binding: EngineBinding): Engine {
 	return {
 		/**
 		 * The engine enforces SM-2-publish-scheduled, SM-2-publish-now, SM-2-preview-window,
-		 * SM-2-max-duration, SM-2-free-sale-cap and SM-2-free-item-cap.
+		 * SM-2-max-duration, SM-2-free-sale-cap, SM-2-free-item-cap and the photo checks.
 		 */
 		async publish(request) {
-			if ((await itemsWithoutPhotos(db, request.saleId)).length > 0) {
-				return reject("missing_photos", "Add at least one photo to every item before publishing");
-			}
 			const result = settle(
 				(await binding.publishSale({
 					saleId: request.saleId,

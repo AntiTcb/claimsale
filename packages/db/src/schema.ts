@@ -37,6 +37,10 @@ export const users = sqliteTable("users", {
 	/** E.164, unique per account, never shown publicly (D55). Verified in a later slice. */
 	phoneE164: text("phone_e164").unique(),
 	phoneVerifiedAt: ms("phone_verified_at"),
+	/** `admin` opens /admin (D23: the owner). Set with SQL, never through a form. */
+	role: text("role", { enum: ["user", "admin"] })
+		.notNull()
+		.default("user"),
 	createdAt: ms("created_at").notNull(),
 	updatedAt: ms("updated_at").notNull(),
 });
@@ -331,6 +335,8 @@ export const itemImages = sqliteTable(
 		index("item_images_item_sort").on(t.itemId, t.sortOrder),
 		index("item_images_sale").on(t.saleId),
 		index("item_images_seller_status").on(t.sellerId, t.status),
+		// The engine cron's sweep for photos left `pending` (WS-F2).
+		index("item_images_status_created").on(t.status, t.createdAt),
 	],
 );
 

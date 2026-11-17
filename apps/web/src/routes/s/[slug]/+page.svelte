@@ -22,7 +22,22 @@
 		<div class="flex flex-wrap items-center gap-3">
 			<h1 class="text-2xl font-bold tracking-tight">{header.title}</h1>
 			<SaleStatusBadge status={header.status} liveAt={data.body?.liveAt ?? null} />
+			{#if data.timestampUrl}
+				<span
+					class="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-900 dark:bg-violet-950 dark:text-violet-100"
+					title="The seller photographed these cards with their handle and the date">Timestamped</span
+				>
+			{/if}
 		</div>
+		{#if data.timestampUrl}
+			<a href={data.timestampUrl} class="self-start" target="_blank" rel="noopener">
+				<img
+					src={data.timestampUrl}
+					alt="Timestamp: the seller's cards beside a note with their handle and the date"
+					class="h-24 w-auto rounded-md object-cover"
+				/>
+			</a>
+		{/if}
 		<p class="text-zinc-600 dark:text-zinc-300">
 			by {#if header.sellerHandle}<a href="/u/{header.sellerHandle}" class="underline"
 					>{header.sellerDisplayName} (@{header.sellerHandle})</a

@@ -40,4 +40,22 @@ test.describe("trace probe", () => {
 		await expect(page.getByRole("heading", { name: "Result (HTTP 200)" })).toBeVisible();
 		await expect(page.getByTestId("probe-result")).toContainText('"queued": true');
 	});
+
+	// Regression (flaky under load): a click on the server-rendered button before the page
+	// hydrated did nothing, so no result ever appeared. Holding back the app's JavaScript
+	// makes that race deterministic; the button now stays disabled until hydration.
+	test("a click before hydration isn't lost", async ({ page }) => {
+		const { promise: held, resolve: release } = Promise.withResolvers<void>();
+		await page.route("**/_app/immutable/**", async (route) => {
+			await held;
+			await route.continue();
+		});
+		await page.goto("/debug/trace", { waitUntil: "commit" });
+		const button = page.getByRole("button", { name: "Run probe", exact: true });
+		await expect(button).toBeDisabled();
+		const clicked = button.click();
+		release();
+		await clicked;
+		await expect(page.getByRole("heading", { name: "Result (HTTP 200)" })).toBeVisible();
+	});
 });

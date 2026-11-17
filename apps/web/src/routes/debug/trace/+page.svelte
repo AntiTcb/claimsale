@@ -4,6 +4,12 @@
 	let running = $state(false);
 	let status = $state<number | undefined>();
 	let result = $state<string | undefined>();
+	// The buttons work only once the page has hydrated: a click on the server-rendered
+	// button before then did nothing (seen as a flaky E2E under load).
+	let hydrated = $state(false);
+	$effect(() => {
+		hydrated = true;
+	});
 
 	async function run(fail: boolean) {
 		running = true;
@@ -40,7 +46,7 @@
 		<button
 			type="button"
 			class="rounded-md bg-zinc-900 px-4 py-2 text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
-			disabled={running}
+			disabled={running || !hydrated}
 			onclick={() => run(false)}
 		>
 			Run probe
@@ -48,7 +54,7 @@
 		<button
 			type="button"
 			class="rounded-md border border-zinc-400 px-4 py-2 disabled:opacity-60"
-			disabled={running}
+			disabled={running || !hydrated}
 			onclick={() => run(true)}
 		>
 			Run probe with a deliberate error
