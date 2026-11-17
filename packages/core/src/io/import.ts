@@ -1,3 +1,4 @@
+import { Schema } from "effect";
 import {
 	attributeFields,
 	coerceAttributes,
@@ -454,4 +455,125 @@ export function planImport(input: {
 		outcomes,
 		cap: { limit, fits, exceeded: pendingCreates.length > fits },
 	};
+}
+
+// ---------------------------------------------------------------------------
+// One apply batch, as the import page sends it to the engine (PLAN §3c.4)
+
+/** Rows per apply batch; the engine refuses bigger batches. */
+export const IMPORT_BATCH_SIZE = 100;
+
+/**
+ * `items.game_id` for items without a game (accessories may skip it; the column is
+ * NOT NULL). It matches no game, so browse by game skips these items. "other" is the
+ * value older items carry (WS-A's "Other TCG" option and WS-E's first importer).
+ */
+export const NO_GAME_ID = "none";
+export const isNoGame = (gameId: string): boolean => gameId === NO_GAME_ID || gameId === "other";
+
+const Uuid = Schema.String.check(
+	Schema.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+);
+const Key = Schema.String.check(Schema.isMaxLength(64));
+
+/** One apply batch of an item import, without the sale and seller (the caller adds those). */
+export const ImportBatchBody = Schema.Struct({
+	/** Picked by the browser for the whole import (`io_jobs.id`); every batch repeats it. */
+	importId: Uuid,
+	format: Schema.Literals(["csv", "xlsx"]),
+	/** Data rows in the whole file; the job is done once that many rows have results. */
+	totalRows: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: MAX_IMPORT_ROWS })),
+	rows: Schema.Array(
+		Schema.Struct({
+			row: Schema.Int.check(Schema.isBetween({ minimum: 2, maximum: 1_000_000 })),
+			cells: Schema.Record(Key, Schema.String.check(Schema.isMaxLength(20_000))),
+		}),
+	).check(Schema.isMaxLength(IMPORT_BATCH_SIZE)),
+	/**
+	 * "Remove items not in file": the item IDs and SKUs the file names. Honoured once
+	 * per import, with its first batch.
+	 */
+	removeMissing: Schema.optional(
+		Schema.NullOr(
+			Schema.Struct({
+				keepItemIds: Schema.Array(Key).check(Schema.isMaxLength(MAX_IMPORT_ROWS)),
+				keepSkus: Schema.Array(Key).check(Schema.isMaxLength(MAX_IMPORT_ROWS)),
+			}),
+		),
+	),
+});
+export type ImportBatchBody = typeof ImportBatchBody.Type;
+
+/** A row's result, stored in `io_job_rows` and returned for the results file. */
+export interface ImportRowResult {
+	readonly row: number;
+	readonly outcome: "created" | "updated" | "skipped" | "error";
+	/** The item the row created or matched; null for errors. */
+	readonly itemId: string | null;
+	/** For errors: the column ("" for the whole row). */
+	readonly field: string;
+	readonly message: string;
+}
+
+export interface ImportBatchResult {
+	readonly rows: readonly ImportRowResult[];
+	/** Items removed by "remove items not in file" (only ever with the first batch). */
+	readonly removed: number;
+	/** R2 keys of the removed items' photos, for the caller to delete. */
+	readonly removedR2Keys: readonly string[];
+}
+
+/** Groups row validation errors into one result per row: the first field, every message. */
+export function errorResults(errors: readonly RowError[]): ImportRowResult[] {
+	const byRow = new Map<number, { field: string; messages: string[] }>();
+	for (const e of errors) {
+		const entry = byRow.get(e.row) ?? { field: e.field, messages: [] };
+		entry.messages.push(e.field ? `${e.field}: ${e.message}` : e.message);
+		byRow.set(e.row, entry);
+	}
+	return [...byRow].map(([row, e]) => ({
+		row,
+		outcome: "error",
+		itemId: null,
+		field: e.field,
+		message: e.messages.join("; "),
+	}));
+}
+
+/** A planned outcome as a row result; `created` rows carry the new item's ID. */
+export function planResult(outcome: RowOutcome, createdIds: ReadonlyMap<number, string>): ImportRowResult {
+	switch (outcome.outcome) {
+		case "error":
+			return {
+				row: outcome.row,
+				outcome: "error",
+				itemId: null,
+				field: outcome.field,
+				message: outcome.message,
+			};
+		case "created":
+			return {
+				row: outcome.row,
+				outcome: "created",
+				itemId: createdIds.get(outcome.row) ?? null,
+				field: "",
+				message: "",
+			};
+		case "updated":
+			return {
+				row: outcome.row,
+				outcome: "updated",
+				itemId: outcome.itemId,
+				field: "",
+				message: `Changed: ${outcome.changed.join(", ")}`,
+			};
+		default:
+			return {
+				row: outcome.row,
+				outcome: "skipped",
+				itemId: outcome.itemId,
+				field: "",
+				message: "No changes",
+			};
+	}
 }

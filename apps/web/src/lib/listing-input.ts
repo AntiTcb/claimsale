@@ -1,4 +1,4 @@
-import { enabledGames, type Cents, type SaleVisibility, type Validated } from "@claimsale/core";
+import { enabledGames, NO_GAME_ID, type Cents, type SaleVisibility, type Validated } from "@claimsale/core";
 
 /**
  * Form input for sales and items, shared by the pages (client) and the form
@@ -28,7 +28,7 @@ export const GAMES: readonly { readonly id: string; readonly name: string }[] = 
  * Accessories may skip the game (PLAN §3 item kinds: "optional game"). `items.game_id`
  * is NOT NULL, so they store this id; it matches no game, so browse by game skips them.
  */
-export const NO_GAME = { id: "none", name: "Not game-specific" } as const;
+export const NO_GAME = { id: NO_GAME_ID, name: "Not game-specific" } as const;
 
 /** Names for ids that aren't games: NO_GAME, and WS-A's "Other TCG" placeholder on older items. */
 const OTHER_GAME_NAMES: Readonly<Record<string, string>> = { [NO_GAME.id]: NO_GAME.name, other: "Other TCG" };

@@ -1,9 +1,9 @@
-import { ITEM_KINDS } from "@claimsale/core";
+import { IMPORT_BATCH_SIZE, ITEM_KINDS } from "@claimsale/core";
 import { json } from "@sveltejs/kit";
 import { Result as EffectResult, Schema } from "effect";
 import { marketPricesFor, matchRows } from "#lib/server/catalog.ts";
 import { db } from "#lib/server/context.ts";
-import { IMPORT_BATCH_SIZE } from "#lib/server/import.ts";
+
 import { jsonBody, sellerSaleForApi } from "#lib/server/seller-api.ts";
 import type { RequestHandler } from "./$types";
 

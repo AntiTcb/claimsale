@@ -234,10 +234,7 @@ Wave 4:                     WS-L → pilot sale
   checked in web). WS-H can use it or call `placeEntry` from a remote function.
 - Committed events go to the notifications queue as `{ kind: "sale_events", sale_id, events }`;
   the consumer only acknowledges them until WS-K.
-- Import batches (WS-G): `ENGINE.applyImportBatch({ saleId, sellerId, importId, rows })`,
-  ≤ 100 mapped rows `{ row, cells }` per call; idempotent per (`importId`, row) via the
-  `import_rows` table; outcomes carry the created item IDs for photo attaching.
-  "Remove items not in file" isn't supported in batch mode.
+- Import batches: see the WS-G notes below (WS-G replaced this first version).
 - The publish photo check stays in web (`itemsWithoutPhotos`, `#lib/server/engine.ts`);
   WS-F2 tightens it there.
 - Not built yet: rescind contests / mutual-agreement answers and their 72h timer (WS-I),
@@ -246,11 +243,19 @@ Wave 4:                     WS-L → pilot sale
   `(cd ../engine && …)`); start the stack by hand and Playwright reuses it.
 
 ### Wave 2 integration notes (WS-G, item import)
-- WS-G (item import): `applyImportBatch` in `apps/web/src/lib/server/import.ts` is the
-  only import writer. It writes D1 directly in one `db.batch()` per 100 rows, with the
-  `io_job_rows` idempotency records in the same batch (migration `0006_io_jobs`). WS-E
-  swaps its body (or the apply route's one call) for an engine RPC taking the same
-  `ImportBatchBody` and returning the same `ImportBatchResult`.
+- Import batches go through the engine:
+  `ENGINE.applyImportBatch({ saleId, sellerId, ...ImportBatchBody })` (core's body: `importId`
+  UUID, `format`, `totalRows`, ≤ 100 `rows`, optional `removeMissing` keep-lists) returns
+  `RpcResult<Outcome<ImportBatchResult>>`: per-row results, `removed`, and `removedR2Keys`
+  for the web to delete. It runs under the sale lock (`apps/engine/src/sale/import.ts`) with
+  job tracking in `io_jobs`, per-row results and idempotency in `io_job_rows` (migration
+  `0007_io_jobs`), the opted-in removal once per import with its first batch, catalog
+  autofill, and one D1 batch per call.
+- **Contract step owed:** WS-E's `import_rows` table (`0006_engine_write_path`) is no longer
+  written. It stays while deployed code may still write it; a later contract migration
+  drops it (and `importRows` in `packages/db/src/schema.ts`).
+- Items without a game store `game_id = 'none'` (core `NO_GAME_ID`); `isNoGame` also treats
+  the older `'other'` as no game.
 - WS-G dropped "Other TCG": the item form lists the enabled registry games, plus
   "Not game-specific" (`game_id = 'none'`) for accessories only. Items stored as
   `other` still display as "Other TCG" and must pick a game when next saved.

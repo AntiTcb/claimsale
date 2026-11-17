@@ -2,17 +2,25 @@ import { createDb, eq, sql, type Db } from "@claimsale/db";
 import { items, sales } from "@claimsale/db/schema";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testD1 } from "../../../test/d1.ts";
-import { addUser, memoryStore } from "../../../test/fixtures.ts";
+import { addUser } from "../../../test/fixtures.ts";
 import type { SessionUser } from "./auth.ts";
 
 // The routes read bindings through context.ts; here they get a
 // real schema on node:sqlite and a fake engine instead.
 let database: Db;
 const searchCatalog = vi.fn<(input: unknown) => Promise<unknown>>();
+const applyImportBatch = vi.fn<(input: Record<string, unknown>) => Promise<unknown>>();
+let deletedKeys: string[] = [];
+const refuse = (code: string) =>
+	applyImportBatch.mockResolvedValue({ ok: true, value: { ok: false, error: { code, message: "No" } } });
 vi.mock("#lib/server/context.ts", () => ({
 	db: () => database,
-	imageStore: () => memoryStore(),
-	engineRpc: () => ({ searchCatalog }),
+	imageStore: () => ({
+		delete: async (keys: string[]) => {
+			deletedKeys.push(...keys);
+		},
+	}),
+	engineRpc: () => ({ searchCatalog, applyImportBatch }),
 }));
 
 const { createDraft } = await import("./sales.ts");
@@ -112,41 +120,46 @@ beforeEach(async () => {
 		sql`INSERT INTO market_prices (product_id, subtype, market_cents, as_of) VALUES (1, 'Holofoil', 1240, 10)`,
 	);
 	searchCatalog.mockReset();
+	applyImportBatch.mockReset();
+	deletedKeys = [];
 });
 
 describe("import endpoints", () => {
-	it("[IO-import-validate] the apply endpoint gates the seller, decodes the batch and applies it", async () => {
+	it("[IO-import-validate] the apply endpoint gates the seller, decodes the batch and hands it to the engine", async () => {
 		const post = (who: SessionUser | null, body: unknown, params?: Record<string, string>) =>
 			apply.POST(event(who, `/sell/${saleId}/import/apply`, { json: body, ...(params ? { params } : {}) }));
 		expect((await post(null, batch([card]))).status).toBe(401);
 		expect((await post(user("u1", { emailVerified: false }), batch([card]))).status).toBe(403);
 		expect((await post(user("u1"), batch([card]), { saleId: otherSaleId })).status).toBe(404);
 		expect((await post(user("u1"), { ...batch([card]), importId: "nope" })).status).toBe(400);
-		expect(
-			(
-				await post(user("u1"), {
-					...batch([card]),
-					rows: Array.from({ length: 101 }, () => ({ row: 2, cells: {} })),
-				})
-			).status,
-		).toBe(400);
+		const tooMany = { ...batch([card]), rows: Array.from({ length: 101 }, () => ({ row: 2, cells: {} })) };
+		expect((await post(user("u1"), tooMany)).status).toBe(400);
+		expect(applyImportBatch).not.toHaveBeenCalled();
 
-		const response = await post(user("u1"), batch([card, { ...card, price: "" }]));
+		const rows = [{ row: 2, outcome: "created", itemId: "i1", field: "", message: "" }];
+		applyImportBatch.mockResolvedValue({
+			ok: true,
+			value: { ok: true, value: { rows, removed: 1, removedR2Keys: ["photos/x.webp"] } },
+		});
+		const response = await post(user("u1"), batch([card]));
 		expect(response.status).toBe(200);
-		const body = (await response.json()) as { rows: { outcome: string; itemId: string | null }[] };
-		expect(body.rows.map((r) => r.outcome)).toEqual(["created", "error"]);
-		const stored = await database.select().from(items).where(eq(items.saleId, saleId)).all();
-		expect(stored).toHaveLength(1);
-		expect(stored[0]).toMatchObject({ id: body.rows[0]!.itemId, catalogProductId: "1" });
+		expect(await response.json()).toEqual({ rows, removed: 1 });
+		expect(applyImportBatch).toHaveBeenCalledWith({ saleId, sellerId: "u1", ...batch([card]) });
+		expect(deletedKeys).toEqual(["photos/x.webp"]);
+
+		applyImportBatch.mockResolvedValueOnce({ ok: false, error: { name: "E", message: "x" } });
+		expect((await post(user("u1"), batch([card]))).status).toBe(503);
 	});
 
-	it("[IO-import-target] the apply endpoint refuses a live sale with 409, and the page says why", async () => {
-		await database.update(sales).set({ status: "live" }).where(eq(sales.id, saleId));
-		const response = await apply.POST(
-			event(user("u1"), `/sell/${saleId}/import/apply`, { json: batch([card]) }),
-		);
+	it("[IO-import-target] the engine's refusal reaches the browser as 409, and the page says why", async () => {
+		const post = () => apply.POST(event(user("u1"), `/sell/${saleId}/import/apply`, { json: batch([card]) }));
+		refuse("sale_not_importable");
+		const response = await post();
 		expect(response.status).toBe(409);
-		expect(await response.json()).toMatchObject({ code: "sale_not_importable" });
+		expect(await response.json()).toEqual({ code: "sale_not_importable", message: "No" });
+		refuse("batch_too_large");
+		expect((await post()).status).toBe(400);
+		await database.update(sales).set({ status: "live" }).where(eq(sales.id, saleId));
 		const page = (await importPage.load(event(user("u1"), `/sell/${saleId}/import`))) as {
 			importable: string | null;
 		};

@@ -40,8 +40,8 @@ export function engine(): Engine {
 	return rpcEngine(env.ENGINE, db());
 }
 
-/** The engine Worker's RPC binding, for calls outside the sale engine (the catalog type-ahead). */
-export function engineRpc(): Pick<Env["ENGINE"], "searchCatalog"> {
+/** The engine Worker's RPC binding for the catalog type-ahead and item import batches. */
+export function engineRpc(): Pick<Env["ENGINE"], "searchCatalog" | "applyImportBatch"> {
 	return env.ENGINE;
 }
 

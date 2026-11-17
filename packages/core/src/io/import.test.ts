@@ -1,3 +1,4 @@
+import { Result as EffectResult, Schema } from "effect";
 import { describe, expect, it } from "vitest";
 import { ITEM_KINDS } from "../attributes.ts";
 import { enabledGames } from "../games.ts";
@@ -7,7 +8,11 @@ import { expectOk, expectRejected } from "../testing.ts";
 import { templateRows } from "./columns.ts";
 import {
 	checkImportTarget,
+	errorResults,
+	ImportBatchBody,
+	isNoGame,
 	MAX_IMPORT_ROWS,
+	planResult,
 	planImport,
 	validateImport,
 	validateImportRow,
@@ -374,5 +379,76 @@ describe("free item cap on import [IO-import-cap]", () => {
 		const proPlan = planImport({ ...input, removeMissing: false, sellerTier: "pro" });
 		expect(proPlan.cap).toEqual({ limit: null, fits: 12, exceeded: false });
 		expect(proPlan.creates).toHaveLength(12);
+	});
+});
+
+describe("import batches", () => {
+	const decode = Schema.decodeUnknownResult(ImportBatchBody);
+	const body = {
+		importId: "0190a000-0000-7000-8000-000000000001",
+		format: "csv",
+		totalRows: 2,
+		rows: [{ row: 2, cells: { kind: "single" } }],
+	};
+
+	it("[IO-import-idempotent] a batch names its import with a UUID and holds at most 100 rows", () => {
+		expect(EffectResult.isSuccess(decode(body))).toBe(true);
+		expect(
+			EffectResult.isSuccess(decode({ ...body, removeMissing: { keepItemIds: ["i1"], keepSkus: [] } })),
+		).toBe(true);
+		expect(EffectResult.isSuccess(decode({ ...body, importId: "import-1" }))).toBe(false);
+		expect(
+			EffectResult.isSuccess(
+				decode({ ...body, rows: Array.from({ length: 101 }, (_, i) => ({ row: i + 2, cells: {} })) }),
+			),
+		).toBe(false);
+		expect(EffectResult.isSuccess(decode({ ...body, rows: [{ row: 1, cells: {} }] }))).toBe(false);
+	});
+
+	it("[IO-import-validate] reports one result per invalid row with every message", () => {
+		expect(
+			errorResults([
+				{ row: 3, field: "price", message: "Price is required" },
+				{ row: 3, field: "", message: "Bad row" },
+				{ row: 5, field: "kind", message: "Kind is required" },
+			]),
+		).toEqual([
+			{
+				row: 3,
+				outcome: "error",
+				itemId: null,
+				field: "price",
+				message: "price: Price is required; Bad row",
+			},
+			{ row: 5, outcome: "error", itemId: null, field: "kind", message: "kind: Kind is required" },
+		]);
+	});
+
+	it("[IO-import-upsert] turns planned outcomes into row results", () => {
+		const created = new Map([[2, "new-item"]]);
+		expect(planResult({ row: 2, outcome: "created" }, created)).toMatchObject({
+			itemId: "new-item",
+			outcome: "created",
+		});
+		expect(planResult({ row: 4, outcome: "created" }, created).itemId).toBeNull();
+		expect(
+			planResult({ row: 3, outcome: "updated", itemId: "a", changed: ["priceCents", "photos"] }, created),
+		).toMatchObject({
+			message: "Changed: priceCents, photos",
+		});
+		expect(
+			planResult({ row: 5, outcome: "skipped", itemId: "b", reason: "unchanged" }, created),
+		).toMatchObject({
+			itemId: "b",
+			message: "No changes",
+		});
+		expect(planResult({ row: 6, outcome: "error", field: "sku", message: "Taken" }, created)).toEqual({
+			row: 6,
+			outcome: "error",
+			itemId: null,
+			field: "sku",
+			message: "Taken",
+		});
+		expect([isNoGame("none"), isNoGame("other"), isNoGame("pokemon")]).toEqual([true, true, false]);
 	});
 });
