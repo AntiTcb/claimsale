@@ -27,6 +27,7 @@ export const actions: Actions = {
 				offerVisibility: field(data, "offerVisibility"),
 				reviewEveryClaim: data.get("reviewEveryClaim") === "on",
 				allowBackupOffers: data.get("allowBackupOffers") === "on",
+				confirmClaims: data.get("confirmClaims") === "on",
 			},
 			seller.tier === "pro",
 		);

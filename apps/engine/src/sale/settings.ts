@@ -6,6 +6,7 @@ import {
 	paymentDeadline,
 	type BuyerRequirements,
 	type Millis,
+	type OfferVisibility,
 	type ShippingOption,
 	type Tier,
 } from "@claimsale/core";
@@ -22,6 +23,7 @@ import {
  * - `decisionWindowHours` (D25; Pro only, any positive number)
  * - `autoSendAtClose` (D49, default false), `autoRescindOverdue` (D13, default false)
  * - `requireVerifiedEmail` (D20, default true), `minAccountAgeDays` (D29, default 0)
+ * - `offerVisibility` "blind" | "visible" (D26, default blind): what the live grid shows (WS-H)
  */
 export interface SaleSettings {
 	readonly reviewEveryClaim: boolean;
@@ -32,6 +34,7 @@ export interface SaleSettings {
 	readonly autoRescindOverdue: boolean;
 	readonly buyerRequirements: BuyerRequirements;
 	readonly shippingMenu: readonly ShippingOption[];
+	readonly offerVisibility: OfferVisibility;
 }
 
 const record = (value: unknown): Record<string, unknown> =>
@@ -89,5 +92,6 @@ export function readSaleSettings(terms: unknown, shipping: unknown, sellerTier: 
 			minAccountAge: minAgeDays === undefined ? DEFAULT_BUYER_REQUIREMENTS.minAccountAge : minAgeDays * DAY,
 		},
 		shippingMenu: readShippingMenu(shipping),
+		offerVisibility: t["offerVisibility"] === "visible" ? "visible" : "blind",
 	};
 }

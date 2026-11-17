@@ -1,9 +1,11 @@
 import { isTimestamped } from "@claimsale/core";
 import { fail, redirect } from "@sveltejs/kit";
+import { env } from "cloudflare:workers";
 import { cookieSecret, db } from "#lib/server/context.ts";
 import { field } from "#lib/server/forms.ts";
 import { findTimestampPhoto, photosByItem } from "#lib/server/images.ts";
 import { listItems } from "#lib/server/items.ts";
+import { liveSnapshotFor } from "#lib/server/live.ts";
 import {
 	allowUnlockAttempt,
 	unlockCookieName,
@@ -14,7 +16,9 @@ import { loadSaleForViewer, publicItem, saleBody, saleHeader } from "#lib/server
 import type { Actions, PageServerLoad } from "./$types";
 
 /**
- * The read-only sale page. Claim and offer buttons arrive with the live grid (WS-H).
+ * The sale page and its live grid (WS-H): the items, plus the engine's projection of
+ * them for this viewer (counts, visible offers, the viewer's own positions), which the
+ * page then keeps current over the sale's WebSocket.
  *
  * @spec SM-2-visibility — locked private sales show only the title and seller.
  * @spec IMG-public-approved — buyers see approved photos only; the seller sees pending ones too.
@@ -36,16 +40,20 @@ export const load: PageServerLoad = async (event) => {
 			items: [],
 			isSeller,
 			serverNow: Date.now(),
+			saleId: null,
+			live: null,
+			signedIn: event.locals.user !== null,
 		};
 	}
 	const rows = await listItems(db(), sale.id);
-	const [photos, timestamp] = await Promise.all([
+	const [photos, timestamp, live] = await Promise.all([
 		photosByItem(
 			db(),
 			rows.map((r) => r.id),
 			isSeller ? "visible" : "approved",
 		),
 		findTimestampPhoto(db(), sale.id),
+		liveSnapshotFor(env.ENGINE, sale.id, event.locals.user?.id ?? null),
 	]);
 	return {
 		header,
@@ -57,7 +65,10 @@ export const load: PageServerLoad = async (event) => {
 			return { ...publicItem(row), photoUrl: first ? `/api/images/${first.id}` : null };
 		}),
 		isSeller,
-		serverNow: Date.now(),
+		serverNow: live?.serverNow ?? Date.now(),
+		saleId: sale.id,
+		live,
+		signedIn: event.locals.user !== null,
 	};
 };
 

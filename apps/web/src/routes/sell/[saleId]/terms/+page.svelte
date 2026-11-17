@@ -114,6 +114,10 @@
 				<input type="checkbox" name="allowBackupOffers" checked={t.allowBackupOffers} /> Allow backup offers on
 				sold-out items
 			</label>
+			<label class="flex items-center gap-2">
+				<input type="checkbox" name="confirmClaims" checked={t.confirmClaims} /> Ask buyers to confirm each claim
+				(turn off when speed matters)
+			</label>
 		</div>
 
 		<TextField label="Ships to" name="shipsTo" maxlength={200} value={t.shipsTo} error={errors["shipsTo"]} />
