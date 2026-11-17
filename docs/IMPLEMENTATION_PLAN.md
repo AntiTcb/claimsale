@@ -15,7 +15,7 @@
 | 3. Auth | First slice done (S40). Left: phone OTP, Turnstile, seller requirements at publish |
 | 4. Sales and items | Not started (schema has only auth tables) |
 | 4b. TCG catalog + photo authenticity | Not started |
-| 5. Engine (SaleEngine DO write path) | Stub only (`ping`, `traceProbe`, `alarm` logs) |
+| 5. Engine (SaleEngine DO write path) | WS-E: write path, RPC, alarms, cron sweep, rate limit (k6 run pending) |
 | 6. Live grid | Not started |
 | 7. Seller control room + admin disputes | Not started |
 | 8. Invoices after close + exports + tracking import | Pure invoice machine done; no I/O |
@@ -220,7 +220,32 @@ Wave 4:                     WS-L → pilot sale
   first on PATH. Seen on every wave-1 branch, including WS-B, WS-C and WS-F1, which don't
   touch `scripts/` (WS-D only adds preview-pair vars in `preview-config.ts`).
 
-### Wave 2 integration notes
+### Wave 2 integration notes (WS-E, the engine write path)
+- Every sale write goes through the Engine entrypoint's RPC methods (`placeEntry`,
+  `awardEntry`, `sellerRescind`, `publishSale`, `sendInvoice`, … in `apps/engine/src/index.ts`).
+  Each returns `RpcResult<Outcome<T>>`: the outer result fails only on a defect or invalid
+  input; a rule's "no" is `{ ok: false, error: { code, message } }`. The web Worker passes
+  the authenticated user's ID; the engine works out seller / buyer and tiers itself.
+- Sale settings the engine reads from `sales.terms` (beyond the web form's fields):
+  `decisionWindowHours` (Pro), `autoSendAtClose`, `autoRescindOverdue`,
+  `requireVerifiedEmail`, `minAccountAgeDays`; the shipping menu from `sales.shipping`
+  as `[{ id, label, priceCents, tracked }]`. WS-I / WS-J add the form fields.
+- `POST /api/sales/[saleId]/entries` takes a claim or offer as JSON (session + sale access
+  checked in web). WS-H can use it or call `placeEntry` from a remote function.
+- Committed events go to the notifications queue as `{ kind: "sale_events", sale_id, events }`;
+  the consumer only acknowledges them until WS-K.
+- Import batches (WS-G): `ENGINE.applyImportBatch({ saleId, sellerId, importId, rows })`,
+  ≤ 100 mapped rows `{ row, cells }` per call; idempotent per (`importId`, row) via the
+  `import_rows` table; outcomes carry the created item IDs for photo attaching.
+  "Remove items not in file" isn't supported in batch mode.
+- The publish photo check stays in web (`itemsWithoutPhotos`, `#lib/server/engine.ts`);
+  WS-F2 tightens it there.
+- Not built yet: rescind contests / mutual-agreement answers and their 72h timer (WS-I),
+  a test-only clock endpoint for E2E time travel, WebSocket broadcast (WS-H).
+- Locally on Windows, Playwright's `webServer` command fails (cmd.exe has no subshell for
+  `(cd ../engine && …)`); start the stack by hand and Playwright reuses it.
+
+### Wave 2 integration notes (WS-G, item import)
 - WS-G (item import): `applyImportBatch` in `apps/web/src/lib/server/import.ts` is the
   only import writer. It writes D1 directly in one `db.batch()` per 100 rows, with the
   `io_job_rows` idempotency records in the same batch (migration `0006_io_jobs`). WS-E

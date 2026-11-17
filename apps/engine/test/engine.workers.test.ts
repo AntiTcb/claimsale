@@ -123,6 +123,15 @@ describe("queue consumer", () => {
 		warn.mockRestore();
 	});
 
+	it("acknowledges the sale events a SaleEngine publishes (no handlers until WS-K)", async () => {
+		const { result, sent } = await consume(
+			[{ kind: "sale_events", sale_id: "sale_1", events: [{ type: "entry_won" }], traceparent }],
+			"owner@example.com",
+		);
+		expect(sent).toEqual([]);
+		expect(result.explicitAcks).toEqual(["m0"]);
+	});
+
 	it("acknowledges and drops messages it doesn't understand", async () => {
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const { result } = await consume([{ kind: "test" }, "garbage"], undefined);
@@ -379,6 +388,13 @@ describe("D1 migrations (expand/contract)", () => {
 				/^(CREATE (UNIQUE )?(TABLE|INDEX|VIRTUAL TABLE|TRIGGER) |INSERT OR IGNORE INTO `games`)/i,
 			);
 		}
+	});
+
+	it("0006_engine_write_path only adds the import_rows table and timer indexes (expand step)", () => {
+		const migration = env.TEST_MIGRATIONS.find((m) => m.name.startsWith("0006_"));
+		const statements = migration!.queries.map((q) => q.replace(/^--.*$/gm, "").trim()).filter(Boolean);
+		expect(statements.length).toBeGreaterThan(1);
+		for (const statement of statements) expect(statement).toMatch(/^CREATE (UNIQUE )?(TABLE|INDEX) /i);
 	});
 
 	it("seed the launch games, enabled, with their TCGplayer category IDs", async () => {

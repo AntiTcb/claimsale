@@ -19,8 +19,16 @@ import { health, type HealthReport } from "./health.ts";
 import { CloudflareMailer } from "./mailer.ts";
 import { fromRpcResult, optionalSecret, run, runForRpc, type RpcResult } from "./runtime.ts";
 import { disabledProbe, isProbeEnabled, type TraceProbeInput, type TraceProbeResult } from "./trace-probe.ts";
+import type { InvoiceView, ItemCommandResult, Outcome, SaleView } from "./sale-engine.ts";
+import { saleCommand } from "./sale/entrypoint.ts";
+import type { ImportBatchResult } from "./sale/import.ts";
+import * as rpc from "./sale/rpc.ts";
+import { sweepTimers } from "./sale/sweep.ts";
 
 export { SaleEngine } from "./sale-engine.ts";
+export type { InvoiceView, ItemCommandResult, Outcome, SaleView, SweepReport } from "./sale-engine.ts";
+export type { ImportBatchResult, ImportRowResult } from "./sale/import.ts";
+export type * as SaleRpc from "./sale/rpc.ts";
 export type { HealthReport } from "./health.ts";
 export type { EngineEnv } from "./env.ts";
 export type { RpcResult, RuntimeCapabilities } from "./runtime.ts";
@@ -91,6 +99,114 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 		return runForRpc(this.env, "engine.catalog.ingest", ingestOneGame(this.env, input));
 	}
 
+	// -------------------------------------------------------------------------
+	// Sale write path (STATE_MACHINES §9): each method validates its input and runs the
+	// command in the sale's SaleEngine. The outer RpcResult fails only on a defect or
+	// invalid input; a rule saying no is an `{ ok: false, error: { code, message } }` Outcome.
+
+	/** A buyer claims or offers (§4.1). Rate-limited per buyer. */
+	async placeEntry(input: rpc.PlaceEntryInput): Promise<RpcResult<Outcome<ItemCommandResult>>> {
+		return saleCommand(this.env, rpc.PlaceEntryInput, "place", input, (decoded) => decoded.buyerId);
+	}
+
+	/** A buyer withdraws an offer or leaves the backup queue (§4.4). */
+	async withdrawEntry(input: rpc.BuyerEntryInput): Promise<RpcResult<Outcome<ItemCommandResult>>> {
+		return saleCommand(this.env, rpc.BuyerEntryInput, "withdraw", input);
+	}
+
+	async respondToCounter(input: rpc.CounterResponseInput): Promise<RpcResult<Outcome<ItemCommandResult>>> {
+		return saleCommand(this.env, rpc.CounterResponseInput, "respondToCounter", input);
+	}
+
+	async awardEntry(input: rpc.SellerEntryInput): Promise<RpcResult<Outcome<ItemCommandResult>>> {
+		return saleCommand(this.env, rpc.SellerEntryInput, "award", input);
+	}
+
+	async declineOffer(input: rpc.SellerEntryInput): Promise<RpcResult<Outcome<ItemCommandResult>>> {
+		return saleCommand(this.env, rpc.SellerEntryInput, "declineOffer", input);
+	}
+
+	async counterOffer(input: rpc.CounterInput): Promise<RpcResult<Outcome<ItemCommandResult>>> {
+		return saleCommand(this.env, rpc.CounterInput, "counter", input);
+	}
+
+	async reorderBackups(input: rpc.ReorderInput): Promise<RpcResult<Outcome<ItemCommandResult>>> {
+		return saleCommand(this.env, rpc.ReorderInput, "reorder", input);
+	}
+
+	async withdrawItem(input: rpc.SellerItemInput): Promise<RpcResult<Outcome<ItemCommandResult>>> {
+		return saleCommand(this.env, rpc.SellerItemInput, "withdrawItem", input);
+	}
+
+	/** The seller rescinds a win with a reason code, optionally passing it to the next backup (§4.3). */
+	async sellerRescind(input: rpc.SellerRescindInput): Promise<RpcResult<Outcome<ItemCommandResult>>> {
+		return saleCommand(this.env, rpc.SellerRescindInput, "sellerRescind", input);
+	}
+
+	/** A Pro buyer rescinds their own win before the invoice is sent (D24). */
+	async buyerRescind(input: rpc.BuyerEntryInput): Promise<RpcResult<Outcome<ItemCommandResult>>> {
+		return saleCommand(this.env, rpc.BuyerEntryInput, "buyerRescind", input);
+	}
+
+	async requestTakeback(input: rpc.TakebackRequestInput): Promise<RpcResult<Outcome<{ requestId: string }>>> {
+		return saleCommand(this.env, rpc.TakebackRequestInput, "requestTakeback", input);
+	}
+
+	async decideTakeback(input: rpc.TakebackDecisionInput): Promise<RpcResult<Outcome<ItemCommandResult>>> {
+		return saleCommand(this.env, rpc.TakebackDecisionInput, "decideTakeback", input);
+	}
+
+	async cancelTakeback(input: rpc.TakebackCancelInput): Promise<RpcResult<Outcome<{ requestId: string }>>> {
+		return saleCommand(this.env, rpc.TakebackCancelInput, "cancelTakeback", input);
+	}
+
+	async publishSale(input: rpc.PublishInput): Promise<RpcResult<Outcome<SaleView>>> {
+		return saleCommand(this.env, rpc.PublishInput, "publish", input);
+	}
+
+	async unpublishSale(input: rpc.SellerSaleInput): Promise<RpcResult<Outcome<SaleView>>> {
+		return saleCommand(this.env, rpc.SellerSaleInput, "unpublish", input);
+	}
+
+	async closeSale(input: rpc.SellerSaleInput): Promise<RpcResult<Outcome<SaleView>>> {
+		return saleCommand(this.env, rpc.SellerSaleInput, "closeBySeller", input);
+	}
+
+	async sendInvoice(input: rpc.SellerInvoiceInput): Promise<RpcResult<Outcome<InvoiceView>>> {
+		return saleCommand(this.env, rpc.SellerInvoiceInput, "sendInvoice", input);
+	}
+
+	async sendAllInvoices(input: rpc.SellerSaleInput): Promise<RpcResult<Outcome<{ sent: number }>>> {
+		return saleCommand(this.env, rpc.SellerSaleInput, "sendAllInvoices", input);
+	}
+
+	/** The buyer picks shipping and says "I've paid". */
+	async markInvoicePaid(input: rpc.MarkPaidInput): Promise<RpcResult<Outcome<InvoiceView>>> {
+		return saleCommand(this.env, rpc.MarkPaidInput, "markBuyerPaid", input);
+	}
+
+	async confirmInvoicePaid(input: rpc.SellerInvoiceInput): Promise<RpcResult<Outcome<InvoiceView>>> {
+		return saleCommand(this.env, rpc.SellerInvoiceInput, "confirmPaid", input);
+	}
+
+	async invoiceNotReceived(input: rpc.SellerInvoiceInput): Promise<RpcResult<Outcome<InvoiceView>>> {
+		return saleCommand(this.env, rpc.SellerInvoiceInput, "paymentNotReceived", input);
+	}
+
+	async shipInvoice(input: rpc.ShipInput): Promise<RpcResult<Outcome<InvoiceView>>> {
+		return saleCommand(this.env, rpc.ShipInput, "ship", input);
+	}
+
+	/** The buyer confirms receipt. */
+	async completeInvoice(input: rpc.BuyerInvoiceInput): Promise<RpcResult<Outcome<InvoiceView>>> {
+		return saleCommand(this.env, rpc.BuyerInvoiceInput, "completeInvoice", input);
+	}
+
+	/** One batch (≤ 100 rows) of an item import, idempotent per (`importId`, row) (WS-G). */
+	async applyImportBatch(input: rpc.ImportBatchInput): Promise<RpcResult<Outcome<ImportBatchResult>>> {
+		return saleCommand(this.env, rpc.ImportBatchInput, "applyImportBatch", input);
+	}
+
 	override async queue(batch: MessageBatch): Promise<void> {
 		const options = { probeRecipient: optionalSecret(this.env, "TRACE_PROBE_TO") };
 		await run(
@@ -105,6 +221,10 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 			await run(this.env, "engine.cron.catalog", catalogCron(this.env));
 			return;
 		}
-		await run(this.env, "engine.cron.sweep", handleScheduled(controller));
+		await run(
+			this.env,
+			"engine.cron.sweep",
+			handleScheduled(controller).pipe(Effect.andThen(sweepTimers(this.env))),
+		);
 	}
 }

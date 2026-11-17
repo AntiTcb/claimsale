@@ -34,6 +34,10 @@
 		"bindings": [{ "name": "SALE_ENGINE", "class_name": "SaleEngine" }],
 	},
 	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["SaleEngine"] }],
+	// Claims and offers per buyer (SM-9-entry-rate-limit): 20 per 10 s, checked before the Durable Object.
+	"ratelimits": [
+		{ "name": "ENTRY_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 10 } },
+	],
 	"queues": {
 		"producers": [{ "binding": "NOTIFICATIONS", "queue": "claimsale-notifications-local" }],
 		"consumers": [{ "queue": "claimsale-notifications-local", "max_batch_size": 25, "max_retries": 5 }],
@@ -63,6 +67,10 @@
 			"durable_objects": {
 				"bindings": [{ "name": "SALE_ENGINE", "class_name": "SaleEngine" }],
 			},
+			// Claims and offers per buyer (SM-9-entry-rate-limit): 20 per 10 s, checked before the Durable Object.
+			"ratelimits": [
+				{ "name": "ENTRY_LIMITER", "namespace_id": "1002", "simple": { "limit": 20, "period": 10 } },
+			],
 			"queues": {
 				"producers": [{ "binding": "NOTIFICATIONS", "queue": "claimsale-notifications-staging" }],
 				"consumers": [{ "queue": "claimsale-notifications-staging", "max_batch_size": 25, "max_retries": 5 }],
@@ -92,6 +100,10 @@
 			"durable_objects": {
 				"bindings": [{ "name": "SALE_ENGINE", "class_name": "SaleEngine" }],
 			},
+			// Claims and offers per buyer (SM-9-entry-rate-limit): 20 per 10 s, checked before the Durable Object.
+			"ratelimits": [
+				{ "name": "ENTRY_LIMITER", "namespace_id": "1003", "simple": { "limit": 20, "period": 10 } },
+			],
 			"queues": {
 				"producers": [{ "binding": "NOTIFICATIONS", "queue": "claimsale-notifications" }],
 				"consumers": [{ "queue": "claimsale-notifications", "max_batch_size": 25, "max_retries": 5 }],
