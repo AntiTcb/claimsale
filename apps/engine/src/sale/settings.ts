@@ -4,6 +4,7 @@ import {
 	DEFAULT_BUYER_REQUIREMENTS,
 	HOUR,
 	paymentDeadline,
+	shippingMenuFrom,
 	type BuyerRequirements,
 	type Millis,
 	type ShippingOption,
@@ -54,23 +55,7 @@ export function parseJson(value: unknown): unknown {
 
 /** The shipping menu (D15): entries that aren't well-formed are dropped. */
 export function readShippingMenu(raw: unknown): ShippingOption[] {
-	const value = parseJson(raw);
-	const options: unknown = Array.isArray(value) ? value : record(value)["options"];
-	const list: readonly unknown[] = Array.isArray(options) ? options : [];
-	const menu: ShippingOption[] = [];
-	for (const entry of list) {
-		const { id, label, priceCents, tracked } = record(entry);
-		if (
-			typeof id === "string" &&
-			typeof label === "string" &&
-			typeof priceCents === "number" &&
-			Number.isSafeInteger(priceCents) &&
-			priceCents >= 0
-		) {
-			menu.push({ id, label, priceCents, tracked: tracked === true });
-		}
-	}
-	return menu;
+	return shippingMenuFrom(parseJson(raw));
 }
 
 export function readSaleSettings(terms: unknown, shipping: unknown, sellerTier: Tier): SaleSettings {

@@ -18,6 +18,7 @@
 				{#if user.handle}
 					<a href="/u/{user.handle}" class="max-w-40 truncate hover:underline">@{user.handle}</a>
 				{/if}
+				<a href="/me/invoices" class="hover:underline">Invoices</a>
 				<a href="/sell" class="hover:underline">Sell</a>
 				<a href="/me/settings" class="hover:underline">Settings</a>
 				<form method="POST" action="/logout">

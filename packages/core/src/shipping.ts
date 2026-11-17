@@ -38,6 +38,34 @@ export interface ShippingMenuError {
 
 const ID = /^[a-z0-9_-]{1,32}$/;
 
+const fields = (value: unknown): Record<string, unknown> =>
+	value !== null && typeof value === "object" && !Array.isArray(value)
+		? Object.fromEntries(Object.entries(value))
+		: {};
+
+/**
+ * The stored menu (parsed JSON: an array, or `{ options: [...] }`). Entries that
+ * aren't well-formed are dropped, so a bad row never breaks an invoice.
+ */
+export function shippingMenuFrom(value: unknown): ShippingOption[] {
+	const options: unknown = Array.isArray(value) ? value : fields(value)["options"];
+	const list: readonly unknown[] = Array.isArray(options) ? options : [];
+	const menu: ShippingOption[] = [];
+	for (const entry of list) {
+		const { id, label, priceCents, tracked } = fields(entry);
+		if (
+			typeof id === "string" &&
+			typeof label === "string" &&
+			typeof priceCents === "number" &&
+			Number.isSafeInteger(priceCents) &&
+			priceCents >= 0
+		) {
+			menu.push({ id, label, priceCents, tracked: tracked === true });
+		}
+	}
+	return menu;
+}
+
 /**
  * Validates the menu editor's rows. Blank rows (no label, no price) are dropped;
  * kept rows keep their ID, so a buyer's chosen option still resolves after an edit.

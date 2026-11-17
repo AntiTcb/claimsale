@@ -17,6 +17,7 @@
 			class="rounded-md bg-zinc-900 px-4 py-2 text-white dark:bg-zinc-100 dark:text-zinc-900">New sale</a
 		>
 	</div>
+	<p class="mt-2 text-sm"><a href="/sell/exports" class="underline">Exports</a></p>
 	{#if data.tier === "free"}
 		<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
 			Free plan: {data.active} of {data.caps.sales} sales scheduled or live, up to {data.caps.items} items each.

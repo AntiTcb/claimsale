@@ -229,9 +229,10 @@ export async function updateTerms(
 	const sale = await findSellerSale(db, seller.id, saleId);
 	if (!sale) return notFound();
 	if (!EDITABLE.has(sale.status)) return reject("invalid_status", "This sale can no longer be edited");
+	// Merged, so settings saved elsewhere (the shipping page's invoice switches) survive.
 	const row = await db
 		.update(sales)
-		.set({ terms: { ...terms }, termsMd: terms.rulesMd, updatedAt: now })
+		.set({ terms: { ...sale.terms, ...terms }, termsMd: terms.rulesMd, updatedAt: now })
 		.where(eq(sales.id, sale.id))
 		.returning()
 		.get();

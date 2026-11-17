@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	shippingMenuFrom,
 	SHIPPING_MENU_MAX,
 	SUGGESTED_SHIPPING,
 	validateShippingMenu,
@@ -67,6 +68,22 @@ describe("shipping menu [SM-6-shipping-menu]", () => {
 		expect(ids[0]).toBe("same");
 		expect(new Set(ids).size).toBe(3);
 		expect(ids[2]).toMatch(/^opt/);
+	});
+
+	it("reads a stored menu back, dropping malformed entries [SM-6-shipping-menu]", () => {
+		expect(shippingMenuFrom(SUGGESTED_SHIPPING)).toEqual(SUGGESTED_SHIPPING);
+		expect(
+			shippingMenuFrom({
+				options: [
+					{ id: "a", label: "A", priceCents: 100, tracked: true },
+					{ id: "b", label: "B", priceCents: -1 },
+					{ id: "c", label: "C", priceCents: 1.5 },
+					{ id: "d", priceCents: 100 },
+					"junk",
+				],
+			}),
+		).toEqual([{ id: "a", label: "A", priceCents: 100, tracked: true }]);
+		expect(shippingMenuFrom(null)).toEqual([]);
 	});
 
 	it("the suggested menu is itself valid [SM-6-shipping-menu]", () => {

@@ -2,7 +2,12 @@
  * Seller exports (WS-J): the request (job + audit row + queue message), the queue
  * consumer writing the CSV to R2, privacy of the orders file, and the 24h expiry.
  */
-import { createExecutionContext, createMessageBatch, getQueueResult } from "cloudflare:test";
+import {
+	createExecutionContext,
+	createMessageBatch,
+	getQueueResult,
+	runInDurableObject,
+} from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { Effect, Layer } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -86,6 +91,44 @@ async function built(jobId: string) {
 	const object = await env.IMAGES.get(row["result_key"] as string);
 	return { row, text: (await object!.text()).replace(/^﻿/, "") };
 }
+
+describe("0009 migration (expand/contract)", () => {
+	it("only adds two nullable columns", () => {
+		const migration = env.TEST_MIGRATIONS.find((m) => m.name.startsWith("0009_"));
+		const statements = migration!.queries.map((q) => q.replace(/^--.*$/gm, "").trim()).filter(Boolean);
+		expect(statements.map((s) => s.replace(/;$/, ""))).toEqual([
+			"ALTER TABLE `invoices` ADD `shipping_option_label` text",
+			"ALTER TABLE `io_jobs` ADD `layout` text",
+		]);
+	});
+
+	it("applies on top of the previous schema, keeping its invoices and jobs", async () => {
+		const stub = env.SALE_ENGINE.get(env.SALE_ENGINE.idFromName("migration-check-0009"));
+		await runInDurableObject(stub, (_instance, state) => {
+			const sql = state.storage.sql;
+			for (const migration of env.TEST_MIGRATIONS.filter((m) => m.name < "0009_"))
+				for (const query of migration.queries) sql.exec(query);
+			sql.exec(
+				"INSERT INTO users (id, email, display_name, created_at, updated_at) VALUES ('u1', 'a@example.test', 'A', 1, 1)",
+			);
+			sql.exec(
+				"INSERT INTO sales (id, seller_id, slug, title, created_at, updated_at) VALUES ('s1', 'u1', 's1', 'S', 1, 1)",
+			);
+			sql.exec(
+				"INSERT INTO invoices (id, sale_id, buyer_id, seller_id, created_at, updated_at) VALUES ('i1', 's1', 'u1', 'u1', 1, 1)",
+			);
+			sql.exec(
+				"INSERT INTO io_jobs (id, seller_id, kind, status, created_at) VALUES ('j1', 'u1', 'export_orders', 'done', 1)",
+			);
+			for (const migration of env.TEST_MIGRATIONS.filter((m) => m.name >= "0009_"))
+				for (const query of migration.queries) sql.exec(query);
+			expect(sql.exec("SELECT id, shipping_option_label FROM invoices").toArray()).toEqual([
+				{ id: "i1", shipping_option_label: null },
+			]);
+			expect(sql.exec("SELECT id, layout FROM io_jobs").toArray()).toEqual([{ id: "j1", layout: null }]);
+		});
+	});
+});
 
 describe("exports", () => {
 	it("a request records the job and an audit row, and the consumer builds the file [IO-export-expiry]", async () => {
