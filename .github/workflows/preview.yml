@@ -103,6 +103,18 @@ jobs:
           E2E_BASE_URL: ${{ steps.pair.outputs.url || steps.web.outputs.url }}
           E2E_ACCESS_CLIENT_ID: ${{ secrets.ACCESS_CLIENT_ID }}
           E2E_ACCESS_CLIENT_SECRET: ${{ secrets.ACCESS_CLIENT_SECRET }}
+      # Traces of every failed attempt, including one that passed on retry (flaky), so a
+      # failure against a deployed preview can be diagnosed from the run (TESTING §6).
+      - name: Upload Playwright traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-playwright-${{ github.run_attempt }}
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Comment the preview URL
         uses: actions/github-script@v7
         with:
