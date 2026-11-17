@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { enhance } from "$app/forms";
 	import type { PageProps } from "./$types";
 
-	let { data }: PageProps = $props();
+	let { data, form }: PageProps = $props();
 	const since = $derived(
 		new Date(data.profile.memberSince).toLocaleDateString("en-US", { month: "long", year: "numeric" }),
 	);
@@ -35,6 +36,42 @@
 			>
 			<span class="text-sm text-zinc-600 dark:text-zinc-400">(added by the user, not verified)</span>
 		</p>
+	{/if}
+	<div class="mt-6 flex flex-wrap items-center gap-3">
+		<span class="text-sm text-zinc-600 dark:text-zinc-300"
+			>{data.follow.followers}
+			{data.follow.followers === 1 ? "follower" : "followers"}</span
+		>
+		{#if !data.follow.signedIn}
+			<a href="/login?next={encodeURIComponent(`/u/${data.profile.handle}`)}" class="text-sm underline"
+				>Sign in to follow</a
+			>
+		{:else if !data.follow.self}
+			{#if data.follow.following}
+				<form method="POST" action="?/unfollow" use:enhance>
+					<button type="submit" class="rounded-md border border-zinc-400 px-3 py-1.5 text-sm"
+						>Unfollow<span class="sr-only"> {data.profile.displayName}</span></button
+					>
+				</form>
+			{:else}
+				<form method="POST" action="?/follow" use:enhance>
+					<button
+						type="submit"
+						class="rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900"
+						>Follow<span class="sr-only"> {data.profile.displayName}</span></button
+					>
+				</form>
+			{/if}
+		{/if}
+	</div>
+	{#if form && "following" in form}
+		<p role="status" class="mt-2 text-sm text-green-800 dark:text-green-300">
+			{form.following
+				? "Following. We'll tell you when they schedule or open a public sale."
+				: "You unfollowed them."}
+		</p>
+	{:else if form && "message" in form}
+		<p role="alert" class="mt-2 text-sm text-red-700 dark:text-red-400">{form.message}</p>
 	{/if}
 	<p class="mt-8 text-zinc-600 dark:text-zinc-300">Sales and feedback will show here.</p>
 </section>

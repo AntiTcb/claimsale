@@ -1,5 +1,5 @@
 import { createDb, eq, type Db } from "@claimsale/db";
-import { sales } from "@claimsale/db/schema";
+import { saleAllowlist, sales } from "@claimsale/db/schema";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testD1 } from "../../../test/d1.ts";
 import { addUser } from "../../../test/fixtures.ts";
@@ -151,5 +151,23 @@ describe("sales repository", () => {
 		expect(await findSaleBySlug(db, sale.slug)).toMatchObject({ hasPassword: true, allowlistEnabled: false });
 		expect(await readAllowlist(db, sale.id)).toEqual([]);
 		expect(await findSaleBySlug(db, "nope")).toBeUndefined();
+	});
+
+	it("[NOTIF-allowlist-invite] saving the invite list keeps who was already invited", async () => {
+		const sale = await draft(pro, { visibility: "private" });
+		await setPrivateAccess(db, sale.id, { allowlist: ["a@example.test", "b@example.test"] }, 1);
+		// The engine marks invites it sent.
+		await db.update(saleAllowlist).set({ invitedAt: 5 }).where(eq(saleAllowlist.email, "a@example.test"));
+		await setPrivateAccess(db, sale.id, { allowlist: ["a@example.test", "c@example.test"] }, 6);
+		const rows = await db
+			.select({ email: saleAllowlist.email, invitedAt: saleAllowlist.invitedAt })
+			.from(saleAllowlist)
+			.where(eq(saleAllowlist.saleId, sale.id))
+			.orderBy(saleAllowlist.email)
+			.all();
+		expect(rows).toEqual([
+			{ email: "a@example.test", invitedAt: 5 },
+			{ email: "c@example.test", invitedAt: null },
+		]);
 	});
 });

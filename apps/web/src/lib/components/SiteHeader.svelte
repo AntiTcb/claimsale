@@ -1,9 +1,13 @@
 <script lang="ts">
+	import NotificationBell from "./NotificationBell.svelte";
+
 	interface Props {
 		user: { handle: string | null; displayName: string } | null;
+		/** Unread notifications for the bell (WS-K). */
+		unread?: number;
 	}
 
-	let { user }: Props = $props();
+	let { user, unread = 0 }: Props = $props();
 </script>
 
 <header class="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
@@ -19,7 +23,9 @@
 					<a href="/u/{user.handle}" class="max-w-40 truncate hover:underline">@{user.handle}</a>
 				{/if}
 				<a href="/sell" class="hover:underline">Sell</a>
+				<a href="/me/messages" class="hover:underline">Messages</a>
 				<a href="/me/settings" class="hover:underline">Settings</a>
+				<NotificationBell {unread} />
 				<form method="POST" action="/logout">
 					<button type="submit" class="hover:underline">Sign out</button>
 				</form>

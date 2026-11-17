@@ -7,7 +7,7 @@
 </script>
 
 <div class="flex min-h-dvh flex-col bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-	<SiteHeader user={data.user} />
+	<SiteHeader user={data.user} unread={data.unreadNotifications} />
 	<main class="flex-1">
 		{@render children()}
 	</main>

@@ -461,6 +461,18 @@ const money = (payload: NotificationPayload, key: string): string => {
 };
 const quoted = (value: string) => `“${value}”`;
 
+/** The copy of a stored row: its type may be from newer code, its payload is JSON. */
+export function describeStoredNotification(type: string, payload: unknown): NotificationCopy {
+	return isNotificationType(type)
+		? describeNotification(type, parseNotificationPayload(payload))
+		: {
+				title: "ClaimSale update",
+				body: "You have a new notification.",
+				path: "/me/notifications",
+				action: "Open",
+			};
+}
+
 /** What a notification says. Invoice links go to the sale until the buyer's invoice page exists (WS-J). */
 export function describeNotification(type: NotificationType, payload: NotificationPayload): NotificationCopy {
 	const sale = quoted(text(payload, "saleTitle", "a sale"));

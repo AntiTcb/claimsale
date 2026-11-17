@@ -4,6 +4,7 @@ import { MINUTE } from "./common.ts";
 import {
 	categoryOf,
 	describeNotification,
+	describeStoredNotification,
 	emailPlan,
 	followerNotifications,
 	matchesWant,
@@ -360,6 +361,8 @@ describe("email decisions", () => {
 
 	it("an unknown stored type still renders", () => {
 		expect(describeNotification("from_the_future" as never, {}).path).toBe("/me/notifications");
+		expect(describeStoredNotification("from_the_future", "{}").title).toBe("ClaimSale update");
+		expect(describeStoredNotification("claim_won", '{"itemTitle":"Mew"}').title).toBe("You won “Mew”");
 	});
 
 	it("copy degrades gracefully when payload fields are missing", () => {

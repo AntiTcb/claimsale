@@ -7,7 +7,9 @@ import {
 } from "@claimsale/core";
 import { fail, redirect } from "@sveltejs/kit";
 import { parseLocalDateTime } from "#lib/listing-input.ts";
-import { db, engine } from "#lib/server/context.ts";
+import { db, engine, notifyRpc } from "#lib/server/context.ts";
+import { requestAllowlistInvites } from "#lib/server/notify-rpc.ts";
+import { runExit } from "#lib/server/runtime.ts";
 import { field } from "#lib/server/forms.ts";
 import { findTimestampPhoto, publishPhotoState } from "#lib/server/images.ts";
 import { countItems } from "#lib/server/items.ts";
@@ -81,6 +83,9 @@ export const actions: Actions = {
 					errors: { password: saved.error.message },
 				});
 			}
+			// A published private sale invites addresses added now (drafts invite at publish).
+			if (current && current.status !== "draft")
+				await runExit("web.notifications.invites", requestAllowlistInvites(notifyRpc(), sale.id, seller.id));
 		}
 		return { action: "details" as const, saved: true };
 	},
