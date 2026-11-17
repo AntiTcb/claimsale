@@ -6,6 +6,7 @@ import {
 	signUp,
 	smsCaptureAvailable,
 	verifySeller,
+	waitForWelcome,
 	type Identity,
 } from "./auth-helpers.ts";
 import { expect, test } from "./fixtures.ts";
@@ -74,9 +75,7 @@ async function signedUpSeller(page: Page): Promise<Identity> {
 	);
 	const seller = newIdentity("seller");
 	await signUp(page, seller);
-	// WebKit: navigating before this load finishes interrupts it ("/?welcome=1").
-	await page.waitForURL(/\/\?welcome=1$/, { waitUntil: "load" });
-	await page.waitForLoadState("networkidle");
+	await waitForWelcome(page);
 	await expect(page.getByRole("link", { name: `@${seller.handle}` })).toBeVisible();
 	await verifySeller(page, seller.email);
 	return seller;
