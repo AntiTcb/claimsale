@@ -50,6 +50,13 @@
       "when": 1794936130021,
       "tag": "0006_engine_write_path",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1794947192299,
+      "tag": "0007_image_hashes",
+      "breakpoints": true
     }
   ]
 }

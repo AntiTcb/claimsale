@@ -26,6 +26,7 @@ describe("createAuth", () => {
 			"country",
 			"phoneE164",
 			"phoneVerifiedAt",
+			"role",
 		]);
 		expect(options.rateLimit).toMatchObject({ enabled: true, storage: "database" });
 		expect(options.rateLimit?.customRules?.["/sign-in/email"]).toEqual({ window: 60, max: 5 });

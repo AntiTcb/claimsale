@@ -1,7 +1,8 @@
+import { isTimestamped } from "@claimsale/core";
 import { fail, redirect } from "@sveltejs/kit";
 import { cookieSecret, db } from "#lib/server/context.ts";
 import { field } from "#lib/server/forms.ts";
-import { photosByItem } from "#lib/server/images.ts";
+import { findTimestampPhoto, photosByItem } from "#lib/server/images.ts";
 import { listItems } from "#lib/server/items.ts";
 import {
 	allowUnlockAttempt,
@@ -16,6 +17,8 @@ import type { Actions, PageServerLoad } from "./$types";
  * The read-only sale page. Claim and offer buttons arrive with the live grid (WS-H).
  *
  * @spec SM-2-visibility — locked private sales show only the title and seller.
+ * @spec IMG-public-approved — buyers see approved photos only; the seller sees pending ones too.
+ * @spec IMG-timestamp-required — the "Timestamped" badge and photo when the timestamp photo is approved.
  */
 export const load: PageServerLoad = async (event) => {
 	const { sale, access, isSeller } = await loadSaleForViewer(event, event.params.slug);
@@ -29,20 +32,26 @@ export const load: PageServerLoad = async (event) => {
 				signedIn: event.locals.user !== null,
 			},
 			body: null,
+			timestampUrl: null,
 			items: [],
 			isSeller,
 			serverNow: Date.now(),
 		};
 	}
 	const rows = await listItems(db(), sale.id);
-	const photos = await photosByItem(
-		db(),
-		rows.map((r) => r.id),
-	);
+	const [photos, timestamp] = await Promise.all([
+		photosByItem(
+			db(),
+			rows.map((r) => r.id),
+			isSeller ? "visible" : "approved",
+		),
+		findTimestampPhoto(db(), sale.id),
+	]);
 	return {
 		header,
 		locked: null,
 		body: saleBody(sale),
+		timestampUrl: isTimestamped(timestamp?.status ?? null) ? `/api/images/${timestamp!.id}` : null,
 		items: rows.map((row) => {
 			const first = photos.get(row.id)?.[0];
 			return { ...publicItem(row), photoUrl: first ? `/api/images/${first.id}` : null };

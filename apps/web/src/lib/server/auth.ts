@@ -66,6 +66,8 @@ export function createAuth(deps: AuthDeps) {
 				country: text,
 				phoneE164: text,
 				phoneVerifiedAt: date,
+				// "admin" opens /admin (#lib/server/admin.ts); set with SQL only, never from a request.
+				role: text,
 			},
 		},
 		// No session cookie cache: handle and age are written straight to D1 after sign-up

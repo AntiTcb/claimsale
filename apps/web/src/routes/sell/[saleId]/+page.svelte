@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { enhance } from "$app/forms";
+	import { invalidateAll } from "$app/navigation";
 	import SaleDetailsFields from "#lib/components/SaleDetailsFields.svelte";
+	import TimestampPhoto from "#lib/components/TimestampPhoto.svelte";
 	import type { PageProps } from "./$types";
 
 	let { data, form }: PageProps = $props();
@@ -59,6 +61,18 @@
 				</li>
 				{#if data.missingPhotos > 0}
 					<li>{data.missingPhotos} item{data.missingPhotos === 1 ? " needs" : "s need"} a photo</li>
+				{/if}
+				{#if data.checkingPhotos > 0}
+					<li>
+						Photos of {data.checkingPhotos} item{data.checkingPhotos === 1 ? " are" : "s are"} being checked (<a
+							href="?"
+							class="underline"
+							data-sveltekit-reload>refresh</a
+						>)
+					</li>
+				{/if}
+				{#if data.heldPhotos > 0}
+					<li>Photos of {data.heldPhotos} item{data.heldPhotos === 1 ? " are" : "s are"} held for review</li>
 				{/if}
 				{#if data.tier === "free"}
 					<li>{data.activeOtherSales} of {data.caps.sales} sales already scheduled or live</li>
@@ -125,6 +139,15 @@
 		{:else}
 			<p class="mt-3">This sale is {sale.status}.</p>
 		{/if}
+
+		<TimestampPhoto
+			saleId={sale.id}
+			handle={data.timestamp.handle}
+			required={data.timestamp.required}
+			photo={data.timestamp.photo}
+			disabled={!editable}
+			onchange={() => invalidateAll()}
+		/>
 
 		{#if sale.status === "draft"}
 			<form method="POST" action="?/delete" class="mt-10">

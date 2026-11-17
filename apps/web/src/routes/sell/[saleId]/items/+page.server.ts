@@ -21,7 +21,10 @@ export const load: PageServerLoad = async (event) => {
 	const sale = await requireOwnSale(seller.id, event.params.saleId);
 	const rows = await listItems(db(), sale.id);
 	const ids = rows.map((r) => r.id);
-	const [photos, withEntries] = await Promise.all([photosByItem(db(), ids), itemsWithEntries(db(), ids)]);
+	const [photos, withEntries] = await Promise.all([
+		photosByItem(db(), ids, "all"),
+		itemsWithEntries(db(), ids),
+	]);
 	return {
 		wizard: event.url.searchParams.get("wizard") === "1",
 		canAdd: sale.status === "draft" || sale.status === "scheduled",
@@ -43,6 +46,7 @@ export const load: PageServerLoad = async (event) => {
 				id: p.id,
 				url: `/api/images/${p.id}`,
 				status: p.status,
+				...(p.rejection ? { rejection: p.rejection } : {}),
 			})),
 		})),
 	};

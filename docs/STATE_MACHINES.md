@@ -485,6 +485,7 @@ IDs stay in the table, marked ~~struck~~.
 | `TCG-market-placeholder` | The market price appears only as a placeholder and hint for the item's seller; the price is never set without a seller action; market prices are never in buyer-facing responses | PLAN 3, D64 |
 | `TCG-market-pct` | % buttons compute price = market × pct, rounded down ($0.05 under $5, $0.25 from $5), never below $0.05; bulk apply is previewed first | PLAN 3, D64 |
 | `IMG-timestamp-required` | Sellers with fewer than 5 completed sales can't publish a sale without an approved, new timestamp photo; "Timestamped" badge when present | PLAN 3 (Photo authenticity), D66 |
+| `IMG-public-approved` | Buyers and visitors only ever see `approved` photos; pending, held and rejected photos are visible to their seller and admins only | PLAN 3 (Photo authenticity), WS-F2 |
 | `AUTH-seller-requirements` | Selling needs an 18+ attestation, a verified email and, unless Pro, a verified phone; the seller is shown what's missing | PLAN 5 (Auth and identity), D55 |
 | `AUTH-phone-e164` | Phone numbers are stored in E.164, verified by a one-time code, unique per account, and never shown publicly (masked for the owner) | PLAN 5 (Auth and identity), D55 |
 | `AUTH-phone-otp-limit` | Phone code sends are limited per account and per number, and code checks per account | PLAN 5 (Auth and identity), TECH_STACK S10 |

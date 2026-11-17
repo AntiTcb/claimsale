@@ -37,7 +37,7 @@ export function imageStore(): ImageStore {
 
 /** The sale engine: the SaleEngine Durable Object over the ENGINE service binding (RPC). */
 export function engine(): Engine {
-	return rpcEngine(env.ENGINE, db());
+	return rpcEngine(env.ENGINE);
 }
 
 /** The key for sale unlock cookies (shared with Better Auth's signing secret). */
