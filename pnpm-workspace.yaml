@@ -35,6 +35,10 @@ catalog:
   drizzle-orm: 0.45.3
   drizzle-kit: 0.31.11
   uuidv7: 1.2.1
+  # Image decoding in WASM; runs inside Workers (TECH_STACK S33)
+  "@jsquash/jpeg": 1.6.0
+  "@jsquash/png": 3.1.1
+  "@jsquash/webp": 1.5.0
   # UI
   tailwindcss: 4.3.3
   "@tailwindcss/vite": 4.3.3
