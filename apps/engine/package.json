@@ -13,9 +13,11 @@
 		"db:migrate:local": "wrangler d1 migrations apply DB --local"
 	},
 	"dependencies": {
+		"@claimsale/core": "workspace:*",
 		"@claimsale/db": "workspace:*",
 		"@claimsale/observability": "workspace:*",
-		"effect": "catalog:"
+		"effect": "catalog:",
+		"uuidv7": "catalog:"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-plugin": "catalog:workers-test",

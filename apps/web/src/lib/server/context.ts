@@ -1,7 +1,7 @@
 import { createDb, type Db } from "@claimsale/db";
 import { env } from "cloudflare:workers";
 import { authSecret, createAuth, type Auth } from "./auth.ts";
-import { localEngine, type Engine } from "./engine.ts";
+import { rpcEngine, type Engine } from "./engine.ts";
 import type { ImageStore } from "./images.ts";
 import { makeMailer, type Mailer } from "./mailer.ts";
 import { makePhoneVerifier, type PhoneVerifier } from "./sms.ts";
@@ -35,9 +35,9 @@ export function imageStore(): ImageStore {
 	return env.IMAGES;
 }
 
-/** The sale engine. Local stub today; WS-E routes it to the SaleEngine Durable Object. */
+/** The sale engine: the SaleEngine Durable Object over the ENGINE service binding (RPC). */
 export function engine(): Engine {
-	return localEngine(db());
+	return rpcEngine(env.ENGINE, db());
 }
 
 /** The key for sale unlock cookies (shared with Better Auth's signing secret). */

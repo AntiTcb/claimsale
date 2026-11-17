@@ -94,10 +94,12 @@ export const actions: Actions = {
 			if (liveAt === null)
 				return fail(400, { action: "publish" as const, values, message: "Choose when the sale goes live" });
 		}
-		const result = await engine().publish(
-			{ saleId: sale.id, sellerId: seller.id, liveAt, closesAt: (liveAt ?? now) + days * DAY },
-			now,
-		);
+		const result = await engine().publish({
+			saleId: sale.id,
+			sellerId: seller.id,
+			liveAt,
+			closesAt: (liveAt ?? now) + days * DAY,
+		});
 		if (!result.ok) return fail(400, { action: "publish" as const, values, message: result.error.message });
 		return { action: "publish" as const, published: result.value.status };
 	},
@@ -105,7 +107,7 @@ export const actions: Actions = {
 	unpublish: async (event) => {
 		const seller = await requireSeller(event);
 		const sale = await requireOwnSale(seller.id, event.params.saleId);
-		const result = await engine().unpublish({ saleId: sale.id, sellerId: seller.id }, Date.now());
+		const result = await engine().unpublish({ saleId: sale.id, sellerId: seller.id });
 		if (!result.ok) return fail(400, { action: "unpublish" as const, message: result.error.message });
 		return { action: "unpublish" as const, done: true };
 	},

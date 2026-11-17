@@ -43,6 +43,13 @@
       "when": 1794853880809,
       "tag": "0005_games_registry",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794936130021,
+      "tag": "0006_engine_write_path",
+      "breakpoints": true
     }
   ]
 }
