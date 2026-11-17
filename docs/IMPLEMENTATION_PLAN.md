@@ -18,7 +18,7 @@
 | 5. Engine (SaleEngine DO write path) | WS-E: write path, RPC, alarms, cron sweep, rate limit (k6 run pending) |
 | 6. Live grid | Not started |
 | 7. Seller control room + admin disputes | Not started |
-| 8. Invoices after close + exports + tracking import | Pure invoice machine done; no I/O |
+| 8. Invoices after close + exports + tracking import | WS-J: invoice pages, shipping menu, CSV exports, tracking re-import |
 | 9. Notifications and messaging | Email outbox + Email Service binding exist; no Queue consumer logic |
 | 10. Discovery + pilot | Not started |
 
@@ -281,6 +281,30 @@ Wave 4:                     WS-L → pilot sale
   pages and endpoints); the type-ahead uses the engine's `searchCatalog` RPC.
 - The hand-entry item form still takes free-form attributes (catalog autofill fills
   them); moving it onto core's per-game field lists is open.
+
+### Wave 3 integration notes (WS-J, invoices after close, exports, tracking import)
+- New engine RPCs: `rescindOverdueInvoice` (SM-6-overdue-rescind), `replaceInvoiceTracking`
+  (IO-tracking-replace), `applyTracking` (≤ 200 matched rows, IO-tracking-transition) and
+  `requestExport`. `markInvoicePaid` now **requires `addressId`** (one of the buyer's saved
+  addresses; the engine snapshots it and the option label onto the invoice,
+  SM-6-address-snapshot). `shipInvoice` and `markInvoicePaid` pass the invoice's item kinds
+  to core, so graded and sealed lines always need tracked shipping (TCG-tracked-graded-sealed).
+- Exports reuse the engine's queue (`export_job` messages) and the `IMAGES` bucket (keys
+  `exports/<seller>/<job>.csv`, served only by `/sell/exports/[jobId]` to their seller): no new
+  Cloudflare resource. The 5-minute cron deletes files whose 24h link expired. CSV only; XLSX
+  and the JSON account export are not built yet.
+- Migration `0009_invoices_exports`: `invoices.shipping_option_label`, `io_jobs.layout` (expand only).
+- Invoice numbers are shown as `CS-<n>` (core `invoiceNumberLabel`); the tracking import and
+  Pirate Ship's "Order ID" use the same label.
+- The shipping menu, the `autoSendAtClose` / `autoRescindOverdue` switches and the seller's
+  payment handles live on `/sell/[saleId]/shipping` (not the terms form). `updateTerms` now
+  merges into `sales.terms`, so fields saved elsewhere (these switches, WS-I's) survive it.
+- Events for WS-K come from the engine as usual (`invoice_sent`, `buyer_marked_paid`,
+  `payment_confirmed`, `invoice_shipped`, `tracking_replaced`, `invoice_completed`,
+  `feedback_opened`); WS-J sends no email.
+- Not built: seller adjustments / discounts on an invoice, per-item or "free over $X" shipping
+  pricing, a feedback table and form (only the `feedback_opened` event), the buyer claim button
+  (the E2E claims through `POST /api/sales/[saleId]/entries`).
 
 ### Merge rules for parallel work
 - **Migrations:** WS-A owns the core tables, WS-C owns catalog tables, WS-F2 owns

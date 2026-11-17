@@ -5,7 +5,7 @@ import { jsonBody, sellerSaleForApi } from "#lib/server/seller-api.ts";
 import type { RequestHandler } from "./$types";
 
 /** The most rows one request applies; the engine takes the same per call. */
-export const TRACKING_APPLY_MAX = 200;
+const TRACKING_APPLY_MAX = 200;
 
 const Body = Schema.Struct({
 	rows: Schema.Array(

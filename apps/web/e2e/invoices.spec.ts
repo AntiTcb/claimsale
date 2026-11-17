@@ -93,6 +93,8 @@ test.describe("invoices", () => {
 		await expect(page.getByRole("status")).toHaveText("Saved.");
 
 		await page.goto(`/sell/${saleId}`);
+		// The timestamp photo uploads from JavaScript: wait for the page to hydrate first.
+		await page.waitForLoadState("networkidle");
 		await timestampAndChecks(page);
 		await page.getByLabel("Go live now").check();
 		await page.getByLabel("Runs for").selectOption("1");
@@ -154,6 +156,8 @@ test.describe("invoices", () => {
 		await expect(page.getByTestId("invoice-status")).toHaveText("Paid");
 
 		await page.goto(`/sell/${saleId}/tracking-import`);
+		// The file is read in the browser: wait for the page to hydrate first.
+		await page.waitForLoadState("networkidle");
 		await page.getByLabel("Tracking file").setInputFiles({
 			name: "labels.csv",
 			mimeType: "text/csv",
