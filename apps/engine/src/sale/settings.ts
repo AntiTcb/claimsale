@@ -35,7 +35,9 @@ export interface SaleSettings {
 }
 
 const record = (value: unknown): Record<string, unknown> =>
-	value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+	value !== null && typeof value === "object" && !Array.isArray(value)
+		? Object.fromEntries(Object.entries(value))
+		: {};
 
 const positive = (value: unknown): number | undefined =>
 	typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
@@ -53,17 +55,19 @@ export function parseJson(value: unknown): unknown {
 /** The shipping menu (D15): entries that aren't well-formed are dropped. */
 export function readShippingMenu(raw: unknown): ShippingOption[] {
 	const value = parseJson(raw);
-	const list = Array.isArray(value) ? value : Array.isArray(record(value)["options"]) ? (record(value)["options"] as unknown[]) : [];
+	const options: unknown = Array.isArray(value) ? value : record(value)["options"];
+	const list: readonly unknown[] = Array.isArray(options) ? options : [];
 	const menu: ShippingOption[] = [];
 	for (const entry of list) {
-		const o = record(entry);
+		const { id, label, priceCents, tracked } = record(entry);
 		if (
-			typeof o["id"] === "string" &&
-			typeof o["label"] === "string" &&
-			Number.isSafeInteger(o["priceCents"]) &&
-			(o["priceCents"] as number) >= 0
+			typeof id === "string" &&
+			typeof label === "string" &&
+			typeof priceCents === "number" &&
+			Number.isSafeInteger(priceCents) &&
+			priceCents >= 0
 		) {
-			menu.push({ id: o["id"], label: o["label"], priceCents: o["priceCents"] as number, tracked: o["tracked"] === true });
+			menu.push({ id, label, priceCents, tracked: tracked === true });
 		}
 	}
 	return menu;

@@ -12,7 +12,24 @@ const Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64));
 const Cents = Schema.Int.check(Schema.isGreaterThan(0));
 const Millis = Schema.Int.check(Schema.isGreaterThan(0));
 
-const ReasonCode = Schema.Literals(Object.keys(RESCIND_REASONS) as RescindReasonCode[]);
+const REASON_CODES = [
+	"buyer_nonpayment",
+	"buyer_unresponsive",
+	"buyer_payment_reversed",
+	"buyer_requested_after_payment",
+	"buyer_terms_violation",
+	"seller_item_unavailable",
+	"seller_listing_error",
+	"mutual_agreement",
+	"suspected_fraud",
+] as const satisfies ReadonlyArray<keyof typeof RESCIND_REASONS>;
+
+/** Fails to compile if core adds a reason code this list doesn't have. */
+export type MissingReasonCodes = Exclude<RescindReasonCode, (typeof REASON_CODES)[number]>;
+const allReasonCodes: [MissingReasonCodes] extends [never] ? true : false = true;
+void allReasonCodes;
+
+const ReasonCode = Schema.Literals(REASON_CODES);
 
 export const PlaceEntryInput = Schema.Struct({
 	saleId: Id,

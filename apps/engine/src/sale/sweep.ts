@@ -21,9 +21,7 @@ export const sweepTimers = (env: Pick<EngineEnv, "DB" | "SALE_ENGINE">, now: Mil
 				Effect.promise(
 					async (): Promise<RpcResult<SweepReport>> =>
 						await env.SALE_ENGINE.get(env.SALE_ENGINE.idFromName(saleId)).sweep(saleId),
-				).pipe(
-					Effect.map((result) => (result.ok ? result.value.processed : 0)),
-				),
+				).pipe(Effect.map((result) => (result.ok ? result.value.processed : 0))),
 			{ concurrency: 10 },
 		);
 		const processed = results.reduce((sum, n) => sum + n, 0);

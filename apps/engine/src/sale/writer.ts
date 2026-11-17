@@ -158,7 +158,11 @@ export function itemContext(sale: SaleRecord, saleStatus: SaleStatus): ItemConte
 	};
 }
 
-const sellerActor = (sale: SaleRecord): Actor => ({ kind: "seller", id: sale.sellerId, tier: sale.sellerTier });
+const sellerActor = (sale: SaleRecord): Actor => ({
+	kind: "seller",
+	id: sale.sellerId,
+	tier: sale.sellerTier,
+});
 const SYSTEM: Actor = { kind: "system" };
 
 /** The actor for a user acting on this sale: its seller, or a buyer. */
@@ -246,7 +250,12 @@ export class SaleWriter {
 		return { sale: loaded.sale, work, item: item.item, buyer: loaded.buyer } as const;
 	}
 
-	#itemResult(work: Work, itemId: string, entryId: string | null, events: readonly ItemEvent[]): ItemCommandResult {
+	#itemResult(
+		work: Work,
+		itemId: string,
+		entryId: string | null,
+		events: readonly ItemEvent[],
+	): ItemCommandResult {
 		const slot = work.items.get(itemId)!;
 		const item = slot.after;
 		const changed = work.changedItemIds().includes(itemId);
@@ -327,7 +336,7 @@ export class SaleWriter {
 	): Promise<Outcome<ItemCommandResult>> {
 		return this.#transact([itemKey(itemId)], async (session, now) => {
 			const loaded = await this.#loadItem(itemId, now);
-			if ("missing" in loaded) return loaded.missing!;
+			if ("missing" in loaded) return loaded.missing;
 			const { sale, work, item } = loaded;
 			if (sellerId !== sale.sellerId) return notAllowed();
 			const actor = sellerActor(sale);
@@ -336,7 +345,13 @@ export class SaleWriter {
 			if (!result.ok) return result;
 			const applied = await this.#applyItem(session, work, itemId, result.value);
 			if (!applied.ok) return applied;
-			work.audit({ action: audit.action, actorId: sellerId, itemId, input: audit.input, events: result.value.events });
+			work.audit({
+				action: audit.action,
+				actorId: sellerId,
+				itemId,
+				input: audit.input,
+				events: result.value.events,
+			});
 			return ok({ work, value: this.#itemResult(work, itemId, audit.entryId, result.value.events) });
 		});
 	}
@@ -351,7 +366,7 @@ export class SaleWriter {
 	): Promise<Outcome<ItemCommandResult>> {
 		return this.#transact([itemKey(itemId)], async (session, now) => {
 			const loaded = await this.#loadItem(itemId, now);
-			if ("missing" in loaded) return loaded.missing!;
+			if ("missing" in loaded) return loaded.missing;
 			const { sale, work, item } = loaded;
 			const actor = actorFor(sale, buyerId);
 			if (!permitted(actor, action)) return notAllowed();
@@ -359,7 +374,13 @@ export class SaleWriter {
 			if (!result.ok) return result;
 			const applied = await this.#applyItem(session, work, itemId, result.value);
 			if (!applied.ok) return applied;
-			work.audit({ action: audit.action, actorId: buyerId, itemId, input: audit.input, events: result.value.events });
+			work.audit({
+				action: audit.action,
+				actorId: buyerId,
+				itemId,
+				input: audit.input,
+				events: result.value.events,
+			});
 			return ok({ work, value: this.#itemResult(work, itemId, audit.entryId, result.value.events) });
 		});
 	}
@@ -371,7 +392,7 @@ export class SaleWriter {
 	place(input: PlaceInput): Promise<Outcome<ItemCommandResult>> {
 		return this.#transact([itemKey(input.itemId)], async (session, now) => {
 			const loaded = await this.#loadItem(input.itemId, now, { id: input.buyerId });
-			if ("missing" in loaded) return loaded.missing!;
+			if ("missing" in loaded) return loaded.missing;
 			const { sale, work, item, buyer } = loaded;
 			if (!buyer) return notFound("buyer");
 			const actor = actorFor(sale, buyer.id, buyer.tier);
@@ -451,7 +472,8 @@ export class SaleWriter {
 			input.sellerId,
 			"counter",
 			{ action: "offer_countered", entryId: input.entryId, input: { amountCents: input.amountCents } },
-			(item, context, actor, now) => counterOffer(item, context, actor, input.entryId, input.amountCents, now),
+			(item, context, actor, now) =>
+				counterOffer(item, context, actor, input.entryId, input.amountCents, now),
 		);
 	}
 
@@ -482,7 +504,7 @@ export class SaleWriter {
 	sellerRescind(input: SellerRescindInput): Promise<Outcome<ItemCommandResult>> {
 		return this.#transact([itemKey(input.itemId)], async (session, now) => {
 			const loaded = await this.#loadItem(input.itemId, now);
-			if ("missing" in loaded) return loaded.missing!;
+			if ("missing" in loaded) return loaded.missing;
 			const { sale, work, item } = loaded;
 			if (input.sellerId !== sale.sellerId) return notAllowed();
 			const actor = sellerActor(sale);
@@ -558,10 +580,14 @@ export class SaleWriter {
 	}
 
 	/** A Pro buyer rescinds their own win before the invoice is sent (§4.3, D24). */
-	buyerRescind(input: { itemId: string; entryId: string; buyerId: string }): Promise<Outcome<ItemCommandResult>> {
+	buyerRescind(input: {
+		itemId: string;
+		entryId: string;
+		buyerId: string;
+	}): Promise<Outcome<ItemCommandResult>> {
 		return this.#transact([itemKey(input.itemId)], async (session, now) => {
 			const loaded = await this.#loadItem(input.itemId, now);
-			if ("missing" in loaded) return loaded.missing!;
+			if ("missing" in loaded) return loaded.missing;
 			const { sale, work, item } = loaded;
 			const tier = await loadTier(this.db, input.buyerId, "buyer", now);
 			const actor = actorFor(sale, input.buyerId, tier);
@@ -616,7 +642,7 @@ export class SaleWriter {
 	}): Promise<Outcome<{ requestId: string }>> {
 		return this.#transact([itemKey(input.itemId)], async (session, now) => {
 			const loaded = await this.#loadItem(input.itemId, now);
-			if ("missing" in loaded) return loaded.missing!;
+			if ("missing" in loaded) return loaded.missing;
 			const { sale, work, item } = loaded;
 			const actor = actorFor(sale, input.buyerId);
 			if (!permitted(actor, "request_takeback")) return notAllowed();
@@ -651,7 +677,13 @@ export class SaleWriter {
 			);
 			const event = { type: "takeback_requested", requestId, entryId: entry.id };
 			work.event({ ...event, itemId: item.id });
-			work.audit({ action: "takeback_requested", actorId: input.buyerId, itemId: item.id, input: { requestId, entryId: entry.id }, events: [event] });
+			work.audit({
+				action: "takeback_requested",
+				actorId: input.buyerId,
+				itemId: item.id,
+				input: { requestId, entryId: entry.id },
+				events: [event],
+			});
 			return ok({ work, value: { requestId } });
 		});
 	}
@@ -677,14 +709,20 @@ export class SaleWriter {
 			const row = await this.#takebackRow(input.requestId);
 			if (!row) return notFound("take-back request");
 			const loaded = await this.#loadItem(row.item_id, now);
-			if ("missing" in loaded) return loaded.missing!;
+			if ("missing" in loaded) return loaded.missing;
 			const { sale, work, item } = loaded;
 			const actor = actorFor(sale, input.sellerId);
 			const decided = coreDecideTakeback(toTakeback(row), actor, sale.sellerId, input.approve, now);
 			if (!decided.ok) return decided;
 			let events: readonly ItemEvent[] = [];
 			if (input.approve) {
-				const released = releaseForTakeback(item, itemContext(sale, sale.sale.status), actor, row.entry_id, now);
+				const released = releaseForTakeback(
+					item,
+					itemContext(sale, sale.sale.status),
+					actor,
+					row.entry_id,
+					now,
+				);
 				if (!released.ok) return released;
 				const applied = await this.#applyItem(session, work, item.id, released.value);
 				if (!applied.ok) return applied;
@@ -692,7 +730,9 @@ export class SaleWriter {
 			}
 			work.extra.push(
 				this.db
-					.prepare("UPDATE takeback_requests SET status = ?1, decided_at = ?2 WHERE id = ?3 AND status = 'pending'")
+					.prepare(
+						"UPDATE takeback_requests SET status = ?1, decided_at = ?2 WHERE id = ?3 AND status = 'pending'",
+					)
 					.bind(decided.value.status, now, row.id),
 			);
 			const event = { type: `takeback_${decided.value.status}`, requestId: row.id, entryId: row.entry_id };
@@ -709,7 +749,10 @@ export class SaleWriter {
 	}
 
 	/** The buyer withdraws their take-back request (§5). */
-	async cancelTakeback(input: { requestId: string; buyerId: string }): Promise<Outcome<{ requestId: string }>> {
+	async cancelTakeback(input: {
+		requestId: string;
+		buyerId: string;
+	}): Promise<Outcome<{ requestId: string }>> {
 		const located = await this.#takebackRow(input.requestId);
 		if (!located) return notFound("take-back request");
 		return this.#transact([itemKey(located.item_id)], async (_session, now) => {
@@ -722,12 +765,19 @@ export class SaleWriter {
 			const work = new Work(this.db, sale, now);
 			work.extra.push(
 				this.db
-					.prepare("UPDATE takeback_requests SET status = 'cancelled', decided_at = ?1 WHERE id = ?2 AND status = 'pending'")
+					.prepare(
+						"UPDATE takeback_requests SET status = 'cancelled', decided_at = ?1 WHERE id = ?2 AND status = 'pending'",
+					)
 					.bind(now, row.id),
 			);
 			const event = { type: "takeback_cancelled", requestId: row.id, entryId: row.entry_id };
 			work.event({ ...event, itemId: row.item_id });
-			work.audit({ action: "takeback_cancelled", actorId: input.buyerId, itemId: row.item_id, events: [event] });
+			work.audit({
+				action: "takeback_cancelled",
+				actorId: input.buyerId,
+				itemId: row.item_id,
+				events: [event],
+			});
 			return ok({ work, value: { requestId: row.id } });
 		});
 	}
@@ -737,7 +787,9 @@ export class SaleWriter {
 
 	async #activeSaleCount(sellerId: string): Promise<number> {
 		const row = await this.db
-			.prepare("SELECT count(*) AS n FROM sales WHERE seller_id = ?1 AND id != ?2 AND status IN ('scheduled', 'live')")
+			.prepare(
+				"SELECT count(*) AS n FROM sales WHERE seller_id = ?1 AND id != ?2 AND status IN ('scheduled', 'live')",
+			)
 			.bind(sellerId, this.saleId)
 			.first<{ n: number }>();
 		return row?.n ?? 0;
@@ -756,7 +808,11 @@ export class SaleWriter {
 			if (!sale || sale.sellerId !== input.sellerId) return notFound();
 			const result = publishSale(
 				sale.sale,
-				{ liveAt: input.liveAt, closesAt: input.closesAt, activeSaleCount: await this.#activeSaleCount(sale.sellerId) },
+				{
+					liveAt: input.liveAt,
+					closesAt: input.closesAt,
+					activeSaleCount: await this.#activeSaleCount(sale.sellerId),
+				},
 				now,
 			);
 			if (!result.ok) return result;
@@ -769,7 +825,12 @@ export class SaleWriter {
 				...(sale.sellerTier === "free" ? { activeSaleCap: FREE_ACTIVE_SALE_CAP } : {}),
 			};
 			for (const event of result.value.events) work.event({ ...event });
-			work.audit({ action: "sale_published", actorId: input.sellerId, itemId: null, events: result.value.events });
+			work.audit({
+				action: "sale_published",
+				actorId: input.sellerId,
+				itemId: null,
+				events: result.value.events,
+			});
 			return ok({ work, value: { status: next.status, liveAt: next.liveAt, closesAt: next.closesAt } });
 		});
 	}
@@ -784,7 +845,12 @@ export class SaleWriter {
 			const next = result.value.sale;
 			work.saleChange = { expected: "scheduled", next };
 			for (const event of result.value.events) work.event({ ...event });
-			work.audit({ action: "sale_unpublished", actorId: input.sellerId, itemId: null, events: result.value.events });
+			work.audit({
+				action: "sale_unpublished",
+				actorId: input.sellerId,
+				itemId: null,
+				events: result.value.events,
+			});
 			return ok({ work, value: { status: next.status, liveAt: next.liveAt, closesAt: next.closesAt } });
 		});
 	}
@@ -891,8 +957,9 @@ export class SaleWriter {
 			case "invoice_due":
 				return this.markOverdue(timer.invoiceId);
 			case "invoice_autocomplete":
-				return this.completeInvoice({ invoiceId: timer.invoiceId, actor: "system" });
+				break;
 		}
+		return this.completeInvoice({ invoiceId: timer.invoiceId, actor: "system" });
 	}
 
 	#systemItemCommand(
@@ -902,7 +969,7 @@ export class SaleWriter {
 	): Promise<Outcome<ItemCommandResult>> {
 		return this.#transact([itemKey(itemId)], async (session, now) => {
 			const loaded = await this.#loadItem(itemId, now);
-			if ("missing" in loaded) return loaded.missing!;
+			if ("missing" in loaded) return loaded.missing;
 			const { sale, work, item } = loaded;
 			const result = transition(item, itemContext(sale, sale.sale.status), now);
 			if (!result.ok) return result;
@@ -971,7 +1038,10 @@ export class SaleWriter {
 		const events: unknown[] = [];
 		for (const invoice of work.allInvoices()) {
 			if (invoice.status !== "draft" || invoice.lines.length === 0) continue;
-			const sent = this.#applyInvoice(work, sendInvoice(invoice, actor, saleStatus, work.sale.settings.paymentDeadline, now));
+			const sent = this.#applyInvoice(
+				work,
+				sendInvoice(invoice, actor, saleStatus, work.sale.settings.paymentDeadline, now),
+			);
 			if (!sent.ok) return sent;
 			events.push({ type: "invoice_sent", invoiceId: invoice.id, dueAt: sent.value.dueAt });
 		}
@@ -988,10 +1058,22 @@ export class SaleWriter {
 		return this.#invoiceCommand(input.invoiceId, false, async (_session, work, invoice, now) => {
 			const sent = this.#applyInvoice(
 				work,
-				sendInvoice(invoice, actorFor(work.sale, input.sellerId), work.saleStatus, work.sale.settings.paymentDeadline, now),
+				sendInvoice(
+					invoice,
+					actorFor(work.sale, input.sellerId),
+					work.saleStatus,
+					work.sale.settings.paymentDeadline,
+					now,
+				),
 			);
 			if (!sent.ok) return sent;
-			work.audit({ action: "invoice_sent", actorId: input.sellerId, itemId: null, input: { invoiceId: invoice.id }, events: [] });
+			work.audit({
+				action: "invoice_sent",
+				actorId: input.sellerId,
+				itemId: null,
+				input: { invoiceId: invoice.id },
+				events: [],
+			});
 			return ok(this.#view(sent.value));
 		});
 	}
@@ -1005,7 +1087,8 @@ export class SaleWriter {
 			await this.#withInvoices(session, work);
 			const sent = this.#sendDrafts(work, sellerActor(sale), sale.sale.status, now);
 			if (!sent.ok) return sent;
-			if (sent.value.length > 0) work.audit({ action: "invoices_sent", actorId: input.sellerId, itemId: null, events: sent.value });
+			if (sent.value.length > 0)
+				work.audit({ action: "invoices_sent", actorId: input.sellerId, itemId: null, events: sent.value });
 			return ok({ work, value: { sent: sent.value.length } });
 		});
 	}
@@ -1030,7 +1113,13 @@ export class SaleWriter {
 				),
 			);
 			if (!paid.ok) return paid;
-			work.audit({ action: "invoice_buyer_paid", actorId: input.buyerId, itemId: null, input: { invoiceId: invoice.id }, events: [] });
+			work.audit({
+				action: "invoice_buyer_paid",
+				actorId: input.buyerId,
+				itemId: null,
+				input: { invoiceId: invoice.id },
+				events: [],
+			});
 			return ok(this.#view(paid.value));
 		});
 	}
@@ -1063,16 +1152,31 @@ export class SaleWriter {
 					events.push({ ...event, itemId });
 				}
 			}
-			work.audit({ action: "invoice_paid", actorId: input.sellerId, itemId: null, input: { invoiceId: invoice.id }, events });
+			work.audit({
+				action: "invoice_paid",
+				actorId: input.sellerId,
+				itemId: null,
+				input: { invoiceId: invoice.id },
+				events,
+			});
 			return ok(this.#view(paid.value));
 		});
 	}
 
 	paymentNotReceived(input: { invoiceId: string; sellerId: string }): Promise<Outcome<InvoiceView>> {
 		return this.#invoiceCommand(input.invoiceId, false, async (_session, work, invoice) => {
-			const back = this.#applyInvoice(work, corePaymentNotReceived(invoice, actorFor(work.sale, input.sellerId)));
+			const back = this.#applyInvoice(
+				work,
+				corePaymentNotReceived(invoice, actorFor(work.sale, input.sellerId)),
+			);
 			if (!back.ok) return back;
-			work.audit({ action: "invoice_not_received", actorId: input.sellerId, itemId: null, input: { invoiceId: invoice.id }, events: [] });
+			work.audit({
+				action: "invoice_not_received",
+				actorId: input.sellerId,
+				itemId: null,
+				input: { invoiceId: invoice.id },
+				events: [],
+			});
 			return ok(this.#view(back.value));
 		});
 	}
@@ -1084,9 +1188,18 @@ export class SaleWriter {
 		tracking: { carrier: string; number: string } | null;
 	}): Promise<Outcome<InvoiceView>> {
 		return this.#invoiceCommand(input.invoiceId, false, async (_session, work, invoice, now) => {
-			const shipped = this.#applyInvoice(work, shipInvoice(invoice, actorFor(work.sale, input.sellerId), input.tracking, now));
+			const shipped = this.#applyInvoice(
+				work,
+				shipInvoice(invoice, actorFor(work.sale, input.sellerId), input.tracking, now),
+			);
 			if (!shipped.ok) return shipped;
-			work.audit({ action: "invoice_shipped", actorId: input.sellerId, itemId: null, input: { invoiceId: invoice.id }, events: [] });
+			work.audit({
+				action: "invoice_shipped",
+				actorId: input.sellerId,
+				itemId: null,
+				input: { invoiceId: invoice.id },
+				events: [],
+			});
 			return ok(this.#view(shipped.value));
 		});
 	}
@@ -1096,7 +1209,9 @@ export class SaleWriter {
 	 *
 	 * @spec SM-6-autocomplete
 	 */
-	completeInvoice(input: { invoiceId: string; actor: "system" } | { invoiceId: string; buyerId: string }): Promise<Outcome<InvoiceView>> {
+	completeInvoice(
+		input: { invoiceId: string; actor: "system" } | { invoiceId: string; buyerId: string },
+	): Promise<Outcome<InvoiceView>> {
 		return this.#invoiceCommand(input.invoiceId, true, async (_session, work, invoice, now) => {
 			const actor = "buyerId" in input ? actorFor(work.sale, input.buyerId) : SYSTEM;
 			const done = this.#applyInvoice(work, completeInvoice(invoice, actor, now));
@@ -1112,7 +1227,13 @@ export class SaleWriter {
 				}
 			}
 			const actorId = "buyerId" in input ? input.buyerId : "system";
-			work.audit({ action: "invoice_completed", actorId, itemId: null, input: { invoiceId: invoice.id }, events });
+			work.audit({
+				action: "invoice_completed",
+				actorId,
+				itemId: null,
+				input: { invoiceId: invoice.id },
+				events,
+			});
 			return ok(this.#view(done.value));
 		});
 	}
@@ -1134,12 +1255,23 @@ export class SaleWriter {
 	 */
 	markOverdue(invoiceId: string): Promise<Outcome<InvoiceView>> {
 		return this.#invoiceCommand(invoiceId, true, async (session, work, invoice, now) => {
-			const overdue = this.#applyInvoice(work, markOverdue(invoice, work.sale.settings.autoRescindOverdue, now));
+			const overdue = this.#applyInvoice(
+				work,
+				markOverdue(invoice, work.sale.settings.autoRescindOverdue, now),
+			);
 			if (!overdue.ok) return overdue;
 			const request = work.sale.settings.autoRescindOverdue ? overdue.value.lines : [];
-			work.audit({ action: "invoice_overdue", actorId: "system", itemId: null, input: { invoiceId: invoice.id }, events: [] });
+			work.audit({
+				action: "invoice_overdue",
+				actorId: "system",
+				itemId: null,
+				input: { invoiceId: invoice.id },
+				events: [],
+			});
 			for (const line of request) {
-				const itemId = [...work.items].find(([, slot]) => slot.after.entries.some((e) => e.id === line.entryId))?.[0];
+				const itemId = [...work.items].find(([, slot]) =>
+					slot.after.entries.some((e) => e.id === line.entryId),
+				)?.[0];
 				const item = itemId === undefined ? undefined : work.item(itemId);
 				if (!item) continue;
 				const rescinded = await this.#rescind(

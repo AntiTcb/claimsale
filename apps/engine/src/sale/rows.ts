@@ -117,6 +117,35 @@ export interface BuyerRow {
 	readonly buyer_pro: number;
 }
 
+/**
+ * A D1 result's rows. D1 returns untyped rows; the SQL that produced them defines
+ * their shape, which T names. The one place the engine asserts a row type.
+ */
+export function rowsOf<T>(result: D1Result | undefined): T[] {
+	// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+	return (result?.results ?? []) as T[];
+}
+
+const ENDED_REASONS: ReadonlySet<string> = new Set<EndedReason>([
+	"seller_declined",
+	"below_minimum",
+	"buyer_withdrew",
+	"left_backup_queue",
+	"counter_declined",
+	"counter_expired",
+	"offer_lapsed",
+	"units_paid",
+	"item_withdrawn",
+	"sale_cancelled",
+	"seller_rescind",
+	"buyer_rescind",
+	"takeback",
+	"invoice_completed",
+]);
+
+const isEndedReason = (value: string | null): value is EndedReason =>
+	value !== null && ENDED_REASONS.has(value);
+
 export const tierOf = (pro: number | boolean): Tier => (pro ? "pro" : "free");
 
 export function toEntry(row: EntryRow): Entry {
@@ -132,7 +161,7 @@ export function toEntry(row: EntryRow): Entry {
 		counterExpiresAt: row.counter_expires_at,
 		wonAt: row.won_at,
 		endedAt: row.ended_at,
-		endedReason: row.ended_reason as EndedReason | null,
+		endedReason: isEndedReason(row.ended_reason) ? row.ended_reason : null,
 		endedBy: row.ended_by,
 	};
 }
@@ -164,14 +193,12 @@ export function toInvoice(row: InvoiceRow, lines: readonly InvoiceLineRow[], sel
 		status: row.status,
 		lines: lines
 			.filter((l) => l.invoice_id === row.id)
-			.map(
-				(l): InvoiceLine => ({
-					entryId: l.entry_id,
-					description: l.description,
-					amountCents: l.amount_cents,
-					refundOwed: l.refund_owed === 1,
-				}),
-			),
+			.map((l): InvoiceLine => ({
+				entryId: l.entry_id,
+				description: l.description,
+				amountCents: l.amount_cents,
+				refundOwed: l.refund_owed === 1,
+			})),
 		shippingCents: row.shipping_cents,
 		adjustmentCents: row.adjustment_cents,
 		shippingOptionId: row.shipping_option_id,

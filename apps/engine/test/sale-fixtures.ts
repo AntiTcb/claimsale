@@ -73,7 +73,8 @@ export async function makeSale(
 	} = {},
 ): Promise<SaleSetup> {
 	const now = Date.now();
-	const sellerId = options.sellerId ?? (await addUser(uid("seller"), { sellerPro: options.sellerPro ?? false }));
+	const sellerId =
+		options.sellerId ?? (await addUser(uid("seller"), { sellerPro: options.sellerPro ?? false }));
 	const saleId = uid("sale");
 	const status = options.status ?? "live";
 	await db
@@ -151,29 +152,29 @@ export async function entriesOf(itemId: string) {
 	const { results } = await db
 		.prepare("SELECT * FROM entries WHERE item_id = ?1 ORDER BY created_at, id")
 		.bind(itemId)
-		.all<Record<string, unknown>>();
+		.all();
 	return results;
 }
 
 export async function itemRow(itemId: string) {
-	return (await db.prepare("SELECT * FROM items WHERE id = ?1").bind(itemId).first<Record<string, unknown>>())!;
+	return (await db.prepare("SELECT * FROM items WHERE id = ?1").bind(itemId).first())!;
 }
 
 export async function saleRow(saleId: string) {
-	return (await db.prepare("SELECT * FROM sales WHERE id = ?1").bind(saleId).first<Record<string, unknown>>())!;
+	return (await db.prepare("SELECT * FROM sales WHERE id = ?1").bind(saleId).first())!;
 }
 
 export async function invoicesOf(saleId: string) {
 	const { results } = await db
 		.prepare("SELECT * FROM invoices WHERE sale_id = ?1 ORDER BY created_at, id")
 		.bind(saleId)
-		.all<Record<string, unknown>>();
-	const out = [];
+		.all();
+	const out: Array<Record<string, unknown> & { lines: Array<Record<string, unknown>> }> = [];
 	for (const invoice of results) {
 		const lines = await db
 			.prepare("SELECT * FROM invoice_lines WHERE invoice_id = ?1 ORDER BY created_at, id")
 			.bind(invoice["id"])
-			.all<Record<string, unknown>>();
+			.all();
 		out.push({ ...invoice, lines: lines.results });
 	}
 	return out;
@@ -183,7 +184,14 @@ export async function auditOf(saleId: string) {
 	const { results } = await db
 		.prepare("SELECT * FROM audit_log WHERE sale_id = ?1 ORDER BY created_at, id")
 		.bind(saleId)
-		.all<{ id: string; item_id: string | null; actor_id: string; action: string; data: string; created_at: number }>();
+		.all<{
+			id: string;
+			item_id: string | null;
+			actor_id: string;
+			action: string;
+			data: string;
+			created_at: number;
+		}>();
 	return results.map((r) => ({ ...r, data: JSON.parse(r.data) as Record<string, unknown> }));
 }
 

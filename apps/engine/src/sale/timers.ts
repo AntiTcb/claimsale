@@ -1,8 +1,14 @@
 import { pendingTimers, type Millis, type Timer } from "@claimsale/core";
-import type { InvoiceLineRow, InvoiceRow } from "./rows.ts";
-import { toInvoice } from "./rows.ts";
+import {
+	rowsOf,
+	toInvoice,
+	type EntryRow,
+	type InvoiceLineRow,
+	type InvoiceRow,
+	type ItemRow,
+	type SaleRow,
+} from "./rows.ts";
 import { entriesQuery, itemsQuery, saleQuery, toLoadedItems, toSaleRecord } from "./store.ts";
-import type { EntryRow, ItemRow, SaleRow } from "./rows.ts";
 
 /**
  * Every pending timer of one sale (STATE_MACHINES §7), read from D1 in one round trip.
@@ -20,15 +26,15 @@ export async function loadTimers(db: D1Database, saleId: string, now: Millis): P
 			)
 			.bind(saleId),
 	]);
-	const saleRow = (sale!.results as SaleRow[])[0];
+	const saleRow = rowsOf<SaleRow>(sale)[0];
 	if (!saleRow || saleRow.status === "deleted") return [];
 	const record = toSaleRecord(saleRow);
-	const loaded = toLoadedItems(items!.results as ItemRow[], entries!.results as EntryRow[]);
-	const lineRows = lines!.results as InvoiceLineRow[];
+	const loaded = toLoadedItems(rowsOf<ItemRow>(items), rowsOf<EntryRow>(entries));
+	const lineRows = rowsOf<InvoiceLineRow>(lines);
 	return pendingTimers(
 		record.sale,
 		[...loaded.values()].map((l) => l.item),
-		(invoices!.results as InvoiceRow[]).map((row) => toInvoice(row, lineRows, record.sellerTier)),
+		rowsOf<InvoiceRow>(invoices).map((row) => toInvoice(row, lineRows, record.sellerTier)),
 	);
 }
 
@@ -36,19 +42,27 @@ export async function loadTimers(db: D1Database, saleId: string, now: Millis): P
  * Sales with a timer due by `before`, for the cron sweep (the backstop when an alarm
  * was lost). Mirrors `pendingTimers` in core.
  */
-export async function salesWithDueTimers(db: D1Database, before: Millis, autocompleteAfter: Millis): Promise<string[]> {
-	const { results } = await db
-		.prepare(
-			`SELECT id FROM sales WHERE status = 'scheduled' AND live_at <= ?1
-			UNION SELECT id FROM sales WHERE status IN ('scheduled', 'live') AND closes_at <= ?1
-			UNION SELECT sale_id FROM items WHERE decision_deadline <= ?1 OR offers_lapse_at <= ?1
-			UNION SELECT i.sale_id FROM entries e JOIN items i ON i.id = e.item_id
-				WHERE e.status = 'countered' AND e.counter_expires_at <= ?1
-			UNION SELECT sale_id FROM invoices WHERE status = 'sent' AND due_at <= ?1
-			UNION SELECT sale_id FROM invoices WHERE status = 'shipped' AND shipped_at <= ?2
-			LIMIT 500`,
-		)
-		.bind(before, before - autocompleteAfter)
-		.all<{ id: string }>();
-	return results.map((r) => r.id);
+export async function salesWithDueTimers(
+	db: D1Database,
+	before: Millis,
+	autocompleteAfter: Millis,
+): Promise<string[]> {
+	// D1 caps the terms of a compound SELECT, so each timer kind is its own query in one batch.
+	const queries = [
+		"SELECT id FROM sales WHERE (status = 'scheduled' AND live_at <= ?1) OR (status IN ('scheduled', 'live') AND closes_at <= ?1) LIMIT 500",
+		"SELECT DISTINCT sale_id AS id FROM items WHERE decision_deadline <= ?1 LIMIT 500",
+		"SELECT DISTINCT sale_id AS id FROM items WHERE offers_lapse_at <= ?1 LIMIT 500",
+		`SELECT DISTINCT i.sale_id AS id FROM entries e JOIN items i ON i.id = e.item_id
+			WHERE e.status = 'countered' AND e.counter_expires_at <= ?1 LIMIT 500`,
+		"SELECT DISTINCT sale_id AS id FROM invoices WHERE status = 'sent' AND due_at <= ?1 LIMIT 500",
+	];
+	const results = await db.batch([
+		...queries.map((sql) => db.prepare(sql).bind(before)),
+		db
+			.prepare(
+				"SELECT DISTINCT sale_id AS id FROM invoices WHERE status = 'shipped' AND shipped_at <= ?1 LIMIT 500",
+			)
+			.bind(before - autocompleteAfter),
+	]);
+	return [...new Set(results.flatMap((r) => rowsOf<{ id: string }>(r).map((row) => row.id)))];
 }

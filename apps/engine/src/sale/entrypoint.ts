@@ -10,7 +10,6 @@ import type { Outcome } from "./writer.ts";
  * per-buyer rate limit if asked, and hand the command to the sale's SaleEngine.
  */
 
-
 /**
  * Claims and offers per buyer are capped by the `ENTRY_LIMITER` Rate Limiting binding
  * (wrangler.jsonc), before the command reaches the Durable Object.
@@ -24,31 +23,37 @@ export async function withinRateLimit(env: Pick<EngineEnv, "ENTRY_LIMITER">, key
 
 export const rateLimited = reject("rate_limited", "You're going too fast. Wait a few seconds and try again.");
 
-export function saleCommand<S extends Schema.Constraint & { readonly Type: { readonly saleId: string } }, A>(
+export function saleCommand<I extends { readonly saleId: string }, A>(
 	env: EngineEnv,
-	schema: S,
+	schema: Schema.Decoder<I>,
 	method: WriterMethod,
 	input: unknown,
 	/** The user whose rate limit applies (claims and offers). */
-	rateLimitKey?: (decoded: S["Type"]) => string,
+	rateLimitKey?: (decoded: I) => string,
 ): Promise<RpcResult<Outcome<A>>> {
 	return runForRpc(
 		env,
 		`engine.rpc.${method}`,
 		Effect.gen(function* () {
-			const decoded = (yield* Schema.decodeUnknownEffect(schema)(input)) as S["Type"];
+			const decoded = yield* Schema.decodeUnknownEffect(schema)(input);
 			const { saleId, ...rest } = decoded;
 			yield* Effect.annotateCurrentSpan({ sale_id: saleId });
 			if (rateLimitKey !== undefined) {
 				const key = rateLimitKey(decoded);
 				const allowed = yield* Effect.promise(() => withinRateLimit(env, key));
-				if (!allowed) return rateLimited as Outcome<A>;
+				if (!allowed) {
+					const limited: Outcome<A> = rateLimited;
+					return limited;
+				}
 			}
 			const stub = env.SALE_ENGINE.get(env.SALE_ENGINE.idFromName(saleId));
 			const result = yield* Effect.promise(
-				async () => (await stub.command(saleId, method, rest)) as RpcResult<Outcome<unknown>>,
+				async (): Promise<RpcResult<Outcome<unknown>>> => await stub.command(saleId, method, rest),
 			);
-			return (yield* fromRpcResult(result)) as Outcome<A>;
-		}) as Effect.Effect<Outcome<A>, unknown, never>,
+			const outcome = yield* fromRpcResult(result);
+			// The DO answers Outcome<unknown>; `method` fixes its value type, which the caller names as A.
+			// oxlint-disable-next-line typescript/no-unsafe-type-assertion
+			return outcome as Outcome<A>;
+		}),
 	);
 }

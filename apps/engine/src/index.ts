@@ -221,6 +221,10 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 			await run(this.env, "engine.cron.catalog", catalogCron(this.env));
 			return;
 		}
-		await run(this.env, "engine.cron.sweep", handleScheduled(controller).pipe(Effect.andThen(sweepTimers(this.env))));
+		await run(
+			this.env,
+			"engine.cron.sweep",
+			handleScheduled(controller).pipe(Effect.andThen(sweepTimers(this.env))),
+		);
 	}
 }

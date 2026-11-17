@@ -12,6 +12,7 @@ import {
 	type OffersMode,
 	type RowOutcome,
 } from "@claimsale/core";
+import { rowsOf } from "./rows.ts";
 import { parseJson } from "./settings.ts";
 import { newId, Work, type SaleRecord } from "./store.ts";
 import type { Outcome } from "./writer.ts";
@@ -66,6 +67,16 @@ const fromDbOffers = (mode: ItemImportRow["offers_mode"]): OffersMode => (mode =
 /** Items created without a game (accessories, lots) store this game ID. */
 export const NO_GAME = "other";
 
+/** Stored attributes: a JSON object of text, numbers and booleans; anything else is dropped. */
+function attributesOf(value: unknown): Attributes {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+	const out: Record<string, string | number | boolean> = {};
+	for (const [key, v] of Object.entries(value)) {
+		if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") out[key] = v;
+	}
+	return out;
+}
+
 function toExisting(row: ItemImportRow): ExistingItem {
 	const attributes = parseJson(row.attributes);
 	return {
@@ -80,7 +91,7 @@ function toExisting(row: ItemImportRow): ExistingItem {
 		offers: fromDbOffers(row.offers_mode),
 		minOfferCents: row.min_offer_cents,
 		shippingOverrideCents: row.shipping_override_cents,
-		attributes: (attributes !== null && typeof attributes === "object" ? attributes : {}) as Attributes,
+		attributes: attributesOf(attributes),
 	};
 }
 
@@ -161,7 +172,7 @@ export async function planImportBatch(
 			.bind(sale.id),
 	]);
 	const done = new Map(
-		(applied!.results as Array<{ row: number; item_id: string | null; outcome: string }>).map((r) => [r.row, r]),
+		rowsOf<{ row: number; item_id: string | null; outcome: string }>(applied).map((r) => [r.row, r]),
 	);
 	const replayed: ImportRowResult[] = [...done.values()].map((r) =>
 		r.outcome === "created"
@@ -171,11 +182,15 @@ export async function planImportBatch(
 				: { row: r.row, outcome: "skipped", itemId: r.item_id!, reason: "unchanged" },
 	);
 	const fresh = input.rows.filter((r) => !done.has(r.row));
-	if (fresh.length === 0) return ok({ work, value: { outcomes: replayed.toSorted((a, b) => a.row - b.row), replayed: replayed.length } });
+	if (fresh.length === 0)
+		return ok({
+			work,
+			value: { outcomes: replayed.toSorted((a, b) => a.row - b.row), replayed: replayed.length },
+		});
 
 	const validated = validateImport(fresh, { sellerTier: sale.sellerTier });
 	if (!validated.ok) return validated;
-	const itemRows = existing!.results as ItemImportRow[];
+	const itemRows = rowsOf<ItemImportRow>(existing);
 	const plan = planImport({
 		rows: validated.value.items,
 		existing: itemRows.map(toExisting),
@@ -261,8 +276,15 @@ export async function planImportBatch(
 	}
 
 	const outcomes: ImportRowResult[] = [
-		...validated.value.errors.map((e) => ({ row: e.row, outcome: "error" as const, field: e.field, message: e.message })),
-		...plan.outcomes.map((o): ImportRowResult => (o.outcome === "created" ? { ...o, itemId: created.get(o.row)! } : o)),
+		...validated.value.errors.map((e) => ({
+			row: e.row,
+			outcome: "error" as const,
+			field: e.field,
+			message: e.message,
+		})),
+		...plan.outcomes.map((o): ImportRowResult =>
+			o.outcome === "created" ? { ...o, itemId: created.get(o.row)! } : o,
+		),
 	];
 	for (const outcome of outcomes) {
 		if (outcome.outcome === "error") continue;
@@ -274,7 +296,11 @@ export async function planImportBatch(
 				.bind(input.importId, outcome.row, sale.id, outcome.itemId, outcome.outcome, now),
 		);
 	}
-	const counts = { created: plan.creates.length, updated: plan.updates.length, errors: outcomes.filter((o) => o.outcome === "error").length };
+	const counts = {
+		created: plan.creates.length,
+		updated: plan.updates.length,
+		errors: outcomes.filter((o) => o.outcome === "error").length,
+	};
 	if (counts.created + counts.updated > 0) {
 		work.extra.push(db.prepare("UPDATE sales SET updated_at = ?1 WHERE id = ?2").bind(now, sale.id));
 		work.audit({

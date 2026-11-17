@@ -123,7 +123,12 @@ describe("placing entries through the engine", () => {
 		expect(result.entry).toMatchObject({ status: "won", amountCents: 1250, buyerId: buyer });
 		expect(result.item).toMatchObject({ state: "sold_out", freeUnits: 0, version: 1 });
 		const [invoice] = await invoicesOf(sale.saleId);
-		expect(invoice).toMatchObject({ status: "draft", buyer_id: buyer, subtotal_cents: 1250, total_cents: 1250 });
+		expect(invoice).toMatchObject({
+			status: "draft",
+			buyer_id: buyer,
+			subtotal_cents: 1250,
+			total_cents: 1250,
+		});
 		expect(invoice!.lines).toEqual([
 			expect.objectContaining({ entry_id: result.entry!.id, description: "Charizard", amount_cents: 1250 }),
 		]);
@@ -131,7 +136,11 @@ describe("placing entries through the engine", () => {
 	});
 
 	it("a rejected command writes nothing, not even an audit row [SM-9-audit]", async () => {
-		const sale = await makeSale({ status: "scheduled", liveAt: Date.now() + DAY_MS, closesAt: Date.now() + 2 * DAY_MS });
+		const sale = await makeSale({
+			status: "scheduled",
+			liveAt: Date.now() + DAY_MS,
+			closesAt: Date.now() + 2 * DAY_MS,
+		});
 		const buyer = await addUser();
 		expect(rejection(await claim(sale, buyer))).toBe("sale_not_live");
 		expect(await entriesOf(sale.itemIds[0]!)).toEqual([]);
@@ -156,7 +165,9 @@ describe("placing entries through the engine", () => {
 
 	it("answers not_found for an unknown sale or item", async () => {
 		const buyer = await addUser();
-		expect(outcome(await engine.placeEntry({ saleId: uid("nosale"), itemId: "x", buyerId: buyer, kind: "claim" }))).toMatchObject({
+		expect(
+			outcome(await engine.placeEntry({ saleId: uid("nosale"), itemId: "x", buyerId: buyer, kind: "claim" })),
+		).toMatchObject({
 			ok: false,
 			error: { code: "not_found" },
 		});
@@ -189,10 +200,41 @@ describe("the audit log", () => {
 		const [itemA, itemB] = sale.itemIds as [string, string];
 		await offer(sale, a, 3000, itemA);
 		const claimB = entryOf(await claim(sale, b, itemA)); // deciding: an offer is pending
-		const offerA = entryOf(await engine.placeEntry({ saleId: sale.saleId, itemId: itemA, buyerId: c, kind: "offer", amountCents: 3500 }));
-		value(await engine.awardEntry({ saleId: sale.saleId, itemId: itemA, entryId: claimB.id, sellerId: sale.sellerId }));
-		value(await engine.counterOffer({ saleId: sale.saleId, itemId: itemA, entryId: offerA.id, sellerId: sale.sellerId, amountCents: 3800 }));
-		value(await engine.respondToCounter({ saleId: sale.saleId, itemId: itemA, entryId: offerA.id, buyerId: c, accept: true }));
+		const offerA = entryOf(
+			await engine.placeEntry({
+				saleId: sale.saleId,
+				itemId: itemA,
+				buyerId: c,
+				kind: "offer",
+				amountCents: 3500,
+			}),
+		);
+		value(
+			await engine.awardEntry({
+				saleId: sale.saleId,
+				itemId: itemA,
+				entryId: claimB.id,
+				sellerId: sale.sellerId,
+			}),
+		);
+		value(
+			await engine.counterOffer({
+				saleId: sale.saleId,
+				itemId: itemA,
+				entryId: offerA.id,
+				sellerId: sale.sellerId,
+				amountCents: 3800,
+			}),
+		);
+		value(
+			await engine.respondToCounter({
+				saleId: sale.saleId,
+				itemId: itemA,
+				entryId: offerA.id,
+				buyerId: c,
+				accept: true,
+			}),
+		);
 		const winD = entryOf(await claim(sale, d, itemB));
 		await claim(sale, a, itemB);
 		value(
@@ -211,15 +253,28 @@ describe("the audit log", () => {
 		const audit = await auditOf(sale.saleId);
 		expect(audit.length).toBeGreaterThanOrEqual(8);
 		const entries = new Map<string, Entry>();
-		const items = new Map<string, { decisionDeadline: unknown; offersLapseAt: unknown; withdrawn: unknown }>();
+		const items = new Map<
+			string,
+			{ decisionDeadline: unknown; offersLapseAt: unknown; withdrawn: unknown }
+		>();
 		const invoices = new Map<string, Invoice>();
 		for (const row of audit) {
 			const data = row.data as {
-				items: Array<{ id: string; decisionDeadline: unknown; offersLapseAt: unknown; withdrawn: unknown; entries: Entry[] }>;
+				items: Array<{
+					id: string;
+					decisionDeadline: unknown;
+					offersLapseAt: unknown;
+					withdrawn: unknown;
+					entries: Entry[];
+				}>;
 				invoices: Invoice[];
 			};
 			for (const item of data.items) {
-				items.set(item.id, { decisionDeadline: item.decisionDeadline, offersLapseAt: item.offersLapseAt, withdrawn: item.withdrawn });
+				items.set(item.id, {
+					decisionDeadline: item.decisionDeadline,
+					offersLapseAt: item.offersLapseAt,
+					withdrawn: item.withdrawn,
+				});
 				for (const entry of item.entries) entries.set(entry.id, entry);
 			}
 			for (const invoice of data.invoices) invoices.set(invoice.id, invoice);
@@ -249,7 +304,9 @@ describe("the audit log", () => {
 		for (const inv of stored) {
 			const replayed = invoices.get(inv["id"] as string)!;
 			expect(replayed.status).toBe(inv["status"]);
-			expect(replayed.lines.map((l) => l.entryId).toSorted()).toEqual(inv.lines.map((l) => l["entry_id"]).toSorted());
+			expect(new Set(replayed.lines.map((l) => l.entryId))).toEqual(
+				new Set(inv.lines.map((l) => l["entry_id"])),
+			);
 		}
 	});
 

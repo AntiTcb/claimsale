@@ -15,6 +15,7 @@ import {
 } from "@claimsale/core";
 import { uuidv7 } from "uuidv7";
 import {
+	rowsOf,
 	tierOf,
 	toInvoice,
 	toItem,
@@ -70,7 +71,8 @@ export class WriteConflict extends Error {
 }
 
 const isConflict = (error: unknown) =>
-	error instanceof Error && /NOT NULL constraint failed: (items\.version|invoices\.updated_at|sales\.status)/.test(error.message);
+	error instanceof Error &&
+	/NOT NULL constraint failed: (items\.version|invoices\.updated_at|sales\.status)/.test(error.message);
 
 const ids = (values: Iterable<string>) => JSON.stringify([...new Set(values)]);
 
@@ -124,7 +126,9 @@ export function entriesQuery(db: D1Database, saleId: string, itemIds: readonly s
 				)
 				.bind(saleId)
 		: db
-				.prepare("SELECT * FROM entries WHERE item_id IN (SELECT value FROM json_each(?1)) ORDER BY created_at, id")
+				.prepare(
+					"SELECT * FROM entries WHERE item_id IN (SELECT value FROM json_each(?1)) ORDER BY created_at, id",
+				)
 				.bind(ids(itemIds));
 }
 
@@ -163,7 +167,10 @@ export async function loadSale(db: D1Database, saleId: string, now: Millis): Pro
 	return row && row.status !== "deleted" ? toSaleRecord(row) : undefined;
 }
 
-export function toLoadedItems(items: readonly ItemRow[], entries: readonly EntryRow[]): Map<string, LoadedItem> {
+export function toLoadedItems(
+	items: readonly ItemRow[],
+	entries: readonly EntryRow[],
+): Map<string, LoadedItem> {
 	return new Map(
 		items.map((row) => [row.id, { title: row.title, version: row.version, item: toItem(row, entries) }]),
 	);
@@ -182,10 +189,10 @@ export async function loadSaleAndItems(
 	const statements = [itemsQuery(db, saleId, itemIds), entriesQuery(db, saleId, itemIds)];
 	if (buyer) statements.push(buyerQuery(db, buyer.id, sale.seller_id, now));
 	const [items, entries, buyers] = await db.batch(statements);
-	const buyerRow = (buyers?.results as BuyerRow[] | undefined)?.[0];
+	const buyerRow = rowsOf<BuyerRow>(buyers)[0];
 	return {
 		sale: toSaleRecord(sale),
-		items: toLoadedItems(items!.results as ItemRow[], entries!.results as EntryRow[]),
+		items: toLoadedItems(rowsOf<ItemRow>(items), rowsOf<EntryRow>(entries)),
 		buyer: buyerRow ? toBuyer(buyerRow) : undefined,
 	};
 }
@@ -211,9 +218,9 @@ export async function loadInvoices(
 			)
 			.bind(saleId),
 	]);
-	const lineRows = lines!.results as InvoiceLineRow[];
+	const lineRows = rowsOf<InvoiceLineRow>(lines);
 	return new Map(
-		(invoices!.results as InvoiceRow[]).map((row) => [
+		rowsOf<InvoiceRow>(invoices).map((row) => [
 			row.id,
 			{
 				invoice: toInvoice(row, lineRows, sellerTier),
@@ -265,7 +272,8 @@ export class Work {
 	) {}
 
 	addItems(items: ReadonlyMap<string, LoadedItem>): void {
-		for (const [id, before] of items) if (!this.items.has(id)) this.items.set(id, { before, after: before.item });
+		for (const [id, before] of items)
+			if (!this.items.has(id)) this.items.set(id, { before, after: before.item });
 	}
 
 	item(itemId: string): Item | undefined {
@@ -433,10 +441,27 @@ export class Work {
 	}
 }
 
+/** Every field of an entry, to compare before and after a transition. */
+const ENTRY_FIELDS: ReadonlyArray<keyof Entry> = [
+	"id",
+	"buyerId",
+	"kind",
+	"amountCents",
+	"status",
+	"createdAt",
+	"rankOverride",
+	"counterCents",
+	"counterExpiresAt",
+	"wonAt",
+	"endedAt",
+	"endedReason",
+	"endedBy",
+];
+
 function sameEntry(a: Entry | undefined, b: Entry): boolean {
 	if (a === undefined) return false;
 	if (a === b) return true;
-	return (Object.keys(b) as (keyof Entry)[]).every((key) => a[key] === b[key]);
+	return ENTRY_FIELDS.every((key) => a[key] === b[key]);
 }
 
 function entryUpsert(db: D1Database, itemId: string, e: Entry): D1PreparedStatement {

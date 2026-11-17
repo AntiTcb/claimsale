@@ -52,6 +52,8 @@ export class SaleEngine extends DurableObject<EngineEnv> {
 			`engine.sale.${method}`,
 			Effect.promise(async (): Promise<Outcome<unknown>> => {
 				const writer = await this.#writerFor(saleId);
+				// The entrypoint decoded `input` with the schema that belongs to `method`.
+				// oxlint-disable-next-line typescript/no-unsafe-type-assertion
 				const call = writer[method] as (input: unknown) => Promise<Outcome<unknown>>;
 				return call.call(writer, input);
 			}).pipe(
@@ -70,9 +72,14 @@ export class SaleEngine extends DurableObject<EngineEnv> {
 	 * alarm, and the alarm's own body).
 	 */
 	async sweep(saleId: string): Promise<RpcResult<SweepReport>> {
-		return runForRpc(this.env, "engine.sale.sweep", Effect.promise(() => this.#processTimers(saleId)), {
-			sale_id: saleId,
-		});
+		return runForRpc(
+			this.env,
+			"engine.sale.sweep",
+			Effect.promise(() => this.#processTimers(saleId)),
+			{
+				sale_id: saleId,
+			},
+		);
 	}
 
 	/**
@@ -92,7 +99,11 @@ export class SaleEngine extends DurableObject<EngineEnv> {
 				: Effect.promise(() => this.#processTimers(saleId)).pipe(
 						Effect.tap((report) =>
 							Effect.logInfo("sale engine alarm fired").pipe(
-								Effect.annotateLogs({ sale_id: saleId, processed: report.processed, next_alarm: report.nextAlarm }),
+								Effect.annotateLogs({
+									sale_id: saleId,
+									processed: report.processed,
+									next_alarm: report.nextAlarm,
+								}),
 							),
 						),
 					),
