@@ -43,4 +43,5 @@ CREATE INDEX `image_hashes_p1` ON `image_hashes` (`p1`);--> statement-breakpoint
 CREATE INDEX `image_hashes_p2` ON `image_hashes` (`p2`);--> statement-breakpoint
 CREATE INDEX `image_hashes_p3` ON `image_hashes` (`p3`);--> statement-breakpoint
 CREATE INDEX `image_hashes_seller_decision` ON `image_hashes` (`seller_id`,`decision`);--> statement-breakpoint
-ALTER TABLE `users` ADD `role` text DEFAULT 'user' NOT NULL;
+ALTER TABLE `users` ADD `role` text DEFAULT 'user' NOT NULL;--> statement-breakpoint
+CREATE INDEX `item_images_status_created` ON `item_images` (`status`,`created_at`);

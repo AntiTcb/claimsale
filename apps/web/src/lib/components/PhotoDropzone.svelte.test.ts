@@ -18,7 +18,7 @@ function setup(overrides: Record<string, unknown> = {}) {
 		saleId: "sale-1",
 		itemId: "item-1",
 		itemTitle: "Charizard",
-		photos: [] as Array<{ id: string; url: string; status?: string }>,
+		photos: [] as Array<{ id: string; url: string; status?: string; rejection?: string }>,
 		max: 4,
 		onchange,
 		prepare,
@@ -98,5 +98,28 @@ describe("PhotoDropzone", () => {
 		await render(PhotoDropzone, props);
 		await expect.element(page.getByRole("button", { name: /Remove/ })).not.toBeInTheDocument();
 		await expect.element(page.getByLabelText(/Add/)).not.toBeInTheDocument();
+	});
+
+	it("[IMG-dup-reject] shows why a photo was rejected, without counting it toward the cap", async () => {
+		const photos = [
+			{ id: "p1", url: "/api/images/p1", status: "pending" },
+			{
+				id: "p2",
+				url: "/api/images/p2",
+				status: "rejected",
+				rejection: "This photo matches an image already used on ClaimSale. Please upload your own photo.",
+			},
+		];
+		const { props } = setup({ photos, max: 2 });
+		await render(PhotoDropzone, props);
+		await expect.element(page.getByText("Checking")).toBeVisible();
+		await expect.element(page.getByText("Rejected", { exact: true })).toBeVisible();
+		await expect
+			.element(page.getByTestId("photo-rejection"))
+			.toHaveTextContent(
+				"Photo 2 was rejected: This photo matches an image already used on ClaimSale. Please upload your own photo.",
+			);
+		await expect.element(page.getByText("1/2")).toBeVisible();
+		await expect.element(page.getByLabelText("Add more for Charizard")).toBeInTheDocument();
 	});
 });

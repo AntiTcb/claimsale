@@ -1,11 +1,11 @@
 import { DAY, HOUR } from "@claimsale/core";
-import { createDb, eq, type Db } from "@claimsale/db";
-import { auditLog, sales } from "@claimsale/db/schema";
+import { and, createDb, eq, isNotNull, type Db } from "@claimsale/db";
+import { auditLog, itemImages, sales } from "@claimsale/db/schema";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testD1 } from "../../../test/d1.ts";
 import { addUser, grantSellerPro, jpegBytes, memoryStore } from "../../../test/fixtures.ts";
 import { localEngine, type Engine } from "./engine.ts";
-import { addItemPhoto } from "./images.ts";
+import { addItemPhoto, setTimestampPhoto } from "./images.ts";
 import { addItem } from "./items.ts";
 import { createDraft } from "./sales.ts";
 
@@ -21,8 +21,24 @@ beforeEach(async () => {
 	await addUser(db, "other");
 });
 
-/** A draft with `count` items, each with a photo unless `photos` is false. */
-async function draftWithItems(count = 1, options: { photos?: boolean; sellerId?: string } = {}) {
+/** Sets the status the photo verify job (engine) would have decided. */
+const decidePhotos = (saleId: string, status: "approved" | "review" | "rejected" | "pending") =>
+	db.update(itemImages).set({ status }).where(eq(itemImages.saleId, saleId));
+
+/**
+ * A draft with `count` items, each with a photo unless `photos` is false, plus a
+ * timestamp photo unless `timestamp` is false; all photos approved unless `photoStatus`
+ * says otherwise.
+ */
+async function draftWithItems(
+	count = 1,
+	options: {
+		photos?: boolean;
+		sellerId?: string;
+		timestamp?: boolean;
+		photoStatus?: "approved" | "review" | "rejected" | "pending";
+	} = {},
+) {
 	const seller = { id: options.sellerId ?? "seller", tier: "pro" as const };
 	const sale = await createDraft(
 		db,
@@ -59,8 +75,16 @@ async function draftWithItems(count = 1, options: { photos?: boolean; sellerId?:
 			);
 		}
 	}
+	if (options.timestamp !== false) {
+		await setTimestampPhoto(db, store, seller.id, sale.value.id, jpegBytes(10, 10), now);
+	}
+	await decidePhotos(sale.value.id, options.photoStatus ?? "approved");
 	return sale.value.id;
 }
+
+/** Publishes now, as the seller. */
+const publish = (saleId: string) =>
+	engine.publish({ saleId, sellerId: "seller", liveAt: null, closesAt: now + DAY }, now);
 
 const statusOf = async (saleId: string) =>
 	(await db.select({ status: sales.status }).from(sales).where(eq(sales.id, saleId)).get())?.status;
@@ -156,6 +180,47 @@ describe("local engine: publish and schedule", () => {
 		).toMatchObject({
 			error: { code: "not_found" },
 		});
+	});
+
+	it("[IMG-required] photos still being checked, held or rejected block publishing", async () => {
+		expect(await publish(await draftWithItems(1, { photoStatus: "pending" }))).toMatchObject({
+			error: { code: "photos_pending" },
+		});
+		expect(await publish(await draftWithItems(1, { photoStatus: "rejected" }))).toMatchObject({
+			error: { code: "missing_photos" },
+		});
+		const held = await draftWithItems(2);
+		await db
+			.update(itemImages)
+			.set({ status: "review" })
+			.where(and(eq(itemImages.saleId, held), isNotNull(itemImages.itemId)));
+		expect(await publish(held)).toMatchObject({ error: { code: "photos_in_review" } });
+		expect(await statusOf(held)).toBe("draft");
+	});
+
+	it("[IMG-timestamp-required] a seller with fewer than 5 completed sales needs an approved timestamp photo", async () => {
+		const none = await draftWithItems(1, { timestamp: false });
+		expect(await publish(none)).toMatchObject({ error: { code: "timestamp_required" } });
+
+		// Five completed sales make it optional.
+		for (let i = 0; i < 5; i++) {
+			const done = await draftWithItems(0, { timestamp: false });
+			await db
+				.update(sales)
+				.set({ status: i % 2 ? "closed" : "archived" })
+				.where(eq(sales.id, done));
+		}
+		expect(await publish(none)).toMatchObject({ ok: true });
+	});
+
+	it("[IMG-timestamp-required] a replaced timestamp photo is the one that counts", async () => {
+		const saleId = await draftWithItems(1);
+		await setTimestampPhoto(db, store, "seller", saleId, jpegBytes(12, 12), now);
+		const photos = await db.select().from(itemImages).where(eq(itemImages.saleId, saleId)).all();
+		expect(photos.filter((p) => p.itemId === null)).toEqual([expect.objectContaining({ status: "pending" })]);
+		expect(
+			await engine.publish({ saleId, sellerId: "seller", liveAt: null, closesAt: now + DAY }, now),
+		).toMatchObject({ error: { code: "timestamp_pending" } });
 	});
 
 	it("unpublishes a scheduled sale back to a draft, and refuses a second publish", async () => {

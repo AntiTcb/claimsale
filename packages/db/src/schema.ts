@@ -328,6 +328,8 @@ export const itemImages = sqliteTable(
 		index("item_images_item_sort").on(t.itemId, t.sortOrder),
 		index("item_images_sale").on(t.saleId),
 		index("item_images_seller_status").on(t.sellerId, t.status),
+		// The engine cron's sweep for photos left `pending` (WS-F2).
+		index("item_images_status_created").on(t.status, t.createdAt),
 	],
 );
 

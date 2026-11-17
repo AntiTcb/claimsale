@@ -1,4 +1,6 @@
 import {
+	checkPublishPhotos,
+	type PhotoPublishRejection,
 	publish as publishSale,
 	unpublish as unpublishSale,
 	ok,
@@ -14,7 +16,8 @@ import { and, eq, sql, type Db } from "@claimsale/db";
 import { auditLog, sales } from "@claimsale/db/schema";
 import { uuidv7 } from "uuidv7";
 import { entitlements } from "./entitlements.ts";
-import { countItems, itemsWithoutPhotos } from "./items.ts";
+import { publishPhotoState } from "./images.ts";
+import { countItems } from "./items.ts";
 import { countActiveSales } from "./sales.ts";
 
 /**
@@ -33,7 +36,7 @@ export interface PublishRequest {
 	readonly closesAt: Millis;
 }
 
-export type EngineRejection = SaleRejection | Rejection<"not_found" | "missing_photos" | "conflict">;
+export type EngineRejection = SaleRejection | PhotoPublishRejection | Rejection<"not_found" | "conflict">;
 
 export interface PublishOutcome {
 	readonly status: SaleStatus;
@@ -125,14 +128,15 @@ export function localEngine(db: Db): Engine {
 		 * @spec SM-2-preview-window — go-live at most 7 days ahead.
 		 * @spec SM-2-free-sale-cap — at most 2 scheduled or live sales for free sellers.
 		 * @spec SM-2-free-item-cap — at most 10 items, checked again on publish.
+		 * @spec IMG-required — through core's checkPublishPhotos (WS-E's publish RPC calls the same).
+		 * @spec IMG-timestamp-required
 		 */
 		async publish(request, now) {
 			const loaded = await loadSale(db, request.saleId, request.sellerId, now);
 			if (!loaded) return reject("not_found", "No such sale");
-			// D63: every item needs a photo. WS-F2 tightens this to an approved one (IMG-required).
-			if ((await itemsWithoutPhotos(db, request.saleId)).length > 0) {
-				return reject("missing_photos", "Add at least one photo to every item before publishing");
-			}
+			// D63, D66: approved photos for every item, and a timestamp photo for newer sellers.
+			const photos = checkPublishPhotos(await publishPhotoState(db, request.saleId, request.sellerId));
+			if (!photos.ok) return photos;
 			const result = publishSale(
 				loaded.sale,
 				{

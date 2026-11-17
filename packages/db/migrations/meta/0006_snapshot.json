@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "07467c15-8f98-41fb-bfd4-89e8c3932496",
+  "id": "fcc569d3-9119-418e-85db-c51bd005b008",
   "prevId": "a15d8367-eeee-44c0-8b4b-7ca3e93d9cd2",
   "tables": {
     "addresses": {
@@ -1423,6 +1423,14 @@
           "columns": [
             "seller_id",
             "status"
+          ],
+          "isUnique": false
+        },
+        "item_images_status_created": {
+          "name": "item_images_status_created",
+          "columns": [
+            "status",
+            "created_at"
           ],
           "isUnique": false
         }

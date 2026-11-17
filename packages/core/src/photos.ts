@@ -14,6 +14,9 @@ export type PhotoStatus = (typeof PHOTO_STATUSES)[number];
 /** D66: sellers with fewer completed sales than this need a timestamp photo on every sale. */
 export const TIMESTAMP_EXEMPT_COMPLETED_SALES = 5;
 
+/** D66 "completed sales": sales that ran and closed (owner to confirm; see WS-F2 notes). */
+export const COMPLETED_SALE_STATUSES = ["closed", "archived"] as const;
+
 /**
  * PLAN "Repeat offenders": an account is flagged for admin review once this many of its
  * photos were rejected as another seller's image ("several"; tune with real data).

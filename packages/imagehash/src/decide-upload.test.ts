@@ -22,6 +22,9 @@ function match(over: Partial<StoredMatch> & { d?: number; p?: number }): StoredM
 	};
 }
 
+/** One of my own stored images. */
+const own = (o: Parameters<typeof match>[0]) => match({ sellerId: "me", ...o });
+
 describe("decideUpload", () => {
 	it("[IMG-dup-reject] another seller's image within 6 rejects, naming the closest match for admins", () => {
 		const v = decideUpload(upload, [
@@ -53,7 +56,6 @@ describe("decideUpload", () => {
 	});
 
 	it("[IMG-own-reuse] your photo on the same item, in another sale (relisting), or deleted is allowed", () => {
-		const own = (o: Partial<StoredMatch>) => match({ sellerId: "me", ...o });
 		expect(decideUpload(upload, [own({ saleId: "sale-1", itemId: "item-1" })]).decision).toBe("approved");
 		expect(decideUpload(upload, [own({ saleId: "sale-0", itemId: "item-0" })]).decision).toBe("approved");
 		expect(decideUpload(upload, [own({ saleId: "sale-1", itemId: "item-2", inUse: false })]).decision).toBe(

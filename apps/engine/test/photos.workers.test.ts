@@ -101,7 +101,7 @@ const status = async (imageId: string) =>
 		}>();
 
 const hashRow = (imageId: string) =>
-	db.prepare("SELECT * FROM image_hashes WHERE image_id = ?").bind(imageId).first<Record<string, unknown>>();
+	db.prepare("SELECT * FROM image_hashes WHERE image_id = ?").bind(imageId).first();
 
 /** Uploads and verifies; returns the image ID. */
 async function verified(
@@ -111,6 +111,42 @@ async function verified(
 	const imageId = await upload(place, bytes);
 	await verify(imageId);
 	return imageId;
+}
+
+/** A decoder that mirrors or rotates the decoded image (a re-uploader's edit). */
+const edited =
+	(edit: "mirror" | "r90"): Decoder =>
+	async (bytes) =>
+		applyEdit(await workerDecoder()(bytes), edit);
+
+/**
+ * Stores another seller's approved image 9 bits from `bytes` on both hashes (all in the
+ * low bands, so band 0 still finds it): inside the review band. Returns its image ID.
+ */
+async function storeNearMatch(bytes: Uint8Array): Promise<string> {
+	const hashes = hashImage(await workerDecoder()(bytes));
+	const other = await seller();
+	const storedId = id("stored");
+	const dh = hashes.orig.dhash ^ 0x1ffn;
+	const ph = hashes.orig.phash ^ 0x1ffn;
+	await db
+		.prepare(
+			`INSERT INTO image_hashes (image_id, seller_id, sale_id, item_id, dhash, phash, d0, d1, d2, d3, p0, p1, p2, p3,
+				decision, created_at, decided_at, decided_by)
+			VALUES (?, ?, 'old-sale', 'old-item', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', 1, 1, 'system')`,
+		)
+		.bind(storedId, other, hashToHex(dh), hashToHex(ph), ...toBands(dh), ...toBands(ph))
+		.run();
+	return storedId;
+}
+
+/** A photo held for review: uploaded next to another seller's near match. */
+async function heldPhoto() {
+	await storeNearMatch(cardB);
+	const me = await newSeller();
+	const imageId = await verified(me, cardB);
+	expect((await status(imageId))?.status).toBe("review");
+	return { me, imageId };
 }
 
 beforeEach(async () => {
@@ -156,11 +192,10 @@ describe("photo verify job", () => {
 		const b = await newSeller();
 		const sameBytes = await verified(b, cardA);
 		const reencoded = await verified({ ...b, itemId: await item(b.saleId) }, cardAWebp);
-		const mirrorDecoder: Decoder = async (bytes) => applyEdit(await workerDecoder()(bytes), "mirror");
 		const mirrored = await upload({ ...b, itemId: await item(b.saleId) }, cardA);
-		await verify(mirrored, mirrorDecoder);
+		await verify(mirrored, edited("mirror"));
 		const rotated = await upload({ ...b, itemId: await item(b.saleId) }, cardA);
-		await verify(rotated, async (bytes) => applyEdit(await workerDecoder()(bytes), "r90"));
+		await verify(rotated, edited("r90"));
 
 		for (const imageId of [sameBytes, reencoded, mirrored, rotated]) {
 			const row = await status(imageId);
@@ -186,21 +221,7 @@ describe("photo verify job", () => {
 	});
 
 	it("[IMG-dup-review] holds a photo 7–12 bits from another seller's image for admin review", async () => {
-		const hashes = hashImage(await workerDecoder()(cardB));
-		// Another seller's stored image: 9 bits away on both hashes, all in the low bands.
-		const near = (h: bigint) => h ^ 0x1ffn;
-		const other = await seller();
-		const storedId = id("stored");
-		const dh = near(hashes.orig.dhash);
-		const ph = near(hashes.orig.phash);
-		await db
-			.prepare(
-				`INSERT INTO image_hashes (image_id, seller_id, sale_id, item_id, dhash, phash, d0, d1, d2, d3, p0, p1, p2, p3,
-					decision, created_at, decided_at, decided_by)
-				VALUES (?, ?, 'old-sale', 'old-item', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', 1, 1, 'system')`,
-			)
-			.bind(storedId, other, hashToHex(dh), hashToHex(ph), ...toBands(dh), ...toBands(ph))
-			.run();
+		const storedId = await storeNearMatch(cardB);
 
 		const me = await newSeller();
 		const imageId = await verified(me, cardB);
@@ -292,25 +313,6 @@ describe("photo verify job", () => {
 });
 
 describe("admin review (RPC)", () => {
-	async function heldPhoto() {
-		const hashes = hashImage(await workerDecoder()(cardB));
-		const other = await seller();
-		const dh = hashes.orig.dhash ^ 0x1ffn;
-		const ph = hashes.orig.phash ^ 0x1ffn;
-		await db
-			.prepare(
-				`INSERT INTO image_hashes (image_id, seller_id, sale_id, item_id, dhash, phash, d0, d1, d2, d3, p0, p1, p2, p3,
-					decision, created_at, decided_at, decided_by)
-				VALUES (?, ?, 'old-sale', 'old-item', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', 1, 1, 'system')`,
-			)
-			.bind(id("stored"), other, hashToHex(dh), hashToHex(ph), ...toBands(dh), ...toBands(ph))
-			.run();
-		const me = await newSeller();
-		const imageId = await verified(me, cardB);
-		expect((await status(imageId))?.status).toBe("review");
-		return { me, imageId };
-	}
-
 	it("[IMG-dup-review] approving a held photo indexes it, so a later copy is rejected", async () => {
 		const { imageId } = await heldPhoto();
 		const admin = await seller();

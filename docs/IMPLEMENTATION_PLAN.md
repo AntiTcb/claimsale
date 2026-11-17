@@ -126,6 +126,24 @@ Pure part can start now; wiring needs WS-A.
   - Import the jsquash `.wasm` files in wrangler and pass them to `createJsquashDecoder`.
   - Owner to confirm: review needs both hashes ≤ 12, each hash takes its own minimum
     over the variants, and mirror + 90° together isn't covered.
+- Notes from F2 (built with the F1 defaults above):
+  - Tables (migration `0006_image_hashes`): `image_hashes` (hex hashes, 8 band columns
+    with one index each, `decision`, `reason`; no foreign keys to photo, item or sale, so
+    another seller's image still counts after it is deleted), `account_flags`
+    (IMG-repeat-offender), `users.role` (`admin` opens `/admin`; set with SQL).
+  - The verify job runs on the engine's existing queue as `photo_verify` messages (no new
+    queue to provision); the engine binds the web Worker's `IMAGES` bucket. The web
+    Worker queues a check after each upload over RPC (`requestPhotoVerification`), and
+    the 5-minute cron re-queues photos still `pending` after 10 minutes (up to a day old).
+  - Thresholds live in `@claimsale/imagehash` (`REJECT_MAX_DISTANCE`,
+    `REVIEW_MAX_DISTANCE`) and `@claimsale/core` photos.ts (`TIMESTAMP_EXEMPT_COMPLETED_SALES`
+    = 5, `REPEAT_OFFENDER_REJECTIONS` = 3, `COMPLETED_SALE_STATUSES` = closed, archived).
+  - Own reuse (`decideUpload`): rejected only for a different item of the same sale; reuse
+    in another sale counts as relisting. A timestamp photo already used in any other sale
+    is rejected, even the seller's own.
+  - Publish checks are pure (`checkPublishPhotos` in core); WS-E's publish RPC should call
+    it with `publishPhotoState` (web `images.ts`) or an engine equivalent.
+  - Buyers only see approved photos (`IMG-public-approved`, new registry row).
 
 ### WS-G · Item import UI + catalog picker + market price aid (M4 part 3)
 Needs WS-A, WS-B, WS-C.

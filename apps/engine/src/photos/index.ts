@@ -33,17 +33,17 @@ export const PhotoReviewInput = Schema.Struct({
 });
 export type PhotoReviewInput = typeof PhotoReviewInput.Type;
 
-const message = (imageId: string): MessageSendRequest<PhotoVerifyMessage> => ({
-	body: { kind: "photo_verify", image_id: imageId },
-	contentType: "json",
+const verifyRequest = (imageId: string) => ({
+	body: { kind: "photo_verify", image_id: imageId } satisfies PhotoVerifyMessage,
+	contentType: "json" as const,
 });
 
 /** Queues the check of a new upload. */
 export const requestVerification = (queue: Queue, input: unknown) =>
 	Effect.gen(function* () {
 		const { imageId } = yield* Schema.decodeUnknownEffect(PhotoVerificationInput)(input);
-		const { body, contentType } = message(imageId);
-		yield* Effect.tryPromise(() => queue.send(body, contentType ? { contentType } : {}));
+		const { body, contentType } = verifyRequest(imageId);
+		yield* Effect.tryPromise(() => queue.send(body, { contentType }));
 		return true as const;
 	});
 
@@ -76,7 +76,7 @@ export const requeueStalePhotos = (env: Pick<EngineEnv, "DB" | "NOTIFICATIONS">)
 			now - STALE_PENDING_WINDOW,
 			STALE_PENDING_BATCH,
 		);
-		if (ids.length > 0) yield* Effect.tryPromise(() => env.NOTIFICATIONS.sendBatch(ids.map(message)));
+		if (ids.length > 0) yield* Effect.tryPromise(() => env.NOTIFICATIONS.sendBatch(ids.map(verifyRequest)));
 		yield* Effect.logInfo("stale pending photos re-queued").pipe(Effect.annotateLogs({ count: ids.length }));
 		return ids.length;
 	});

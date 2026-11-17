@@ -1,9 +1,16 @@
-import { DAY, FREE_ACTIVE_SALE_CAP, FREE_ITEM_CAP, MAX_LIVE_DURATION } from "@claimsale/core";
+import {
+	DAY,
+	FREE_ACTIVE_SALE_CAP,
+	FREE_ITEM_CAP,
+	MAX_LIVE_DURATION,
+	needsTimestampPhoto,
+} from "@claimsale/core";
 import { fail, redirect } from "@sveltejs/kit";
 import { parseLocalDateTime } from "#lib/listing-input.ts";
 import { db, engine } from "#lib/server/context.ts";
 import { field } from "#lib/server/forms.ts";
-import { countItems, itemsWithoutPhotos } from "#lib/server/items.ts";
+import { findTimestampPhoto, publishPhotoState } from "#lib/server/images.ts";
+import { countItems } from "#lib/server/items.ts";
 import {
 	countActiveSales,
 	deleteDraft,
@@ -19,16 +26,27 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
 	const seller = await requireSeller(event);
 	const saleId = event.params.saleId;
-	const [itemCount, missingPhotos, active, access, allowlist] = await Promise.all([
+	const [itemCount, photos, timestamp, active, access, allowlist] = await Promise.all([
 		countItems(db(), saleId),
-		itemsWithoutPhotos(db(), saleId),
+		publishPhotoState(db(), saleId, seller.id),
+		findTimestampPhoto(db(), saleId),
 		countActiveSales(db(), seller.id, saleId),
 		findSaleById(db(), saleId),
 		readAllowlist(db(), saleId),
 	]);
 	return {
 		itemCount,
-		missingPhotos: missingPhotos.length,
+		missingPhotos: photos.items.filter((i) => !i.photos.some((s) => s !== "rejected")).length,
+		checkingPhotos: photos.items.filter((i) => !i.photos.includes("approved") && i.photos.includes("pending"))
+			.length,
+		heldPhotos: photos.items.filter(
+			(i) => !i.photos.includes("approved") && !i.photos.includes("pending") && i.photos.includes("review"),
+		).length,
+		timestamp: {
+			required: needsTimestampPhoto(photos.completedSales),
+			photo: timestamp ?? null,
+			handle: event.locals.user?.handle ?? "",
+		},
 		activeOtherSales: active,
 		hasPassword: access?.hasPassword ?? false,
 		allowlist: allowlist.join("\n"),

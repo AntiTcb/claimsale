@@ -41,10 +41,16 @@ const columnOf = (key: BandKey): BandColumn => `${key.kind === "dhash" ? "d" : "
  * radius 1 makes up to 680 keys.
  */
 export function bandKeysJson(keys: readonly BandKey[]): string {
-	const groups = Object.fromEntries(BAND_COLUMNS.map((c) => [c, [] as number[]])) as Record<
-		BandColumn,
-		number[]
-	>;
+	const groups: Record<BandColumn, number[]> = {
+		d0: [],
+		d1: [],
+		d2: [],
+		d3: [],
+		p0: [],
+		p1: [],
+		p2: [],
+		p3: [],
+	};
 	for (const key of keys) groups[columnOf(key)].push(key.value);
 	return JSON.stringify(groups);
 }
