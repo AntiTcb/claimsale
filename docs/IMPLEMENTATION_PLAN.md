@@ -16,7 +16,7 @@
 | 4. Sales and items | Not started (schema has only auth tables) |
 | 4b. TCG catalog + photo authenticity | Not started |
 | 5. Engine (SaleEngine DO write path) | WS-E: write path, RPC, alarms, cron sweep, rate limit (k6 run pending) |
-| 6. Live grid | Not started |
+| 6. Live grid | WS-H: live socket on the SaleEngine, claim/offer UI, filters, running total |
 | 7. Seller control room + admin disputes | Not started |
 | 8. Invoices after close + exports + tracking import | WS-J: invoice pages, shipping menu, CSV exports, tracking re-import |
 | 9. Notifications and messaging | Email outbox + Email Service binding exist; no Queue consumer logic |
@@ -303,8 +303,52 @@ Wave 4:                     WS-L → pilot sale
   `payment_confirmed`, `invoice_shipped`, `tracking_replaced`, `invoice_completed`,
   `feedback_opened`); WS-J sends no email.
 - Not built: seller adjustments / discounts on an invoice, per-item or "free over $X" shipping
-  pricing, a feedback table and form (only the `feedback_opened` event), the buyer claim button
-  (the E2E claims through `POST /api/sales/[saleId]/entries`).
+  pricing, a feedback table and form (only the `feedback_opened` event). WS-J's E2E claims
+  through `POST /api/sales/[saleId]/entries`, not WS-H's live grid.
+
+### Wave 3 integration notes (WS-H, the live grid)
+- **Path:** the browser opens `GET /api/sales/[saleId]/live` (WebSocket). The web Worker checks the
+  upgrade, the `Origin` (same site only) and sale access exactly like the sale page
+  (`liveUpgrade` in `#lib/server/live.ts`), then forwards to the engine's `fetch` at
+  `/live/<saleId>` with the session's user in `x-claimsale-viewer` (core `LIVE_VIEWER_HEADER`).
+  The engine has no public route, so only the web Worker can set that header. The Engine
+  entrypoint passes the request to the sale's `SaleEngine`, which accepts it with the
+  Hibernation API (`apps/engine/src/live/`).
+- **Protocol** (`LiveMessage` in `packages/core/src/live.ts`; one JSON object per frame):
+  `hello { protocol: 1, serverNow }` first, then `snapshot { serverNow, sale, items }` on every
+  (re)connect, then per commit `sale { sale: { status, liveAt, closesAt, at } }` when the sale's
+  status changed and `items { items: LiveItem[] }` with every item the commit touched. A
+  `LiveItem` is `{ id, version, state, quantity, freeUnits, unitsWon, claimCount, offerCount,
+  decisionDeadline, offers: [{ label, amountCents }], mine: MyEntry[] }`, projected per viewer by
+  core's `liveItem` (no buyer IDs, no hidden minimum, no market price; offers per
+  `SM-3-offer-visibility`; `mine` = the viewer's own entries with their `position`). Clients keep
+  each item's highest `version` and the newest sale `at`. The browser sends only `"ping"`
+  (every 25 s), which the runtime answers with `"pong"` without waking the object. Close codes:
+  4403 (the sale went back to draft; every non-seller socket is closed) and 4404 (sale gone).
+- **First render:** the sale page calls the new `ENGINE.liveSnapshot({ saleId, viewerId })` RPC
+  (same projection, D1 read in the entrypoint, no DO hop); without the engine (`pnpm dev:ui`)
+  the page renders without live data.
+- **Broadcast helper for WS-K** (`LiveHub`, `apps/engine/src/live/hub.ts`; one per `SaleEngine`,
+  field `#live`): `accept(viewer)` → `{ client, server }`; `broadcast(type, payload, audience?)`
+  sends `{ type, ...payload }` to every socket whose `LiveViewer { userId, role: "seller" |
+  "buyer" | "visitor", connectedAt }` passes `audience`; `payload` may be a function of the
+  viewer (called once per distinct role + user; return undefined to skip that viewer);
+  `sendToUser(userId, type, payload)` uses the socket's `user:<id>` tag (all of that user's tabs);
+  `closeWhere(audience, code, reason)`; `count(audience?)`. Messaging can add its own `type`s
+  (e.g. `message`) on the same sockets: send to `viewer.role === "seller" || viewer.userId ===
+  buyerId`. Each message type must be projected for its audience like `liveItem` is.
+- **After each commit** `SaleEngine.#afterCommit` calls `broadcastCommit(hub, work)` before
+  re-arming the alarm; a broadcast failure is logged, never fails the committed command.
+- **Sale settings:** the engine now reads `offerVisibility` from `sales.terms`; the terms form
+  has a new `confirmClaims` field (default on; `LIVE-claim-confirm`).
+- **Not built (open):** buyer actions beyond placing (withdraw an offer / leave the backup queue,
+  answer a counter) have no UI or web endpoint yet; claim buttons are on the grid only, not on
+  `/s/[slug]/i/[itemId]`; open sockets are not closed when a private sale's password or
+  allowlist changes or its visibility changes (they are on the next reconnect); writes made
+  outside the engine (the web item editor, import batches) aren't broadcast: a client that sees
+  an unknown item ID refetches the page, others catch up on reconnect. The header's status badge
+  updates on reload; the grid's buttons and countdown flip live. `ItemCard.svelte` is no longer
+  used on the sale page (kept for WS-L's browse pages).
 
 ### Merge rules for parallel work
 - **Migrations:** WS-A owns the core tables, WS-C owns catalog tables, WS-F2 owns
