@@ -1,6 +1,8 @@
 import { runDurableObjectAlarm } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	addAddress,
+	addressOf,
 	addUser,
 	claim,
 	DAY,
@@ -42,6 +44,7 @@ async function closedSaleWithWinner(
 		closesAt: Date.now() + 10 * DAY,
 	});
 	const buyer = await addUser();
+	await addAddress(buyer);
 	const winner = entryOf(await claim(sale, buyer));
 	const backup = options.backup ? await addUser() : undefined;
 	const backupEntry = backup ? entryOf(await claim(sale, backup)) : undefined;
@@ -111,6 +114,7 @@ describe("invoices", () => {
 				await engine.markInvoicePaid({
 					...ids(sale, invoiceId),
 					buyerId: buyer,
+					addressId: addressOf(buyer),
 					shippingOptionId: "pwe",
 					paymentRef: null,
 				}),
@@ -120,6 +124,7 @@ describe("invoices", () => {
 			await engine.markInvoicePaid({
 				...ids(sale, invoiceId),
 				buyerId: buyer,
+				addressId: addressOf(buyer),
 				shippingOptionId: "ground",
 				paymentRef: "PP-123",
 			}),
@@ -155,6 +160,7 @@ describe("invoices", () => {
 			await engine.markInvoicePaid({
 				...ids(sale, invoiceId),
 				buyerId: buyer,
+				addressId: addressOf(buyer),
 				shippingOptionId: "pwe",
 				paymentRef: null,
 			}),
@@ -174,6 +180,7 @@ describe("invoices", () => {
 			await engine.markInvoicePaid({
 				...ids(sale, invoiceId),
 				buyerId: buyer,
+				addressId: addressOf(buyer),
 				shippingOptionId: "pwe",
 				paymentRef: null,
 			}),
@@ -238,6 +245,7 @@ describe("invoices", () => {
 			await engine.markInvoicePaid({
 				...ids(sale, invoiceId),
 				buyerId: buyer,
+				addressId: addressOf(buyer),
 				shippingOptionId: "pwe",
 				paymentRef: null,
 			}),
@@ -274,6 +282,7 @@ describe("invoices", () => {
 			await engine.markInvoicePaid({
 				...ids(sale, invoiceId),
 				buyerId: buyer,
+				addressId: addressOf(buyer),
 				shippingOptionId: "pwe",
 				paymentRef: null,
 			}),
@@ -295,6 +304,7 @@ describe("invoices", () => {
 			await engine.markInvoicePaid({
 				...ids(sale, invoiceId),
 				buyerId: buyer,
+				addressId: addressOf(buyer),
 				shippingOptionId: "pwe",
 				paymentRef: null,
 			}),

@@ -22,6 +22,9 @@ describe("SiteHeader", () => {
 			.element(page.getByRole("link", { name: "Settings" }))
 			.toHaveAttribute("href", "/me/settings");
 		await expect.element(page.getByRole("link", { name: "Sell" })).toHaveAttribute("href", "/sell");
+		await expect
+			.element(page.getByRole("link", { name: "Invoices" }))
+			.toHaveAttribute("href", "/me/invoices");
 		const signOut = page.getByRole("button", { name: "Sign out" });
 		await expect.element(signOut).toBeVisible();
 		expect(signOut.element().closest("form")?.getAttribute("action")).toBe("/logout");

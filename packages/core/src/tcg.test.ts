@@ -12,11 +12,9 @@ import {
 	marketHint,
 	previewBulkMarketPrice,
 	REPACK_LABEL,
-	requiresTrackedShipping,
-	shippingOptionsFor,
-	trackingRequiredFor,
 	type CatalogProduct,
 } from "./tcg.ts";
+import { requiresTrackedShipping, shippingOptionsFor, trackingRequiredFor } from "./invoice.ts";
 import { expectOk, expectRejected, makeInvoice, SHIPPING_MENU } from "./testing.ts";
 
 const listing = (

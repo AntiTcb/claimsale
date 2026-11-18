@@ -12,6 +12,13 @@
 		...(data.sale.status === "draft" || data.sale.status === "scheduled"
 			? [{ href: `${base}/import`, label: "Import" }]
 			: []),
+		{ href: `${base}/shipping`, label: "Shipping" },
+		...(data.sale.status === "live" || data.sale.status === "closed" || data.sale.status === "archived"
+			? [{ href: `${base}/buyers`, label: "Buyers" }]
+			: []),
+		...(data.sale.status === "closed" || data.sale.status === "archived"
+			? [{ href: `${base}/tracking-import`, label: "Tracking import" }]
+			: []),
 	]);
 </script>
 

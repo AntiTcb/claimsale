@@ -18,4 +18,5 @@ export * from "./io/index.ts";
 export * from "./plan-limits.ts";
 export * from "./phone.ts";
 export * from "./photos.ts";
+export * from "./shipping.ts";
 export * from "./live.ts";

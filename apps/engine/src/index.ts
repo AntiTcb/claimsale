@@ -14,6 +14,12 @@ import {
 	type MarketPriceView,
 } from "./catalog/index.ts";
 import type { EngineEnv } from "./env.ts";
+import {
+	expireExports,
+	requestExport,
+	type ExportRequestInput,
+	type ExportRequestOutcome,
+} from "./exports/index.ts";
 import { handleQueue, handleScheduled } from "./handlers.ts";
 import { health, type HealthReport } from "./health.ts";
 import { CloudflareMailer } from "./mailer.ts";
@@ -28,6 +34,7 @@ import {
 import { fromRpcResult, optionalSecret, run, runForRpc, type RpcResult } from "./runtime.ts";
 import { disabledProbe, isProbeEnabled, type TraceProbeInput, type TraceProbeResult } from "./trace-probe.ts";
 import type { InvoiceView, ItemCommandResult, Outcome, SaleView } from "./sale-engine.ts";
+import type { TrackingRowResult } from "./sale/writer.ts";
 import { saleCommand } from "./sale/entrypoint.ts";
 import type { ImportBatchResult } from "./sale/import.ts";
 import * as rpc from "./sale/rpc.ts";
@@ -44,6 +51,8 @@ export type LiveSnapshotInput = typeof LiveSnapshotInput.Type;
 export { SaleEngine } from "./sale-engine.ts";
 export type { InvoiceView, ItemCommandResult, Outcome, SaleView, SweepReport } from "./sale-engine.ts";
 export type { ImportBatchResult, ImportRowResult } from "./sale/import.ts";
+export type { TrackingRowResult } from "./sale/writer.ts";
+export type { ExportRequestInput, ExportRequestOutcome } from "./exports/index.ts";
 export type * as SaleRpc from "./sale/rpc.ts";
 export type { HealthReport } from "./health.ts";
 export type { EngineEnv } from "./env.ts";
@@ -255,6 +264,28 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 		return saleCommand(this.env, rpc.BuyerInvoiceInput, "completeInvoice", input);
 	}
 
+	/** "Rescind and pass to next" on every line of an overdue invoice (D13, WS-J). */
+	async rescindOverdueInvoice(input: rpc.SellerInvoiceInput): Promise<RpcResult<Outcome<InvoiceView>>> {
+		return saleCommand(this.env, rpc.SellerInvoiceInput, "rescindOverdue", input);
+	}
+
+	/** The seller replaces a shipped order's tracking, after confirming (IO-tracking-replace). */
+	async replaceInvoiceTracking(input: rpc.ReplaceTrackingInput): Promise<RpcResult<Outcome<InvoiceView>>> {
+		return saleCommand(this.env, rpc.ReplaceTrackingInput, "replaceTracking", input);
+	}
+
+	/** Matched tracking re-import rows (≤ 200) for one sale (PLAN §3c.3, WS-J). */
+	async applyTracking(
+		input: rpc.ApplyTrackingInput,
+	): Promise<RpcResult<Outcome<{ rows: TrackingRowResult[] }>>> {
+		return saleCommand(this.env, rpc.ApplyTrackingInput, "applyTracking", input);
+	}
+
+	/** Queues an export of one of the seller's sales (PLAN §3c.2, WS-J). */
+	async requestExport(input: ExportRequestInput): Promise<RpcResult<ExportRequestOutcome>> {
+		return runForRpc(this.env, "engine.exports.request", requestExport(this.env, input));
+	}
+
 	/** One batch (≤ 100 rows) of an item import, idempotent per (`importId`, row) (WS-G). */
 	async applyImportBatch(input: rpc.ImportBatchInput): Promise<RpcResult<Outcome<ImportBatchResult>>> {
 		return saleCommand(this.env, rpc.ImportBatchInput, "applyImportBatch", input);
@@ -264,6 +295,7 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 		const options = {
 			probeRecipient: optionalSecret(this.env, "TRACE_PROBE_TO"),
 			photos: { db: this.env.DB, images: this.env.IMAGES, decode: workerDecoder() },
+			exports: { db: this.env.DB, bucket: this.env.IMAGES },
 		};
 		await run(
 			this.env,
@@ -283,5 +315,6 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 			handleScheduled(controller).pipe(Effect.andThen(sweepTimers(this.env))),
 		);
 		await run(this.env, "engine.cron.photos", requeueStalePhotos(this.env));
+		await run(this.env, "engine.cron.exports", expireExports({ db: this.env.DB, bucket: this.env.IMAGES }));
 	}
 }

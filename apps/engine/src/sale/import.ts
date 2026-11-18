@@ -48,7 +48,7 @@ export interface ImportBatchInput extends ImportBatchBody {
 
 export type { ImportBatchResult, ImportRowResult };
 
-interface ItemImportRow {
+export interface ItemImportRow {
 	readonly id: string;
 	readonly sku: string | null;
 	readonly game_id: string;
@@ -83,7 +83,7 @@ function attributesOf(value: unknown): Attributes {
 	return out;
 }
 
-function toExisting(row: ItemImportRow): ExistingItem {
+export function toExisting(row: ItemImportRow): ExistingItem {
 	return {
 		id: row.id,
 		sku: row.sku,
