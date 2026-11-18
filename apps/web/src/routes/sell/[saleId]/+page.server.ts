@@ -12,7 +12,7 @@ import { requestAllowlistInvites } from "#lib/server/notify-rpc.ts";
 import { runExit } from "#lib/server/runtime.ts";
 import { field } from "#lib/server/forms.ts";
 import { findTimestampPhoto, publishPhotoState } from "#lib/server/images.ts";
-import { countItems } from "#lib/server/items.ts";
+import { countItems, listItems } from "#lib/server/items.ts";
 import {
 	countActiveSales,
 	deleteDraft,
@@ -28,13 +28,14 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
 	const seller = await requireSeller(event);
 	const saleId = event.params.saleId;
-	const [itemCount, photos, timestamp, active, access, allowlist] = await Promise.all([
+	const [itemCount, photos, timestamp, active, access, allowlist, itemRows] = await Promise.all([
 		countItems(db(), saleId),
 		publishPhotoState(db(), saleId, seller.id),
 		findTimestampPhoto(db(), saleId),
 		countActiveSales(db(), seller.id, saleId),
 		findSaleById(db(), saleId),
 		readAllowlist(db(), saleId),
+		listItems(db(), saleId),
 	]);
 	return {
 		itemCount,
@@ -53,6 +54,17 @@ export const load: PageServerLoad = async (event) => {
 		hasPassword: access?.hasPassword ?? false,
 		allowlist: allowlist.join("\n"),
 		caps: { sales: FREE_ACTIVE_SALE_CAP, items: FREE_ITEM_CAP, maxLiveDays: MAX_LIVE_DURATION / DAY },
+		// "Copy as text" (DISC-copy-text): buyer-facing fields only, never the hidden minimum or SKU.
+		textExport: {
+			url: `${event.url.origin}/s/${access?.slug ?? ""}`,
+			items: itemRows.map((i) => ({
+				title: i.title,
+				priceCents: i.priceCents,
+				quantity: i.quantity,
+				condition: i.condition,
+				state: i.state,
+			})),
+		},
 	};
 };
 

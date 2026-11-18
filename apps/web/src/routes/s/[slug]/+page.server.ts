@@ -3,9 +3,12 @@ import { fail, redirect } from "@sveltejs/kit";
 import { env } from "cloudflare:workers";
 import { cookieSecret, db } from "#lib/server/context.ts";
 import { field } from "#lib/server/forms.ts";
+import { follow, isFollowing, unfollow } from "#lib/server/follows.ts";
 import { findTimestampPhoto, photosByItem } from "#lib/server/images.ts";
 import { listItems } from "#lib/server/items.ts";
 import { liveSnapshotFor } from "#lib/server/live.ts";
+import { fileReport } from "#lib/server/moderation.ts";
+import { requireUser } from "#lib/server/sell.ts";
 import {
 	allowUnlockAttempt,
 	unlockCookieName,
@@ -27,6 +30,9 @@ import type { Actions, PageServerLoad } from "./$types";
 export const load: PageServerLoad = async (event) => {
 	const { sale, access, isSeller } = await loadSaleForViewer(event, event.params.slug);
 	const header = saleHeader(sale);
+	const viewer = event.locals.user?.id ?? null;
+	// D41: follow the seller from their sale (WS-L).
+	const following = viewer !== null && !isSeller && (await isFollowing(db(), viewer, sale.sellerId));
 	if (access === "locked") {
 		return {
 			header,
@@ -43,6 +49,7 @@ export const load: PageServerLoad = async (event) => {
 			saleId: null,
 			live: null,
 			signedIn: event.locals.user !== null,
+			following,
 		};
 	}
 	const rows = await listItems(db(), sale.id);
@@ -69,10 +76,50 @@ export const load: PageServerLoad = async (event) => {
 		saleId: sale.id,
 		live,
 		signedIn: event.locals.user !== null,
+		following,
 	};
 };
 
 export const actions: Actions = {
+	/** D41: follow the sale's seller. */
+	follow: async (event) => {
+		const user = requireUser(event);
+		const { sale } = await loadSaleForViewer(event, event.params.slug);
+		const result = await follow(db(), user.id, sale.sellerId, Date.now());
+		if (!result.ok) return fail(400, { followError: result.error.message });
+		return { following: true };
+	},
+	unfollow: async (event) => {
+		const user = requireUser(event);
+		const { sale } = await loadSaleForViewer(event, event.params.slug);
+		await unfollow(db(), user.id, sale.sellerId);
+		return { following: false };
+	},
+	/**
+	 * Report the sale to the admin queue; only a viewer who can see it can report it.
+	 *
+	 * @spec ADMIN-report-queue
+	 */
+	report: async (event) => {
+		const user = requireUser(event);
+		const { sale, access } = await loadSaleForViewer(event, event.params.slug);
+		if (access !== "ok") return fail(403, { reportError: "Unlock the sale to report it" });
+		const data = await event.request.formData();
+		const result = await fileReport(
+			db(),
+			user.id,
+			{
+				targetKind: "sale",
+				targetId: sale.id,
+				reason: field(data, "reason"),
+				details: field(data, "details"),
+			},
+			Date.now(),
+		);
+		if (!result.ok)
+			return fail(result.error.code === "rate_limited" ? 429 : 400, { reportError: result.error.message });
+		return { reported: true };
+	},
 	/** Unlocks a password-protected private sale for this browser session (D5). */
 	unlock: async (event) => {
 		const { sale, access } = await loadSaleForViewer(event, event.params.slug);

@@ -215,6 +215,10 @@ Needs WS-A, WS-C; best after WS-H.
   this card?", follows, OG share cards (Satori), "copy as text" export, landing page.
 - Pilot checklist: domain + Email Service onboarding, ToS / prohibited items page, load
   test on staging, Sentry dashboards, backup/restore drill with D1 Time Travel.
+- **Split (2026-11-18):** WS-L1 is discovery (browse, `/g/[game]`, search, "who has this
+  card?", follow and report on sale pages, copy as text, landing page, sitemap) plus
+  `docs/PILOT_CHECKLIST.md`; WS-L2 is the OG share cards (S13), kept apart because they add
+  Satori and resvg-wasm to the web Worker's bundle.
 
 ### After the pilot (PLAN Phase 2)
 Stripe Billing for Pro, merged invoices (D16), Discord webhooks, Q&A, web push, auto

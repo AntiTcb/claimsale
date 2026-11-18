@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from "$app/forms";
 	import { invalidateAll } from "$app/navigation";
+	import CopyAsText from "#lib/components/CopyAsText.svelte";
 	import SaleDetailsFields from "#lib/components/SaleDetailsFields.svelte";
 	import TimestampPhoto from "#lib/components/TimestampPhoto.svelte";
 	import type { PageProps } from "./$types";
@@ -147,6 +148,14 @@
 			photo={data.timestamp.photo}
 			disabled={!editable}
 			onchange={() => invalidateAll()}
+		/>
+
+		<CopyAsText
+			title={sale.title}
+			url={data.textExport.url}
+			liveAt={sale.liveAt}
+			closesAt={sale.closesAt}
+			items={data.textExport.items}
 		/>
 
 		{#if sale.status === "draft"}

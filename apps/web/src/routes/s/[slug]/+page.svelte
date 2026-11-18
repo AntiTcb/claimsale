@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { enhance } from "$app/forms";
 	import { invalidateAll } from "$app/navigation";
 	import LiveSaleGrid from "#lib/components/LiveSaleGrid.svelte";
+	import ReportButton from "#lib/components/ReportButton.svelte";
 	import SaleStatusBadge from "#lib/components/SaleStatusBadge.svelte";
 	import TextField from "#lib/components/TextField.svelte";
 	import { PAYMENT_METHODS } from "#lib/listing-input.ts";
@@ -47,6 +49,37 @@
 					>Message the seller</a
 				>{/if}
 		</p>
+		{#if !data.isSeller}
+			<div class="flex flex-wrap items-center gap-4">
+				{#if data.signedIn}
+					<form method="POST" action={data.following ? "?/unfollow" : "?/follow"} use:enhance>
+						<button type="submit" class="rounded-md border border-zinc-400 px-3 py-1 text-sm"
+							>{data.following ? "Unfollow" : "Follow"}<span class="sr-only"
+								>{` ${header.sellerDisplayName}`}</span
+							></button
+						>
+					</form>
+				{/if}
+				{#if form && "following" in form}
+					<p role="status" class="text-sm text-green-800 dark:text-green-300">
+						{form.following
+							? "Following. We'll tell you when they schedule or open a public sale."
+							: "You unfollowed them."}
+					</p>
+				{:else if form && "followError" in form}
+					<p role="alert" class="text-sm text-red-700 dark:text-red-400">{form.followError}</p>
+				{/if}
+				{#if !data.locked}
+					<ReportButton
+						kind="sale"
+						what="this sale"
+						signedIn={data.signedIn}
+						next="/s/{header.slug}"
+						result={form && ("reported" in form || "reportError" in form) ? form : null}
+					/>
+				{/if}
+			</div>
+		{/if}
 		{#if data.isSeller && header.status === "draft"}
 			<p role="note" class="rounded-md bg-amber-50 p-3 text-amber-950 dark:bg-amber-950 dark:text-amber-100">
 				This is a draft. Only you can see it.
@@ -59,7 +92,9 @@
 			<h2 class="text-lg font-semibold">This sale is private</h2>
 			{#if data.locked.hasPassword}
 				<p class="mt-2">Enter the password the seller shared.</p>
-				{#if form?.message}<p role="alert" class="mt-3 text-red-700 dark:text-red-400">{form.message}</p>{/if}
+				{#if form && "message" in form}<p role="alert" class="mt-3 text-red-700 dark:text-red-400">
+						{form.message}
+					</p>{/if}
 				<form method="POST" action="?/unlock" class="mt-4 flex flex-col gap-3">
 					<TextField label="Sale password" name="password" type="password" autocomplete="off" required />
 					<button

@@ -13,6 +13,7 @@ describe("SiteHeader", () => {
 			.element(page.getByRole("link", { name: "Create account" }))
 			.toHaveAttribute("href", "/signup");
 		await expect.element(page.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
+		await expect.element(page.getByRole("link", { name: "Browse" })).toHaveAttribute("href", "/browse");
 	});
 
 	it("shows the handle, settings and a sign-out form when signed in", async () => {
@@ -22,6 +23,7 @@ describe("SiteHeader", () => {
 			.element(page.getByRole("link", { name: "Settings" }))
 			.toHaveAttribute("href", "/me/settings");
 		await expect.element(page.getByRole("link", { name: "Sell" })).toHaveAttribute("href", "/sell");
+		await expect.element(page.getByRole("link", { name: "Browse" })).toHaveAttribute("href", "/browse");
 		await expect
 			.element(page.getByRole("link", { name: "Invoices" }))
 			.toHaveAttribute("href", "/me/invoices");

@@ -3,7 +3,14 @@ import { catalogProducts, catalogSets } from "@claimsale/db/catalog";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testD1 } from "../../../test/d1.ts";
 import { addUser } from "../../../test/fixtures.ts";
-import { follow, followerCount, isFollowing, unfollow, userIdByHandle } from "./follows.ts";
+import {
+	follow,
+	followedSellerIds,
+	followerCount,
+	isFollowing,
+	unfollow,
+	userIdByHandle,
+} from "./follows.ts";
 import { addWant, listWants, removeWant, WANT_LIST_MAX } from "./want-list.ts";
 
 let db: Db;
@@ -25,6 +32,14 @@ describe("follows (D41)", () => {
 		await unfollow(db, "ash", "brock");
 		expect(await isFollowing(db, "ash", "brock")).toBe(false);
 		expect(await followerCount(db, "brock")).toBe(0);
+	});
+
+	it("lists the sellers a user follows, for the landing page", async () => {
+		await addUser(db, "misty", { handle: "misty" });
+		await follow(db, "ash", "brock", 1);
+		await follow(db, "ash", "misty", 2);
+		expect((await followedSellerIds(db, "ash")).toSorted()).toEqual(["brock", "misty"]);
+		expect(await followedSellerIds(db, "brock")).toEqual([]);
 	});
 
 	it("nobody follows themselves", async () => {

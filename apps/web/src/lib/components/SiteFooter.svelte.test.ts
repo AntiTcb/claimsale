@@ -9,6 +9,14 @@ describe("SiteFooter", () => {
 		await expect.element(page.getByText("© 2026 ClaimSale")).toBeVisible();
 	});
 
+	it("links to browse and the prohibited items policy", async () => {
+		await render(SiteFooter, { year: 2026 });
+		await expect.element(page.getByRole("link", { name: "Browse" })).toHaveAttribute("href", "/browse");
+		await expect
+			.element(page.getByRole("link", { name: "Prohibited items" }))
+			.toHaveAttribute("href", "/policies/prohibited-items");
+	});
+
 	it("defaults to the current year", async () => {
 		await render(SiteFooter);
 		await expect.element(page.getByText(`© ${new Date().getFullYear()} ClaimSale`)).toBeVisible();

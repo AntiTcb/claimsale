@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { linkFromEmail, newIdentity, signUp, waitForRouter, waitForWelcome } from "./auth-helpers.ts";
 import { expect, test } from "./fixtures.ts";
-import { localDateTime, photo, signedUpSeller, timestampAndChecks } from "./sell-helpers.ts";
+import { publicSaleWithItem, signedUpSeller } from "./sell-helpers.ts";
 
 // Notifications and messaging (milestone 9, WS-K): a buyer follows a seller; the seller
 // schedules a public sale; the follower's notification email lands in the capture outbox
@@ -25,34 +25,6 @@ async function emailTo(request: APIRequestContext, to: string, subject: string) 
 		)
 		.toContain(subject);
 	return found!;
-}
-
-async function publicSaleWithItem(page: Page, title: string): Promise<string> {
-	await page.goto("/sell");
-	await page.getByRole("link", { name: "New sale" }).click();
-	await page.getByLabel("Title").fill(title);
-	await page.getByRole("radio", { name: /^Public/ }).check();
-	await page.getByRole("button", { name: "Continue to terms" }).click();
-	await expect(page.getByRole("heading", { name: "Terms" })).toBeVisible();
-	await page.waitForLoadState("networkidle");
-	await page.getByRole("button", { name: "Continue to items" }).click();
-	await expect(page.getByRole("heading", { name: "Items" })).toBeVisible();
-	await page.waitForLoadState("networkidle");
-	const form = page.getByRole("form", { name: "Add an item" });
-	await form.getByLabel("Title").fill("Charizard Base Set 4/102");
-	await form.getByLabel("Price ($)").fill("250");
-	await form.getByLabel("Price ($)").press("Enter");
-	await expect(page.getByTestId("item-row")).toHaveCount(1);
-	await page
-		.getByLabel("Add photos for Charizard Base Set 4/102")
-		.setInputFiles(await photo(page, "#cc5522"));
-	await expect(page.getByRole("img", { name: "Photo 1 of Charizard Base Set 4/102" })).toBeVisible();
-	await page.getByRole("link", { name: "Next: schedule the sale" }).click();
-	await timestampAndChecks(page);
-	await page.getByLabel("Goes live at (your time)").fill(await localDateTime(page, 2));
-	await page.getByRole("button", { name: "Schedule sale" }).click();
-	await expect(page.getByText(/^Scheduled\. Goes live/)).toBeVisible();
-	return (await page.getByRole("link", { name: "View sale page" }).getAttribute("href"))!;
 }
 
 test.describe("notifications and messaging", () => {
