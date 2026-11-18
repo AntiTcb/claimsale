@@ -22,7 +22,7 @@ questions are **T#**, each with a recommended default in *italics*.
 | S10 | **Twilio Verify** for phone OTP, rejecting VoIP numbers. |
 | S11 | **shadcn-svelte** (bits-ui, Tailwind v4), with light and dark themes following the system setting. |
 | S12 | Limited Markdown in descriptions, plain text in messages. |
-| S13 | **`@ethercorps/sveltekit-og`** ([sveltekit-og.dev](https://sveltekit-og.dev)) for share images, cached in R2 per sale version. It renders Svelte components, uses satori + resvg-wasm internally, and detects workerd at runtime. |
+| S13 | **`@ethercorps/sveltekit-og`** ([sveltekit-og.dev](https://sveltekit-og.dev)) for share images, cached in R2 per sale version. It renders Svelte components, uses satori + resvg-wasm internally, and detects workerd at runtime. **Built (2026-11-18, WS-L2):** `/og/s/[slug].png` renders `ShareCardImage.svelte` with bundled Noto Sans fonts, caches the PNG in the `IMAGES` bucket under `og/sales/<saleId>/<version>.png` (version = design number + a hash of the card) and deletes older versions; the sale page links the versioned URL in `og:image` (`SHARE-private-title-only`, `SHARE-cache-version`). Bundle size and limits: IMPLEMENTATION_PLAN WS-L2 notes. |
 | S14 | A hand-written service worker (manifest + push only). |
 | S15 | Hand-written client-side image resizing (WebP, max 2000px). |
 | S16 | **Sentry** + Cloudflare Web Analytics. Seller analytics use Analytics Engine. The observability design is in section 4. |

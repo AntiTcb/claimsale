@@ -19,6 +19,8 @@
 		"@claimsale/core": "workspace:*",
 		"@claimsale/db": "workspace:*",
 		"@claimsale/observability": "workspace:*",
+		"@ethercorps/sveltekit-og": "4.3.0",
+		"@fontsource/noto-sans": "^5.3.0",
 		"better-auth": "catalog:",
 		"effect": "catalog:",
 		"fflate": "catalog:",
