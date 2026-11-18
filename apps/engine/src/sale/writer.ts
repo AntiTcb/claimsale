@@ -6,6 +6,7 @@ import {
 	flagsSeller,
 	fromStored,
 	isOverturned,
+	overturnCountSince,
 	mutualAnswerDueAt,
 	resolve as coreResolve,
 	validateContestText,
@@ -1011,7 +1012,7 @@ export class SaleWriter {
 	 *
 	 * @spec SM-4.3.1-contest — the admin can re-attribute a contested rescind.
 	 * @spec SM-4.3.1-fraud-review — a held suspected-fraud rescind counts once resolved.
-	 * @spec SM-4.3.1-abuse-guard — the third overturned buyer-fault rescind flags the seller.
+	 * @spec SM-4.3.1-abuse-guard — the third overturned buyer-fault rescind in 30 days flags the seller.
 	 */
 	resolveRescind(input: {
 		rescindId: string;
@@ -1040,9 +1041,9 @@ export class SaleWriter {
 				const earlier = await this.db
 					.prepare(
 						`SELECT count(*) AS n FROM rescinds WHERE seller_id = ?1 AND id != ?2 AND fault = 'buyer'
-						AND contested_at IS NOT NULL AND resolved_fault IN ('seller', 'neutral')`,
+						AND contested_at IS NOT NULL AND resolved_fault IN ('seller', 'neutral') AND resolved_at >= ?3`,
 					)
-					.bind(row.seller_id, row.id)
+					.bind(row.seller_id, row.id, overturnCountSince(now))
 					.first<{ n: number }>();
 				const overturned = (earlier?.n ?? 0) + 1;
 				if (flagsSeller(overturned)) {

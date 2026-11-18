@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a464b5f0-8678-4560-99b4-0ee8b6f095de",
+  "id": "53218f40-cac4-4a5d-a10e-194cb38fa35d",
   "prevId": "21822f10-c1c8-4545-a638-3a17b59a5f52",
   "tables": {
     "addresses": {
@@ -3446,6 +3446,34 @@
         "banned_by": {
           "name": "banned_by",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "decision_window_max_hours": {
+          "name": "decision_window_max_hours",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "decision_window_request_hours": {
+          "name": "decision_window_request_hours",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "decision_window_request_reason": {
+          "name": "decision_window_request_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "decision_window_requested_at": {
+          "name": "decision_window_requested_at",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

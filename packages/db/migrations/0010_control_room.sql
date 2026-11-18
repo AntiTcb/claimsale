@@ -21,4 +21,8 @@ ALTER TABLE `rescinds` ADD `answered_at` integer;--> statement-breakpoint
 CREATE INDEX `rescinds_phase` ON `rescinds` (`phase`,`created_at`);--> statement-breakpoint
 ALTER TABLE `users` ADD `banned_at` integer;--> statement-breakpoint
 ALTER TABLE `users` ADD `banned_reason` text;--> statement-breakpoint
-ALTER TABLE `users` ADD `banned_by` text;
+ALTER TABLE `users` ADD `banned_by` text;--> statement-breakpoint
+ALTER TABLE `users` ADD `decision_window_max_hours` integer;--> statement-breakpoint
+ALTER TABLE `users` ADD `decision_window_request_hours` integer;--> statement-breakpoint
+ALTER TABLE `users` ADD `decision_window_request_reason` text;--> statement-breakpoint
+ALTER TABLE `users` ADD `decision_window_requested_at` integer;

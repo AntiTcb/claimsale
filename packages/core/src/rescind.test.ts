@@ -12,6 +12,8 @@ import {
 	isRescindReasonCode,
 	isResolvedFault,
 	mutualAnswerDueAt,
+	OVERTURNED_RESCINDS_WINDOW,
+	overturnCountSince,
 	recordEffects,
 	resolve,
 	RESCIND_REASON_CODES,
@@ -130,6 +132,11 @@ describe("abuse guard and records", () => {
 	it("[SM-4.3.1-abuse-guard] the third overturned rescind flags the seller", () => {
 		expect(flagsSeller(2)).toBe(false);
 		expect(flagsSeller(3)).toBe(true);
+	});
+
+	it("[SM-4.3.1-abuse-guard] only overturns from the last 30 days count", () => {
+		expect(overturnCountSince(T0 + 30 * DAY)).toBe(T0);
+		expect(OVERTURNED_RESCINDS_WINDOW).toBe(30 * DAY);
 	});
 
 	it("[REP-buyer-record] counts final marks by resolved fault; held, contested and waiting rescinds count for no one", () => {

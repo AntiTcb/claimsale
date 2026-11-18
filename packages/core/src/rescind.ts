@@ -1,4 +1,4 @@
-import { ok, reject, type Actor, type Millis, type Rejection, type Result } from "./common.ts";
+import { DAY, ok, reject, type Actor, type Millis, type Rejection, type Result } from "./common.ts";
 import { CONTEST_WINDOW, MUTUAL_RESPONSE_WINDOW } from "./plans.ts";
 
 /**
@@ -299,6 +299,18 @@ export function isOverturned(rescind: Rescind): boolean {
 
 /** Overturned buyer-fault rescinds after which a seller is flagged for admin review. */
 export const OVERTURNED_RESCINDS_FLAG_AT = 3;
+
+/** Only rescinds overturned this recently count toward the flag (owner decision D68). */
+export const OVERTURNED_RESCINDS_WINDOW: Millis = 30 * DAY;
+
+/**
+ * The earliest resolution time that still counts toward the abuse-guard flag at `now`.
+ *
+ * @spec SM-4.3.1-abuse-guard — the count covers the last 30 days.
+ */
+export function overturnCountSince(now: Millis): Millis {
+	return now - OVERTURNED_RESCINDS_WINDOW;
+}
 
 /**
  * Whether a seller with this many overturned buyer-fault rescinds goes to the admin queue.

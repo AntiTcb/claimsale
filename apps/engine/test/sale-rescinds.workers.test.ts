@@ -282,6 +282,41 @@ describe("admin resolution", () => {
 		await overturn("seller");
 		expect((await flags()).results).toHaveLength(1);
 	});
+
+	it("only overturns from the last 30 days count toward the flag [SM-4.3.1-abuse-guard]", async () => {
+		const sellerId = await addUser(uid("seller"));
+		const admin = await addAdmin();
+		const overturn = async () => {
+			const sale = await makeSale({ sellerId, closesAt: Date.now() + 10 * DAY });
+			const { buyer, rescindId } = await rescinded("buyer_nonpayment", sale);
+			value(
+				await engine.contestRescind({
+					saleId: sale.saleId,
+					rescindId,
+					buyerId: buyer,
+					text: "I did pay for it",
+				}),
+			);
+			value(await engine.resolveRescind({ saleId: sale.saleId, rescindId, adminId: admin, fault: "seller" }));
+			return rescindId;
+		};
+		const old = await overturn();
+		await overturn();
+		// The first overturn is now 31 days old.
+		await db
+			.prepare("UPDATE rescinds SET resolved_at = ?1 WHERE id = ?2")
+			.bind(Date.now() - 31 * DAY, old)
+			.run();
+		await overturn();
+		const open = () =>
+			db
+				.prepare("SELECT count(*) AS n FROM account_flags WHERE user_id = ?1 AND resolved_at IS NULL")
+				.bind(sellerId)
+				.first<{ n: number }>();
+		expect((await open())?.n).toBe(0);
+		await overturn();
+		expect((await open())?.n).toBe(1);
+	});
 });
 
 describe("bans", () => {

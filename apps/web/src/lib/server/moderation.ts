@@ -37,7 +37,13 @@ import { consume, type Limit } from "./rate-limit.ts";
 
 type Rejected = Result<never, Rejection>;
 
-async function audit(db: Db, adminId: string, action: string, data: Record<string, unknown>, now: Millis) {
+export async function audit(
+	db: Db,
+	adminId: string,
+	action: string,
+	data: Record<string, unknown>,
+	now: Millis,
+) {
 	await db.insert(auditLog).values({
 		id: uuidv7(),
 		saleId: null,

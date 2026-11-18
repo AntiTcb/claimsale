@@ -27,6 +27,30 @@
 		<p role="status" class="mt-3 rounded-md bg-zinc-100 p-3 dark:bg-zinc-800">{form.message}</p>
 	{/if}
 
+	{#if data.windowRequests.length > 0}
+		<section class="mt-4" aria-labelledby="window-requests">
+			<h2 id="window-requests" class="font-semibold">Decision window requests</h2>
+			<ul class="mt-2 flex flex-col gap-2 text-sm">
+				{#each data.windowRequests as request (request.userId)}
+					<li class="flex flex-wrap items-center gap-2">
+						<a href="/admin/users?id={request.userId}" class="underline">{who(request)}</a>
+						asks for {request.hours} hours (now {request.capHours}) on {fmt(request.requestedAt)}: {request.reason}
+						<form method="POST" action="?/approveWindow" use:enhance>
+							<input type="hidden" name="userId" value={request.userId} />
+							<button type="submit" class={button}>Approve <span class="sr-only">{who(request)}</span></button
+							>
+						</form>
+						<form method="POST" action="?/declineWindow" use:enhance>
+							<input type="hidden" name="userId" value={request.userId} />
+							<button type="submit" class={button}>Decline <span class="sr-only">{who(request)}</span></button
+							>
+						</form>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
+
 	<form method="GET" class="mt-4 flex items-end gap-2">
 		<label class="flex flex-col text-sm"
 			>Handle or exact email <input name="q" value={data.q} class="w-64 {input}" /></label
@@ -126,6 +150,23 @@
 				>
 				<button type="submit" class={button}>Grant Pro</button>
 			</form>
+
+			{#if data.window}
+				<h3 class="mt-4 font-semibold">Decision window</h3>
+				<p class="text-sm">
+					Cap: {data.window.capHours} hours{data.window.approvedHours === null
+						? " (default)"
+						: " (approved)"}{data.window.request
+						? ` · asked for ${data.window.request.hours} hours: ${data.window.request.reason}`
+						: ""}
+				</p>
+				{#if data.window.approvedHours !== null}
+					<form method="POST" action="?/resetWindow" use:enhance class="mt-2">
+						<input type="hidden" name="userId" value={d.user.id} />
+						<button type="submit" class={button}>Reset to 7 days</button>
+					</form>
+				{/if}
+			{/if}
 		</article>
 	{/if}
 </section>

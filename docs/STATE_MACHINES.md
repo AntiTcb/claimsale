@@ -187,7 +187,7 @@ reversed payment). The reason code decides whose record it affects:
 - **`mutual_agreement` requires the buyer's confirmation.** The buyer gets an
   "Agree / Dispute" prompt; agreeing marks it neutral, and no response in 72h also counts as neutral.
 - **Abuse guard:** if a seller's buyer-fault rescinds are contested and overturned
-  repeatedly, the admin queue flags that seller.
+  repeatedly (3 times in 30 days, D68), the admin queue flags that seller.
 - **Refund owed:** set for any rescind after `buyer_paid` except
   `buyer_payment_reversed` (the buyer already has their money back). The seller marks
   "Refunded" with an optional reference; the buyer confirms or disputes.
@@ -393,8 +393,9 @@ case open, the code does the following; change the spec and the code together.
 - **The admin resolves** a contested or held rescind to `buyer`, `seller` or `neutral`.
   Only the admin can (users with `role = admin`, checked by the engine).
 - **Abuse guard:** "overturned" means a contested rescind whose code is buyer-fault and
-  that the admin resolved to seller or neutral. The third one opens an
-  `overturned_rescinds` account flag on the seller (one open flag at a time).
+  that the admin resolved to seller or neutral. The third one resolved within 30 days opens an
+  `overturned_rescinds` account flag on the seller (one open flag at a time); older ones no
+  longer count (D68).
 - **Rows written before the `phase` column** get their phase derived: resolved → final,
   contested → contested, `suspected_fraud` → admin review, `mutual_agreement` → awaiting
   the buyer, otherwise final.
@@ -430,10 +431,10 @@ IDs stay in the table, marked ~~struck~~.
 | `SM-4.1-min-offer` | A Pro seller's hidden minimum auto-declines lower offers | 4.1 |
 | `SM-4.1-one-open-entry` | One open or countered entry per buyer per item | 4.1 |
 | `SM-4.1-unit-limit` | The per-buyer unit limit is enforced | 4.1 |
-| `SM-4.1-buyer-requirements` | Blocked or unverified buyers are rejected; Pro buyers bypass the email and new-account requirements | 4.1 |
+| `SM-4.1-buyer-requirements` | Blocked or unverified buyers are rejected; Pro buyers bypass the email and new-account requirements; the verified email isn't a seller setting (D68) | 4.1, D68 |
 | `SM-4.2-award` | The seller awards an open entry when a unit is free | 4.2 |
 | `SM-4.2-window-expiry` | Window expiry awards the earliest open claim(s), never an offer | 4.2 |
-| `SM-4.2-window-length` | The window is 24h for free sellers and configurable for Pro | 4.2 |
+| `SM-4.2-window-length` | The window is 24h for free sellers and configurable for Pro, up to 7 days or the seller's admin-approved cap (at most 30 days) | 4.2, D68 |
 | `SM-4.2-ranking` | Rank is amount desc, then time asc; the seller can override | 1, 4.2 |
 | `SM-4.3-seller-rescind` | Seller rescind requires a reason code and explanation | 4.3 |
 | `SM-4.3-pro-rescind` | A Pro buyer can rescind until the invoice is sent, max 5 per month | 4.3 |
@@ -512,10 +513,11 @@ IDs stay in the table, marked ~~struck~~.
 | `SM-2-photo-cap` | Photos per item: 4 for free sellers, 12 for Pro, checked server-side on upload | 2, D33 |
 | `TCG-catalog-ingest` | Catalog ingestion is idempotent and resumable: re-ingesting the same TCGCSV build writes no rows, sets that fail or don't fit in a run are retried by the next one, and only autofill fields plus the latest market price per product + subtype are stored (no images, no card text) | PLAN 3 (TCG catalog), TECH_STACK S32 |
 | `SM-9-entry-rate-limit` | Claims and offers are rate-limited per buyer before the Durable Object; over the limit → `rate_limited`, nothing written | 9 |
-| `SM-4.3.1-abuse-guard` | When the admin overturns a seller's third contested buyer-fault rescind (moves it to seller or neutral), the seller is flagged in the admin queue | 4.3.1, 9a |
+| `SM-4.3.1-abuse-guard` | When the admin overturns a seller's third contested buyer-fault rescind (moves it to seller or neutral) within 30 days, counted by when each was resolved, the seller is flagged in the admin queue | 4.3.1, 9a, D68 |
 | `REP-buyer-record` | The seller sees each claimant's record (completed purchases, non-pay, payment reversed, take-backs, violations, Pro rescinds, member since); only final rescinds count, by their resolved fault | PLAN 3b, 4.3.1 |
 | `ADMIN-ban` | An admin bans an account with a reason: its sessions end, it can't sign in again, and the engine rejects its claims and offers; unbanning restores sign-in. Every ban and unban is audit-logged | PLAN 9, D22 |
 | `ADMIN-pro-grant` | An admin grants seller, buyer or bundle Pro as a `granted` subscription (open-ended or until a date) and can revoke it; tiers follow at once; every grant and revoke is audit-logged | PLAN 3a, 4 (Phase 1) |
+| `ADMIN-decision-window` | A Pro seller asks for a decision-window cap above 7 days (up to 30) with a reason; an admin approves it (the cap becomes the requested hours) or declines it, and can reset an approved cap to 7 days; every decision and reset is audit-logged | D68 |
 | `ADMIN-report-queue` | A signed-in user reports a user, sale, item or message with a reason; one open report per reporter and target; reports wait in the admin queue until resolved or dismissed with a note | PLAN 9 |
 | `SM-6-shipping-menu` | The seller's shipping menu has 1–10 options, each with a label and a flat price of $0–$100 in cents and a tracked flag; option IDs stay stable across edits | 6, D15 |
 | `SM-6-address-snapshot` | "I've paid" needs one of the buyer's saved addresses; the invoice keeps a snapshot (and the shipping option's label), which later address-book edits don't change; the seller sees it only on that buyer's invoices | 6, PLAN 3 (Invoice) |

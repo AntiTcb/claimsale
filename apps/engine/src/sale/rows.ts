@@ -32,6 +32,8 @@ export interface SaleRow {
 	readonly shipping: string | null;
 	readonly item_count: number;
 	readonly seller_pro: number;
+	/** The seller's admin-approved decision-window cap in hours (D68); null for the 7-day default. */
+	readonly window_cap_hours?: number | null;
 }
 
 export interface ItemRow {

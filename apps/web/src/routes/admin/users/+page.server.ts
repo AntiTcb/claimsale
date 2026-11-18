@@ -1,17 +1,28 @@
 import { fail, type RequestEvent } from "@sveltejs/kit";
 import { requireAdmin } from "#lib/server/admin.ts";
 import { db } from "#lib/server/context.ts";
+import {
+	decideWindowRequest,
+	pendingWindowRequests,
+	resetWindowCap,
+	sellerWindow,
+} from "#lib/server/decision-window.ts";
 import { field } from "#lib/server/forms.ts";
 import { banUser, findUsers, grantPro, revokePro, unbanUser, userDetail } from "#lib/server/moderation.ts";
 import type { Actions, PageServerLoad } from "./$types";
 
-/** Find an account; ban or unban it; grant or revoke Pro (ADMIN-ban, ADMIN-pro-grant). */
+/** Find an account; ban or unban it; grant or revoke Pro; answer decision-window requests (ADMIN-ban, ADMIN-pro-grant, ADMIN-decision-window). */
 export const load: PageServerLoad = async (event) => {
 	requireAdmin(event);
 	const q = event.url.searchParams.get("q") ?? "";
 	const id = event.url.searchParams.get("id");
-	const [results, detail] = await Promise.all([findUsers(db(), q), id ? userDetail(db(), id) : null]);
-	return { q, results, detail };
+	const [results, detail, window, windowRequests] = await Promise.all([
+		findUsers(db(), q),
+		id ? userDetail(db(), id) : null,
+		id ? sellerWindow(db(), id) : null,
+		pendingWindowRequests(db()),
+	]);
+	return { q, results, detail, window, windowRequests };
 };
 
 const DAY = 86_400_000;
@@ -77,5 +88,26 @@ export const actions: Actions = {
 			(adminId, userId, data, now) =>
 				revokePro(db(), { userId, adminId, planId: field(data, "planId") }, now),
 			"Grant revoked.",
+		),
+	/** @spec ADMIN-decision-window */
+	approveWindow: (event) =>
+		act(
+			event,
+			(adminId, userId, _data, now) => decideWindowRequest(db(), { userId, adminId, approve: true }, now),
+			"Longer decision window approved.",
+		),
+	/** @spec ADMIN-decision-window */
+	declineWindow: (event) =>
+		act(
+			event,
+			(adminId, userId, _data, now) => decideWindowRequest(db(), { userId, adminId, approve: false }, now),
+			"Request declined.",
+		),
+	/** @spec ADMIN-decision-window */
+	resetWindow: (event) =>
+		act(
+			event,
+			(adminId, userId, _data, now) => resetWindowCap(db(), { userId, adminId }, now),
+			"Decision window cap reset to 7 days.",
 		),
 };

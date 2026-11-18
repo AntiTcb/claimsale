@@ -82,7 +82,8 @@ export function saleQuery(db: D1Database, saleId: string, now: Millis) {
 		.prepare(
 			`SELECT s.id, s.seller_id, s.status, s.live_at, s.closes_at, s.title, s.terms, s.shipping,
 				(SELECT count(*) FROM items WHERE items.sale_id = s.id) AS item_count,
-				${PRO_SQL("s.seller_id", "seller", "?2")} AS seller_pro
+				${PRO_SQL("s.seller_id", "seller", "?2")} AS seller_pro,
+				(SELECT decision_window_max_hours FROM users WHERE users.id = s.seller_id) AS window_cap_hours
 			FROM sales s WHERE s.id = ?1`,
 		)
 		.bind(saleId, now);
@@ -102,7 +103,7 @@ export function toSaleRecord(row: SaleRow): SaleRecord {
 			sellerTier,
 			itemCount: row.item_count,
 		},
-		settings: readSaleSettings(row.terms, row.shipping, sellerTier),
+		settings: readSaleSettings(row.terms, row.shipping, sellerTier, row.window_cap_hours ?? null),
 	};
 }
 

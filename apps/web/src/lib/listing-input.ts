@@ -155,8 +155,6 @@ export interface SaleTerms {
 	readonly allowBackupOffers: boolean;
 	/** D25: Pro sellers only; null is the default 24h window. */
 	readonly decisionWindowHours: number | null;
-	/** D20: claims need a verified email; on by default (Pro buyers bypass it, D29). */
-	readonly requireVerifiedEmail: boolean;
 	/** D29: the youngest account that may claim, in days; 0 allows any (Pro buyers bypass it). */
 	readonly minAccountAgeDays: number;
 	/** PLAN 3 (Claim): "Claims are binding. Claim for $40?" On by default; off for sales where speed matters. */
@@ -172,13 +170,14 @@ export const DEFAULT_TERMS: SaleTerms = {
 	reviewEveryClaim: false,
 	allowBackupOffers: true,
 	decisionWindowHours: null,
-	requireVerifiedEmail: true,
 	minAccountAgeDays: 0,
 	confirmClaims: true,
 };
 
-/** The longest decision window a Pro seller can set: the longest a sale can run (D42). */
-export const DECISION_WINDOW_MAX_HOURS = 14 * 24;
+/** The longest decision window a Pro seller can set without an admin's approval (D68; core MAX_DECISION_WINDOW). */
+export const DECISION_WINDOW_MAX_HOURS = 7 * 24;
+/** The longest cap an admin can approve (D68; core MAX_APPROVED_DECISION_WINDOW). */
+export const DECISION_WINDOW_APPROVED_MAX_HOURS = 30 * 24;
 export const MIN_ACCOUNT_AGE_MAX_DAYS = 365;
 
 export interface TermsInput {
@@ -191,7 +190,6 @@ export interface TermsInput {
 	readonly allowBackupOffers: boolean;
 	/** Empty for the default 24h. */
 	readonly decisionWindowHours?: string;
-	readonly requireVerifiedEmail?: boolean;
 	/** Empty for no minimum. */
 	readonly minAccountAgeDays?: string;
 	readonly confirmClaims: boolean;
@@ -217,12 +215,16 @@ function wholeNumber(text: string | undefined, min: number, max: number): number
 /**
  * The sale's terms form.
  *
- * @spec SM-4.2-window-length — only Pro sellers set the decision window.
- * @spec SM-4.1-buyer-requirements — the verified-email and account-age requirements.
+ * @spec SM-4.2-window-length — only Pro sellers set the decision window, up to their cap
+ * (7 days, or longer when an admin approved it).
+ * @spec SM-4.1-buyer-requirements — the account-age requirement (a verified email is always
+ * required, D20; sellers can't turn it off, D68).
  */
 export function validateTerms(
 	input: TermsInput,
 	sellerIsPro: boolean,
+	/** The seller's cap in hours: 7 days unless an admin approved more (D68). */
+	windowCapHours: number = DECISION_WINDOW_MAX_HOURS,
 ): Validated<SaleTerms> | { ok: false; errors: FieldErrors<TermsField> } {
 	const errors: FieldErrors<TermsField> = {};
 	const known = new Set<string>(PAYMENT_METHODS.map((m) => m.id));
@@ -235,9 +237,10 @@ export function validateTerms(
 	if (shipsTo.length > 200) errors.shipsTo = "Use at most 200 characters";
 	const rulesMd = input.rulesMd.trim();
 	if (rulesMd.length > DESCRIPTION_MAX) errors.rulesMd = `Use at most ${DESCRIPTION_MAX} characters`;
-	const window = wholeNumber(input.decisionWindowHours, 1, DECISION_WINDOW_MAX_HOURS);
+	const cap = Math.min(windowCapHours, DECISION_WINDOW_APPROVED_MAX_HOURS);
+	const window = wholeNumber(input.decisionWindowHours, 1, cap);
 	if (window === "invalid")
-		errors.decisionWindowHours = `Enter whole hours from 1 to ${DECISION_WINDOW_MAX_HOURS}, or leave it empty`;
+		errors.decisionWindowHours = `Enter whole hours from 1 to ${cap}, or leave it empty`;
 	else if (window !== null && !sellerIsPro)
 		errors.decisionWindowHours = "Setting the decision window is a Pro feature";
 	const minAge = wholeNumber(input.minAccountAgeDays, 0, MIN_ACCOUNT_AGE_MAX_DAYS);
@@ -255,7 +258,6 @@ export function validateTerms(
 		reviewEveryClaim: input.reviewEveryClaim,
 		allowBackupOffers: input.allowBackupOffers,
 		decisionWindowHours: window,
-		requireVerifiedEmail: input.requireVerifiedEmail ?? true,
 		minAccountAgeDays: minAge ?? 0,
 		confirmClaims: input.confirmClaims,
 	});
@@ -276,7 +278,6 @@ export function readTerms(stored: Record<string, unknown> | null | undefined): S
 		reviewEveryClaim: t["reviewEveryClaim"] === true,
 		allowBackupOffers: t["allowBackupOffers"] !== false,
 		decisionWindowHours: positiveInt(t["decisionWindowHours"]),
-		requireVerifiedEmail: t["requireVerifiedEmail"] !== false,
 		minAccountAgeDays: positiveInt(t["minAccountAgeDays"]) ?? 0,
 		confirmClaims: t["confirmClaims"] !== false,
 	};

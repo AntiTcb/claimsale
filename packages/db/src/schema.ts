@@ -45,6 +45,12 @@ export const users = sqliteTable("users", {
 	bannedAt: ms("banned_at"),
 	bannedReason: text("banned_reason"),
 	bannedBy: text("banned_by"),
+	/** D68: a Pro seller's admin-approved decision-window cap in hours; null means the 7-day default. */
+	decisionWindowMaxHours: integer("decision_window_max_hours"),
+	/** D68: a pending request for a longer cap (hours, the seller's reason, when). Cleared when decided. */
+	decisionWindowRequestHours: integer("decision_window_request_hours"),
+	decisionWindowRequestReason: text("decision_window_request_reason"),
+	decisionWindowRequestedAt: ms("decision_window_requested_at"),
 	createdAt: ms("created_at").notNull(),
 	updatedAt: ms("updated_at").notNull(),
 });
