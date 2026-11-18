@@ -34,8 +34,18 @@ runs:
         for app in engine web; do
           node scripts/secrets-for.ts "apps/$app/${{ inputs.config-file }}" ${{ inputs.wrangler-env }} \
             > "$RUNNER_TEMP/$app-secrets.json"
-          (cd "apps/$app" && pnpm exec wrangler deploy -c "${{ inputs.config-file }}" $envflag \
-            --var "VERSION:${{ inputs.version }}" --secrets-file "$RUNNER_TEMP/$app-secrets.json")
+          # The first deploy of a new Worker can fail right after its upload: the API's next
+          # call answers "This Worker does not exist" (code 10007) for a few seconds (PRs #31
+          # and #32). A deploy is idempotent, so try up to three times.
+          for attempt in 1 2 3; do
+            if (cd "apps/$app" && pnpm exec wrangler deploy -c "${{ inputs.config-file }}" $envflag \
+              --var "VERSION:${{ inputs.version }}" --secrets-file "$RUNNER_TEMP/$app-secrets.json"); then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then exit 1; fi
+            echo "::warning::Deploying $app failed (attempt $attempt); trying again in 10 s."
+            sleep 10
+          done
         done
     - name: Remove secret files
       if: always()
