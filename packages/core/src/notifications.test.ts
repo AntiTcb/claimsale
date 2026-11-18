@@ -202,6 +202,33 @@ describe("sale events → notifications", () => {
 		}
 	});
 
+	it("[SM-2-go-live-alarm] an unlisted sale still notifies the people in it (D69)", () => {
+		const unlisted = context({ sale: { ...sale, visibility: "unlisted" } });
+		const { drafts, followUps } = map(
+			[
+				{ type: "sale_live" },
+				{ type: "followers_notified" },
+				{
+					type: "entry_won",
+					entryId: "e-claim",
+					buyerId: "buyer-a",
+					amountCents: 4000,
+					via: "instant",
+					itemId: "item-1",
+				},
+				{ type: "invoice_shipped", invoiceId: "inv-1" },
+				{ type: "buyer_marked_paid", invoiceId: "inv-1" },
+			],
+			unlisted,
+		);
+		expect(drafts.map((d) => [d.userId, d.type])).toEqual([
+			["buyer-a", "claim_won"],
+			["buyer-a", "invoice_shipped"],
+			["seller", "seller_buyer_paid"],
+		]);
+		expect(followUps).toEqual({ followers: null, matchWantLists: false, sendInvites: false });
+	});
+
 	it("collects the IDs the events refer to", () => {
 		expect(
 			referencedIds([{ entryId: "e1", itemId: "i1" }, { entryId: "e1", invoiceId: "v1" }, "junk", null]),

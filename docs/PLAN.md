@@ -79,6 +79,7 @@ one giant post where every item is a photo and every claim is a comment.
 | D64 | **Market price as a seller listing aid.** The price input shows the TCGplayer market price (from TCGCSV) as its **placeholder**, with **quick buttons for a % of market** (e.g. 70 / 75 / 80 / 85 / 90 / 100%, where 80% is the common choice). The seller always sets the final price; nothing is filled in until they click. **Never shown to buyers.** | 2026-10-09 |
 | D65 | Photo rules confirmed: own-photo reuse only when relisting the same item; reject at distance ≤ 6, review at 7–12 (tuned before launch); an account is flagged after 3 rejected matches in 30 days. | 2026-10-09 |
 | D66 | **A timestamp photo is required for newer sellers** (fewer than 5 completed sales) on every sale they publish. It's optional for everyone else, and any sale with one gets a "Timestamped" badge. | 2026-10-09 |
+| D69 | **Unlisted sales alert only the people involved:** their buyers and seller get claim, invoice and rescind notifications as usual, but followers and want-list matches are never told about them (only public sales are announced). | 2026-11-18 |
 
 The detailed behavior spec for claims, offers, take-backs and invoices lives in
 [`STATE_MACHINES.md`](./STATE_MACHINES.md).
@@ -819,7 +820,7 @@ end-to-end and load tests.
 
 ## 12. Open questions
 
-None. Everything is decided through D66. **Before the pilot sale** (not blocking development):
+None. Everything is decided through D69. **Before the pilot sale** (not blocking development):
 - Register `claimsale.net` in the AntiTcb account and onboard `notify.claimsale.net` in Email Service.
 - Search trademarks for "ClaimSale" and claim the matching social handles.
 - Check TCGCSV's terms and attribution requirements before building the catalog ingestion.

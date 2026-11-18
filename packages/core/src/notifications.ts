@@ -334,7 +334,8 @@ export function notificationsForSaleEvents(
 
 /**
  * A followed seller's new sale. Followers of a public sale only: unlisted and private sales
- * are shared by their seller, never announced (D5, D56).
+ * are shared by their seller, never announced (D5, D56). An unlisted sale's notifications go
+ * only to the people in it: its buyers and its seller (D69).
  *
  * @spec SM-2-go-live-alarm — every follower gets one notification per phase (scheduled, live).
  */
