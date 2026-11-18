@@ -153,6 +153,8 @@ export interface SaleTerms {
 	readonly reviewEveryClaim: boolean;
 	/** D43, on by default. */
 	readonly allowBackupOffers: boolean;
+	/** PLAN 3 (Claim): "Claims are binding. Claim for $40?" On by default; off for sales where speed matters. */
+	readonly confirmClaims: boolean;
 }
 
 export const DEFAULT_TERMS: SaleTerms = {
@@ -163,6 +165,7 @@ export const DEFAULT_TERMS: SaleTerms = {
 	offerVisibility: "blind",
 	reviewEveryClaim: false,
 	allowBackupOffers: true,
+	confirmClaims: true,
 };
 
 export interface TermsInput {
@@ -173,6 +176,7 @@ export interface TermsInput {
 	readonly offerVisibility: string;
 	readonly reviewEveryClaim: boolean;
 	readonly allowBackupOffers: boolean;
+	readonly confirmClaims: boolean;
 }
 
 export function validateTerms(
@@ -201,6 +205,7 @@ export function validateTerms(
 		offerVisibility: input.offerVisibility === "visible" ? "visible" : "blind",
 		reviewEveryClaim: input.reviewEveryClaim,
 		allowBackupOffers: input.allowBackupOffers,
+		confirmClaims: input.confirmClaims,
 	});
 }
 
@@ -218,6 +223,7 @@ export function readTerms(stored: Record<string, unknown> | null | undefined): S
 		offerVisibility: t["offerVisibility"] === "visible" ? "visible" : "blind",
 		reviewEveryClaim: t["reviewEveryClaim"] === true,
 		allowBackupOffers: t["allowBackupOffers"] !== false,
+		confirmClaims: t["confirmClaims"] !== false,
 	};
 }
 

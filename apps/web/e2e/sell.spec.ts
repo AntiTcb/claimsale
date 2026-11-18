@@ -97,7 +97,8 @@ test.describe("selling", () => {
 		await expect(anon.getByText(/^Preview\. Claims open/)).toBeVisible();
 		await expect(anon.getByText("Timestamped", { exact: true })).toBeVisible();
 		await expect(anon.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex, nofollow");
-		const cards = anon.getByRole("listitem").getByRole("link");
+		// The live grid's cards (WS-H): the title is the card's link; the buttons sit beside it.
+		const cards = anon.getByTestId("live-item");
 		await expect(cards).toHaveCount(2);
 		await expect(cards.first()).toContainText("Dark Magician SDY-006");
 		await expect(cards.first()).toContainText("$12.50");
@@ -107,7 +108,10 @@ test.describe("selling", () => {
 			.poll(() => thumb.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth))
 			.toBe(2000);
 
-		await cards.nth(1).click();
+		await expect(
+			cards.first().getByRole("button", { name: "Claims open soon for Dark Magician SDY-006" }),
+		).toBeDisabled();
+		await cards.nth(1).getByRole("link", { name: "Blue-Eyes White Dragon LOB-001" }).click();
 		await expect(
 			anon.getByRole("heading", { level: 1, name: "Blue-Eyes White Dragon LOB-001" }),
 		).toBeVisible();
