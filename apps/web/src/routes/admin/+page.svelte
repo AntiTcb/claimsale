@@ -14,6 +14,7 @@
 
 <section class="mx-auto max-w-5xl px-4 py-8">
 	<h1 class="text-2xl font-bold tracking-tight">Admin</h1>
+	<p class="mt-2 text-sm"><a href="/admin/reports" class="underline">Reports</a></p>
 	{#if form?.message}
 		<p role="status" class="mt-3 rounded-md bg-zinc-100 p-3 dark:bg-zinc-800">{form.message}</p>
 	{/if}

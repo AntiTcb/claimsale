@@ -39,6 +39,17 @@
 							report.createdAt,
 						)}
 					</p>
+					{#if report.messageBody !== null}
+						<blockquote
+							class="mt-1 border-l-2 border-zinc-400 pl-2 whitespace-pre-wrap"
+							data-testid="reported-message"
+						>
+							{report.messageBody}
+						</blockquote>
+						{#if report.messageSenderId}
+							<p><a href="/admin/users?id={report.messageSenderId}" class="underline">Sender's account</a></p>
+						{/if}
+					{/if}
 					{#if report.details}<p class="mt-1">{report.details}</p>{/if}
 					<form method="POST" use:enhance class="mt-2 flex flex-wrap items-end gap-2">
 						<input type="hidden" name="reportId" value={report.id} />

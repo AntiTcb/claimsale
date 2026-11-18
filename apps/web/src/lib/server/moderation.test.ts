@@ -1,4 +1,5 @@
 import { createDb, eq, type Db } from "@claimsale/db";
+import { conversations, messages } from "@claimsale/db/messaging";
 import { accountFlags } from "@claimsale/db/photos";
 import { auditLog, entries, items, reports, rescinds, sales, sessions, users } from "@claimsale/db/schema";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -231,7 +232,18 @@ describe("reports", () => {
 			[{ targetKind: "user", targetId: "misty", reason: "scam", details: "x".repeat(2001) }, "invalid_input"],
 			[{ targetKind: "user", targetId: "nobody", reason: "scam" }, "not_found"],
 			[{ targetKind: "item", targetId: "nope", reason: "scam" }, "not_found"],
+			[{ targetKind: "message", targetId: "nope", reason: "spam" }, "not_found"],
 		] as const;
+		await db
+			.insert(conversations)
+			.values({ id: "c1", saleId: "s1", buyerId: "ash", sellerId: "misty", createdAt: T });
+		await db.insert(messages).values({
+			id: "m1",
+			conversationId: "c1",
+			senderId: "misty",
+			body: "pay me on the side",
+			createdAt: T,
+		});
 		for (const [body, code] of bad) {
 			expect(await fileReport(db, "ash", body, T)).toMatchObject({ ok: false, error: { code } });
 		}
@@ -241,6 +253,11 @@ describe("reports", () => {
 		expect(
 			(await fileReport(db, "ash", { targetKind: "message", targetId: "m1", reason: "harassment" }, T)).ok,
 		).toBe(true);
+		// The admin sees a reported message's text and who sent it (MSG-report).
+		expect((await openReports(db)).find((r) => r.targetKind === "message")).toMatchObject({
+			messageBody: "pay me on the side",
+			messageSenderId: "misty",
+		});
 		for (let i = 0; i < 20; i++)
 			await fileReport(db, "misty", { targetKind: "message", targetId: `m${i}`, reason: "other" }, T);
 		expect(

@@ -22,7 +22,15 @@ import {
 } from "./exports/index.ts";
 import { handleQueue, handleScheduled } from "./handlers.ts";
 import { health, type HealthReport } from "./health.ts";
-import { CloudflareMailer } from "./mailer.ts";
+import { mailerFor } from "./mailer.ts";
+import {
+	messagePosted,
+	requestAllowlistInvites,
+	sweepNotifications,
+	type InviteRequestInput,
+	type MessagePostedInput,
+	type NotifyDeps,
+} from "./notifications/index.ts";
 import {
 	requestVerification,
 	requeueStalePhotos,
@@ -66,6 +74,7 @@ export type { EngineEnv } from "./env.ts";
 export type { RpcResult, RuntimeCapabilities } from "./runtime.ts";
 export type { TraceProbeInput, TraceProbeResult } from "./trace-probe.ts";
 export type { PhotoReviewInput, PhotoVerificationInput } from "./photos/index.ts";
+export type { InviteRequestInput, MessagePostedInput } from "./notifications/index.ts";
 export type {
 	CatalogSearchHit,
 	CatalogSearchInput,
@@ -166,6 +175,27 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 	/** An admin approves or rejects a photo held for review; false if it wasn't in review. */
 	async reviewPhoto(input: PhotoReviewInput): Promise<RpcResult<boolean>> {
 		return runForRpc(this.env, "engine.photos.review", reviewPhoto(this.env.DB, input));
+	}
+
+	// -------------------------------------------------------------------------
+	// Notifications and messaging (WS-K)
+
+	/** The web Worker stored a message: notify the other side (email only if it stays unread). */
+	async messagePosted(input: MessagePostedInput): Promise<RpcResult<boolean>> {
+		return runForRpc(
+			this.env,
+			"engine.notifications.message_posted",
+			messagePosted(notifyDeps(this.env), input),
+		);
+	}
+
+	/** The seller saved a private sale's invite list: email the new addresses once it is published. */
+	async sendAllowlistInvites(input: InviteRequestInput): Promise<RpcResult<boolean>> {
+		return runForRpc(
+			this.env,
+			"engine.notifications.invites",
+			requestAllowlistInvites(notifyDeps(this.env), input),
+		);
 	}
 
 	// -------------------------------------------------------------------------
@@ -318,11 +348,12 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 			probeRecipient: optionalSecret(this.env, "TRACE_PROBE_TO"),
 			photos: { db: this.env.DB, images: this.env.IMAGES, decode: workerDecoder() },
 			exports: { db: this.env.DB, bucket: this.env.IMAGES },
+			notifications: notifyDeps(this.env),
 		};
 		await run(
 			this.env,
 			"engine.queue.notifications",
-			handleQueue(batch, options).pipe(Effect.provide(CloudflareMailer(this.env.EMAIL, this.env.MAIL_FROM))),
+			handleQueue(batch, options).pipe(Effect.provide(mailerFor(this.env))),
 		);
 	}
 
@@ -338,5 +369,14 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 		);
 		await run(this.env, "engine.cron.photos", requeueStalePhotos(this.env));
 		await run(this.env, "engine.cron.exports", expireExports({ db: this.env.DB, bucket: this.env.IMAGES }));
+		await run(
+			this.env,
+			"engine.cron.notifications",
+			sweepNotifications(notifyDeps(this.env)).pipe(Effect.provide(mailerFor(this.env))),
+		);
 	}
+}
+
+function notifyDeps(env: EngineEnv): NotifyDeps {
+	return { db: env.DB, queue: env.NOTIFICATIONS, siteUrl: env.SITE_URL.replace(/\/+$/, "") };
 }

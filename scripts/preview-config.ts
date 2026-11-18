@@ -34,7 +34,9 @@ delete engine.env;
 Object.assign(engine, {
 	name: `claimsale-engine-${suffix}`,
 	workers_dev: true,
-	vars: engineVars,
+	// Notification email is captured like the web Worker's (E2E reads email_outbox), and its
+	// links are site-relative: the pair's workers.dev hostname isn't known here.
+	vars: { ...engineVars, MAILER: "capture", SITE_URL: "" },
 	d1_databases: [
 		{
 			binding: "DB",

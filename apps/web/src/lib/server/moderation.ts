@@ -9,6 +9,7 @@ import {
 	type Result,
 } from "@claimsale/core";
 import { and, asc, eq, inArray, isNull, or, sql, type Db } from "@claimsale/db";
+import { messages } from "@claimsale/db/messaging";
 import { accountFlags } from "@claimsale/db/photos";
 import {
 	auditLog,
@@ -283,7 +284,7 @@ const isTarget = (v: unknown): v is ReportTarget =>
 const isReason = (v: unknown): v is ReportReason =>
 	typeof v === "string" && (REPORT_REASONS as readonly string[]).includes(v);
 
-/** Whether the reported user, sale or item exists (messages arrive with WS-K). */
+/** Whether the reported user, sale, item or message exists. */
 async function targetExists(db: Db, kind: ReportTarget, id: string): Promise<boolean> {
 	switch (kind) {
 		case "user":
@@ -306,8 +307,11 @@ async function targetExists(db: Db, kind: ReportTarget, id: string): Promise<boo
 					.get()) !== undefined
 			);
 		case "message":
+			return (
+				(await db.select({ id: messages.id }).from(messages).where(eq(messages.id, id)).get()) !== undefined
+			);
 		default:
-			return id.length > 0 && id.length <= 64;
+			return false;
 	}
 }
 
@@ -360,6 +364,9 @@ export interface OpenReport {
 	readonly createdAt: Millis;
 	/** Open reports about the same target, from anyone. */
 	readonly sameTarget: number;
+	/** A reported message's text and sender, for the admin only (MSG-report). */
+	readonly messageBody: string | null;
+	readonly messageSenderId: string | null;
 }
 
 /** Open reports, oldest first. */
@@ -374,9 +381,12 @@ export async function openReports(db: Db, limit = 100): Promise<OpenReport[]> {
 			reporterHandle: users.handle,
 			createdAt: reports.createdAt,
 			sameTarget: sql<number>`(SELECT count(*) FROM reports o WHERE o.target_kind = ${reports.targetKind} AND o.target_id = ${reports.targetId} AND o.status = 'open')`,
+			messageBody: messages.body,
+			messageSenderId: messages.senderId,
 		})
 		.from(reports)
 		.innerJoin(users, eq(users.id, reports.reporterId))
+		.leftJoin(messages, and(eq(reports.targetKind, "message"), eq(messages.id, reports.targetId)))
 		.where(eq(reports.status, "open"))
 		.orderBy(asc(reports.createdAt), asc(reports.id))
 		.limit(limit)

@@ -5,6 +5,7 @@ import { rpcEngine, type Engine } from "./engine.ts";
 import type { ImageStore } from "./images.ts";
 import { invoiceCommands, type InvoiceCommands } from "./invoices.ts";
 import { makeMailer, type Mailer } from "./mailer.ts";
+import type { NotifyRpc } from "./notify-rpc.ts";
 import { makePhoneVerifier, type PhoneVerifier } from "./sms.ts";
 import { turnstileConfig, type TurnstileConfig } from "./turnstile.ts";
 
@@ -43,6 +44,11 @@ export function engine(): Engine {
 
 /** The engine Worker's RPC binding for the catalog type-ahead, item import batches and exports. */
 export function engineRpc(): Pick<Env["ENGINE"], "searchCatalog" | "applyImportBatch" | "requestExport"> {
+	return env.ENGINE;
+}
+
+/** The engine's notification RPC (messages, invite lists; WS-K). */
+export function notifyRpc(): NotifyRpc {
 	return env.ENGINE;
 }
 

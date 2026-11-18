@@ -78,12 +78,14 @@ describe("preview-config", () => {
 		expect(engine["r2_buckets"]).toEqual(web["r2_buckets"]);
 	});
 
-	it("copies staging's vars, with preview's APP_ENV and VERSION, and captures web email", () => {
+	it("copies staging's vars, with preview's APP_ENV and VERSION, and captures web and engine email", () => {
 		expect(engine["vars"]).toMatchObject({
 			APP_ENV: "preview",
 			VERSION: "abc123",
 			MAIL_FROM: expect.any(String),
 			SENTRY_DSN: "",
+			MAILER: "capture",
+			SITE_URL: "",
 		});
 		expect(web["vars"]).toMatchObject({ APP_ENV: "preview", VERSION: "abc123", MAILER: "capture" });
 		expect(web["secrets"]).toEqual({ required: ["BETTER_AUTH_SECRET"] });

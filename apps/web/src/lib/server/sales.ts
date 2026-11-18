@@ -9,7 +9,7 @@ import {
 	type SaleVisibility,
 	type Tier,
 } from "@claimsale/core";
-import { and, asc, desc, eq, inArray, ne, sql, type Db, type SQL } from "@claimsale/db";
+import { and, asc, desc, eq, inArray, ne, notInArray, sql, type Db, type SQL } from "@claimsale/db";
 import { items, saleAccess, saleAllowlist, sales, users } from "@claimsale/db/schema";
 import { uuidv7 } from "uuidv7";
 import { DEFAULT_TERMS, type SaleDetails, type SaleTerms } from "#lib/listing-input.ts";
@@ -290,8 +290,15 @@ export async function setPrivateAccess(
 				target: saleAccess.saleId,
 				set: { passwordHash, allowlistEnabled, updatedAt: now },
 			}),
-		db.delete(saleAllowlist).where(eq(saleAllowlist.saleId, saleId)),
-		...emails.map((email) => db.insert(saleAllowlist).values({ saleId, email, createdAt: now })),
+		// Addresses that stay keep their row, so each is invited once (NOTIF-allowlist-invite).
+		emails.length === 0
+			? db.delete(saleAllowlist).where(eq(saleAllowlist.saleId, saleId))
+			: db
+					.delete(saleAllowlist)
+					.where(and(eq(saleAllowlist.saleId, saleId), notInArray(saleAllowlist.email, emails))),
+		...emails.map((email) =>
+			db.insert(saleAllowlist).values({ saleId, email, createdAt: now }).onConflictDoNothing(),
+		),
 	]);
 	return ok(true);
 }

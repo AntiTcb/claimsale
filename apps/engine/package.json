@@ -15,6 +15,7 @@
 	"dependencies": {
 		"@claimsale/core": "workspace:*",
 		"@claimsale/db": "workspace:*",
+		"@claimsale/emails": "workspace:*",
 		"@claimsale/imagehash": "workspace:*",
 		"@claimsale/observability": "workspace:*",
 		"@jsquash/jpeg": "catalog:",

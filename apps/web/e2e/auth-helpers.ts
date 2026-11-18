@@ -113,8 +113,13 @@ export function newPhone(): { e164: string; typed: string; last4: string } {
 export async function verifySeller(page: Page, email: string): Promise<void> {
 	const request = page.request;
 	await page.goto(await linkFromEmail(request, email, "Confirm your email"));
+	await waitForRouter(page);
 	const phone = newPhone();
 	await page.goto("/me/settings");
+	// Same WebKit race as waitForWelcome: until the router has started and the page's startup
+	// requests are done, WebKit can reload the document, wiping the number typed into it.
+	await waitForRouter(page);
+	await page.waitForLoadState("networkidle");
 	await page.getByLabel("Mobile number").fill(phone.e164);
 	await page.getByRole("button", { name: "Text me a code" }).click();
 	await page.getByLabel("Code").fill(await codeFromSms(request, phone.e164));

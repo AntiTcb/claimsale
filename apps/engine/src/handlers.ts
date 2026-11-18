@@ -2,6 +2,11 @@ import { parseTraceparent } from "@claimsale/observability";
 import { Effect, Option, Schema, Tracer } from "effect";
 import { handleExportMessage, isExportJobMessage, type ExportDeps } from "./exports/index.ts";
 import { Mailer } from "./mailer.ts";
+import {
+	decodeNotificationMessage,
+	handleNotificationMessage,
+	type NotifyDeps,
+} from "./notifications/index.ts";
 import { handlePhotoMessage, isPhotoVerifyMessage, type VerifyDeps } from "./photos/index.ts";
 
 /** Queue message envelope (TECH_STACK §4: messages carry `traceparent`). */
@@ -12,19 +17,8 @@ export const NotificationMessage = Schema.Struct({
 });
 export type NotificationMessage = typeof NotificationMessage.Type;
 
-/**
- * Domain events a SaleEngine committed (STATE_MACHINES §9). WS-K turns them into
- * notifications; until then the consumer acknowledges them.
- */
-export const SaleEventsMessage = Schema.Struct({
-	kind: Schema.Literal("sale_events"),
-	sale_id: Schema.String,
-	events: Schema.Array(Schema.Unknown),
-	traceparent: Schema.optional(Schema.String),
-});
-export type SaleEventsMessage = typeof SaleEventsMessage.Type;
-
-const decodeSaleEvents = Schema.decodeUnknownOption(SaleEventsMessage);
+/** Domain events a SaleEngine committed (STATE_MACHINES §9); WS-K's consumer delivers them. */
+export { SaleEventsMessage } from "./notifications/index.ts";
 
 export interface QueueOptions {
 	/** Where trace probe emails go; unset means the probe stops at the consumer. */
@@ -33,6 +27,8 @@ export interface QueueOptions {
 	readonly photos?: VerifyDeps;
 	/** The export job's bindings (WS-J); without them `export_job` messages are retried. */
 	readonly exports?: ExportDeps;
+	/** The notifications' bindings (WS-K); without them notification messages are retried. */
+	readonly notifications?: NotifyDeps;
 }
 
 const decodeMessage = Schema.decodeUnknownOption(NotificationMessage);
@@ -100,18 +96,21 @@ export const handleQueue = (batch: MessageBatch, options: QueueOptions) =>
 				else message.retry();
 				continue;
 			}
-			const saleEvents = decodeSaleEvents(message.body);
-			if (Option.isSome(saleEvents)) {
-				yield* Effect.logDebug("sale events received; no notification handlers yet").pipe(
-					Effect.annotateLogs({ sale_id: saleEvents.value.sale_id, events: saleEvents.value.events.length }),
-				);
-				message.ack();
+			// Sale events, email deliveries, digests and invites (WS-K).
+			const notification = decodeNotificationMessage(message.body);
+			if (Option.isSome(notification)) {
+				if (options.notifications)
+					yield* handleNotificationMessage(message, notification.value, options.notifications).pipe(
+						Effect.withSpan("engine.notifications.message", {
+							links: producerLinks(notification.value.traceparent),
+						}),
+					);
+				else message.retry();
 				continue;
 			}
 			const body = decodeMessage(message.body);
 			if (Option.isNone(body)) {
-				// Milestone 9 adds the real notification kinds. Unknown messages can't be
-				// handled by retrying, so they are acknowledged and logged.
+				// Unknown messages can't be handled by retrying, so they are acknowledged and logged.
 				yield* Effect.logWarning("unknown notification message dropped").pipe(
 					Effect.annotateLogs({ queue_message_id: message.id }),
 				);

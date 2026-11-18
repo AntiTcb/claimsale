@@ -282,6 +282,32 @@ Wave 4:                     WS-L → pilot sale
 - The hand-entry item form still takes free-form attributes (catalog autofill fills
   them); moving it onto core's per-game field lists is open.
 
+### Wave 3 integration notes (WS-K, notifications and messaging)
+- The notifications queue now carries `sale_events` (WS-E), `notify_deliver`, `notify_digest`,
+  `allowlist_invites` and WS-F2's `photo_verify`. The consumer (`apps/engine/src/notifications`)
+  maps events to `notifications` rows with core's `notificationsForSaleEvents`; to notify about a
+  new event type, add a case there and its copy in `describeNotification` (one place for the bell
+  and email). Buyers' invoice notifications link to `/me/invoices/<id>` and the seller's
+  "buyer paid" to `/sell/<sale>/invoices` (WS-J).
+- Rescinds (WS-I's events): the buyer is told once per rescind, from `rescind_recorded` (a
+  mutual-agreement one asks them to answer within 72h); the seller hears about contests and
+  disputes; both sides hear the admin's decision. Buyer links go to `/me/rescinds`, seller
+  links to the control room.
+- Message reports use WS-I's `reports` table and `fileReport` (ADMIN-report-queue), so they
+  land on `/admin/reports` with the rest; the admin sees the reported message's text there.
+  The message form offers `spam` and `off_platform_payment`, now also report reasons.
+- Email: per-category preferences, verified addresses only, seller activity as a 5-minute digest,
+  message emails only if unread after 10 minutes; the cron sweep sends what a lost message left.
+  Delivery state lives on `notifications` (migration `0011_notifications_messaging`).
+- Followers and want lists are told about **public** sales only, when scheduled and when live.
+  Items added to an already-published sale aren't matched against want lists yet.
+- Messaging is server load + form actions; `#lib/messaging/live.ts` polls today. **WS-H seam:**
+  swap its `pollTransport` for a subscription on the sale DO's broadcast; the thread page keeps
+  calling `watchConversation`.
+- Allowlist invites go out when a private sale is published, and when the invite list of a
+  published sale is saved (`ENGINE.sendAllowlistInvites`); `setPrivateAccess` keeps `invited_at`.
+- Seller blocks reuse `blocks`, so a blocked buyer can neither message nor claim.
+
 ### Wave 3 integration notes (WS-I, control room and admin)
 - New engine RPCs: `contestRescind` (buyer), `answerMutualRescind` (buyer), `resolveRescind`
   (admin; the engine checks `users.role`). The 72h mutual-agreement answer is a sale timer

@@ -11,5 +11,7 @@ export const REPORT_REASON_LABELS: Readonly<Record<ReportReason, string>> = {
 	prohibited_item: "Prohibited item",
 	scam: "Scam or fraud",
 	harassment: "Harassment",
+	spam: "Spam",
+	off_platform_payment: "Asks to pay outside the invoice",
 	other: "Something else",
 };

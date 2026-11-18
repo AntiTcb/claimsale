@@ -43,6 +43,9 @@
 			by {#if header.sellerHandle}<a href="/u/{header.sellerHandle}" class="underline"
 					>{header.sellerDisplayName} (@{header.sellerHandle})</a
 				>{:else}{header.sellerDisplayName}{/if}
+			{#if !data.isSeller && !data.locked}· <a href="/s/{header.slug}/message" class="underline"
+					>Message the seller</a
+				>{/if}
 		</p>
 		{#if data.isSeller && header.status === "draft"}
 			<p role="note" class="rounded-md bg-amber-50 p-3 text-amber-950 dark:bg-amber-950 dark:text-amber-100">
