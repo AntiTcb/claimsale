@@ -59,6 +59,8 @@ export class LiveGrid {
 	announcementId = $state(0);
 
 	readonly #options: LiveGridOptions;
+	/** The items the page shows, by ID (starts as `options.titles`; see setTitles). */
+	#titles: Readonly<Record<string, string>>;
 	#socket: WebSocket | undefined;
 	#url: string | undefined;
 	#attempt = 0;
@@ -68,6 +70,7 @@ export class LiveGrid {
 
 	constructor(snapshot: LiveSnapshot | null, options: LiveGridOptions) {
 		this.#options = options;
+		this.#titles = options.titles;
 		if (snapshot) {
 			this.items = Object.fromEntries(snapshot.items.map((i) => [i.id, i]));
 			this.sale = snapshot.sale;
@@ -90,17 +93,27 @@ export class LiveGrid {
 		this.announcementId += 1;
 	}
 
+	/** The page's items after a refetch, so items it now shows aren't "unknown" or "deleted". */
+	setTitles(titles: Readonly<Record<string, string>>): void {
+		this.#titles = titles;
+	}
+
 	/** Applies one message from the socket (also used by tests). */
 	apply(message: LiveMessage): void {
 		switch (message.type) {
 			case "hello":
 				this.serverOffset = message.serverNow - Date.now();
 				return;
-			case "snapshot":
+			case "snapshot": {
 				this.serverOffset = message.serverNow - Date.now();
 				this.#applySale(message.sale);
 				this.#applyItems(message.items);
+				// A snapshot lists every item: one the page shows but the snapshot lacks was
+				// deleted (the seller's editor), so the page refetches (LIVE-broadcast).
+				const listed = new Set(message.items.map((i) => i.id));
+				if (Object.keys(this.#titles).some((id) => !listed.has(id))) this.#options.onStale?.();
 				return;
+			}
 			case "sale":
 				this.#applySale(message.sale);
 				return;
@@ -124,11 +137,11 @@ export class LiveGrid {
 		const { items, changed, unknown } = mergeItems(before, incoming);
 		this.items = items;
 		const lines = changed.flatMap((item) =>
-			announcements(before[item.id], item, this.#options.titles[item.id] ?? "This item"),
+			announcements(before[item.id], item, this.#titles[item.id] ?? "This item"),
 		);
 		if (lines.length > 0) this.announce(lines.join(" "));
 		// An item added after the page loaded: the page refetches to get its title and photo.
-		if (unknown.some((id) => !(id in this.#options.titles))) this.#options.onStale?.();
+		if (unknown.some((id) => !(id in this.#titles))) this.#options.onStale?.();
 	}
 
 	/** Opens the socket and keeps it open (backoff on failures) until stop(). */

@@ -1,6 +1,12 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
-import { notifyMessagePosted, requestAllowlistInvites, type NotifyRpc } from "./notify-rpc.ts";
+import {
+	notifyMessagePosted,
+	refreshLiveListings,
+	requestAllowlistInvites,
+	revokeLiveAccess,
+	type NotifyRpc,
+} from "./notify-rpc.ts";
 
 function engine(answer: "ok" | "rejected" | "throws") {
 	const calls: unknown[] = [];
@@ -11,7 +17,12 @@ function engine(answer: "ok" | "rejected" | "throws") {
 			? { ok: true as const, value: true }
 			: { ok: false as const, error: { name: "Error", message: "bad input" } };
 	};
-	const rpc: NotifyRpc = { messagePosted: respond, sendAllowlistInvites: respond };
+	const rpc: NotifyRpc = {
+		messagePosted: respond,
+		sendAllowlistInvites: respond,
+		listingsChanged: respond,
+		revokeLiveViewers: respond,
+	};
 	return { rpc, calls };
 }
 
@@ -28,11 +39,23 @@ describe("notification RPC from the web Worker", () => {
 		expect(calls).toEqual([{ saleId: "s1", sellerId: "seller" }]);
 	});
 
+	it("[LIVE-broadcast] [LIVE-access] asks the engine to refresh live grids or revoke viewers", async () => {
+		const { rpc, calls } = engine("ok");
+		expect(await Effect.runPromise(refreshLiveListings(rpc, "s1", "seller"))).toBe(true);
+		expect(await Effect.runPromise(revokeLiveAccess(rpc, "s1", "seller"))).toBe(true);
+		expect(calls).toEqual([
+			{ saleId: "s1", sellerId: "seller" },
+			{ saleId: "s1", sellerId: "seller" },
+		]);
+	});
+
 	it("never fails the user's action when the engine says no or can't be reached", async () => {
 		for (const answer of ["rejected", "throws"] as const) {
 			const { rpc } = engine(answer);
 			expect(await Effect.runPromise(notifyMessagePosted(rpc, "m1"))).toBe(false);
 			expect(await Effect.runPromise(requestAllowlistInvites(rpc, "s1", "seller"))).toBe(false);
+			expect(await Effect.runPromise(refreshLiveListings(rpc, "s1", "seller"))).toBe(false);
+			expect(await Effect.runPromise(revokeLiveAccess(rpc, "s1", "seller"))).toBe(false);
 		}
 	});
 });

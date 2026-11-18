@@ -43,7 +43,7 @@ import { fromRpcResult, optionalSecret, run, runForRpc, type RpcResult } from ".
 import { disabledProbe, isProbeEnabled, type TraceProbeInput, type TraceProbeResult } from "./trace-probe.ts";
 import type { InvoiceView, ItemCommandResult, Outcome, RescindView, SaleView } from "./sale-engine.ts";
 import type { TrackingRowResult } from "./sale/writer.ts";
-import { saleCommand } from "./sale/entrypoint.ts";
+import { saleCommand, sellerLiveCall } from "./sale/entrypoint.ts";
 import type { ImportBatchResult } from "./sale/import.ts";
 import * as rpc from "./sale/rpc.ts";
 import { sweepTimers } from "./sale/sweep.ts";
@@ -196,6 +196,19 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 			"engine.notifications.invites",
 			requestAllowlistInvites(notifyDeps(this.env), input),
 		);
+	}
+
+	/**
+	 * The seller changed a published sale's items in the web editor: refresh open live grids
+	 * and match the listings against want lists again. False when the sale isn't theirs.
+	 */
+	async listingsChanged(input: rpc.SellerSaleInput): Promise<RpcResult<boolean>> {
+		return sellerLiveCall(this.env, rpc.SellerSaleInput, "listingsChanged", input);
+	}
+
+	/** A private sale's access changed: disconnect every viewer but the seller (LIVE-access). */
+	async revokeLiveViewers(input: rpc.SellerSaleInput): Promise<RpcResult<boolean>> {
+		return sellerLiveCall(this.env, rpc.SellerSaleInput, "revokeLiveViewers", input);
 	}
 
 	// -------------------------------------------------------------------------

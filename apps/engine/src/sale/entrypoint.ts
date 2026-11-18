@@ -57,3 +57,40 @@ export function saleCommand<I extends { readonly saleId: string }, A>(
 		}),
 	);
 }
+
+/** The live-grid upkeep the web Worker asks for after the seller changes a published sale. */
+export type SellerLiveCall = "listingsChanged" | "revokeLiveViewers";
+
+/**
+ * Validates `{ saleId, sellerId }`, checks the seller owns the sale (else false, and nothing
+ * happens), and runs `call` in the sale's SaleEngine.
+ */
+export function sellerLiveCall(
+	env: EngineEnv,
+	schema: Schema.Decoder<{ readonly saleId: string; readonly sellerId: string }>,
+	call: SellerLiveCall,
+	input: unknown,
+): Promise<RpcResult<boolean>> {
+	return runForRpc(
+		env,
+		`engine.rpc.${call}`,
+		Effect.gen(function* () {
+			const { saleId, sellerId } = yield* Schema.decodeUnknownEffect(schema)(input);
+			yield* Effect.annotateCurrentSpan({ sale_id: saleId });
+			const owner = yield* Effect.promise(() =>
+				env.DB.prepare("SELECT seller_id FROM sales WHERE id = ?1")
+					.bind(saleId)
+					.first<{ seller_id: string }>(),
+			);
+			if (owner?.seller_id !== sellerId) return false;
+			const stub = env.SALE_ENGINE.get(env.SALE_ENGINE.idFromName(saleId));
+			const result = yield* Effect.promise(async (): Promise<RpcResult<unknown>> =>
+				call === "listingsChanged"
+					? await stub.listingsChanged(saleId)
+					: await stub.revokeLiveViewers(saleId),
+			);
+			yield* fromRpcResult(result);
+			return true;
+		}),
+	);
+}

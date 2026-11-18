@@ -21,22 +21,20 @@
 | 7. Seller control room + admin disputes | Done: WS-I (#27), with D68 |
 | 8. Invoices after close + exports + tracking import | Done: WS-J (#26), with D67 |
 | 9. Notifications and messaging | Done: WS-K (#28), with D69 |
-| 10. Discovery + pilot | WS-L1 discovery (#29) and WS-L2 share cards done; the pilot checklist (`docs/PILOT_CHECKLIST.md`) waits on owner steps |
+| 10. Discovery + pilot | WS-L1 discovery (#29) and WS-L2 share cards (#30) done; WS-M pre-pilot hardening in progress; the pilot checklist (`docs/PILOT_CHECKLIST.md`) waits on owner steps |
 
 ### Left after wave 3
-Besides WS-L and the owner steps in §4, these were left out of their workstreams on purpose
-(details in each workstream's notes in §3):
+Besides the owner steps in §4 and `docs/PILOT_CHECKLIST.md`, these were left out of their
+workstreams on purpose (details in each workstream's notes in §3). WS-M (below) takes the
+ones that matter before the pilot.
 - **Live grid (WS-H):** buyer actions beyond placing (withdraw an offer, leave the backup
   queue, answer a counter) have no UI or endpoint; claim buttons are on the grid only, not
-  the item page; writes made outside the engine (item editor, import batches) aren't
-  broadcast; open sockets aren't closed when a private sale's access changes.
+  the item page. → WS-M2. (Broadcasting editor and import writes and closing sockets when
+  a private sale's access changes: done in WS-M1.)
 - **Invoices (WS-J):** seller adjustments and discounts, per-item or "free over $X"
-  shipping, the XLSX and JSON account exports, and the feedback table and form.
-- **Notifications (WS-K):** items added to an already-published sale aren't matched
-  against want lists.
-- **Rules without code yet:** `IO-export-roundtrip` and `IMG-hash-robust` (STATE_MACHINES
-  §10) have no `@spec` tag or `[RULE-ID]` test.
-- **Contract migration:** drop `import_rows` once no deployed code writes it (WS-G notes).
+  shipping, the XLSX and JSON account exports, and the feedback table and form. After the pilot.
+- **Done in WS-M1:** want-list matching for items added or repriced after publishing;
+  `@spec` tags for `IO-export-roundtrip` and `IMG-hash-robust`; dropping `import_rows`.
 - **Open questions:** WS-E's nonpayment attribution and the WS-F1 hash questions above.
 - **Not run yet:** the WS-E k6 load test on staging (p95 < 300 ms).
 
@@ -232,6 +230,30 @@ Needs WS-A, WS-C; best after WS-H.
     for everyone. They show a status (Upcoming, Live now, Closed) instead.
   - Item photos aren't on the card yet (only text). Adding them means reading the item's
     approved photo from R2 into the render, and only for public and unlisted sales.
+
+### WS-M · Pre-pilot hardening (2026-11-18)
+After WS-L. Two PRs, like WS-L.
+- **M1:**
+  - `LIVE-access`: saving a published sale that is now private, and was public or lost
+    someone's access (password changed or removed, invite list off or an address removed),
+    calls the engine's `revokeLiveViewers`, which closes every socket but the seller's
+    with 4403; browsers reload and the web Worker checks access again.
+  - `LIVE-broadcast` for writes outside a command: the item editor (add, edit, delete,
+    bulk price) calls `listingsChanged`; an import batch does the same inside the engine.
+    Either sends every viewer a fresh snapshot, and the page refetches when a snapshot
+    lacks an item it shows or has one it doesn't. Reordering isn't broadcast (the page
+    order shows on reload).
+  - `TCG-want-list-notify` for late items: the same call publishes a `listings_changed`
+    sale event; the consumer matches a public scheduled or live sale's listings again
+    (keys by want and item, so nobody hears twice).
+  - Contract migration `0012_drop_import_rows`; `@spec` tags for `IO-export-roundtrip`
+    and `IMG-hash-robust`.
+  - Tooling: the E2E web server command works under cmd.exe; preview deploys wait for
+    five good answers before the smoke test; the rate-limit test sends its claims at once.
+  - Email: `notify.claimsale.net` onboarded in Email Service (PILOT_CHECKLIST §1).
+- **M2:** buyer actions on the grid and the item page: withdraw an offer, leave the backup
+  queue, answer a counter (accept or decline), claim and offer from `/s/[slug]/i/[itemId]`.
+  The engine RPCs (`withdrawEntry`, `respondToCounter`) exist; M2 adds web endpoints and UI.
 
 ### After the pilot (PLAN Phase 2)
 Stripe Billing for Pro, merged invoices (D16), Discord webhooks, Q&A, web push, auto

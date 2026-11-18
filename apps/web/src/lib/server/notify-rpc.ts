@@ -14,6 +14,8 @@ type RpcResult<A> =
 export interface NotifyRpc {
 	messagePosted(input: { messageId: string }): Promise<RpcResult<boolean>>;
 	sendAllowlistInvites(input: { saleId: string; sellerId: string }): Promise<RpcResult<boolean>>;
+	listingsChanged(input: { saleId: string; sellerId: string }): Promise<RpcResult<boolean>>;
+	revokeLiveViewers(input: { saleId: string; sellerId: string }): Promise<RpcResult<boolean>>;
 }
 
 class NotifyRpcError extends Error {
@@ -38,3 +40,14 @@ export const notifyMessagePosted = (engine: NotifyRpc, messageId: string) =>
 /** The invite list of a published private sale was saved: invite the new addresses (NOTIF-allowlist-invite). */
 export const requestAllowlistInvites = (engine: NotifyRpc, saleId: string, sellerId: string) =>
 	bestEffort("allowlist invites", () => engine.sendAllowlistInvites({ saleId, sellerId }));
+
+/**
+ * The seller changed a published sale's items: open live grids refresh and the listings are
+ * matched against want lists again (LIVE-broadcast, TCG-want-list-notify).
+ */
+export const refreshLiveListings = (engine: NotifyRpc, saleId: string, sellerId: string) =>
+	bestEffort("live refresh", () => engine.listingsChanged({ saleId, sellerId }));
+
+/** A private sale's access changed: viewers other than the seller are disconnected (LIVE-access). */
+export const revokeLiveAccess = (engine: NotifyRpc, saleId: string, sellerId: string) =>
+	bestEffort("live access revoke", () => engine.revokeLiveViewers({ saleId, sellerId }));

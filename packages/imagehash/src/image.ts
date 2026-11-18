@@ -21,7 +21,12 @@ export interface MatchDistance {
 	readonly phash: number;
 }
 
-/** Computes dHash and pHash for all 5 variants of a decoded image. */
+/**
+ * Computes dHash and pHash for all 5 variants of a decoded image.
+ *
+ * @spec IMG-hash-robust — hashing the original, mirrored and 90°-rotated grids makes a
+ * mirrored or rotated copy match exactly, and resizes and recompressions stay close.
+ */
 export function hashImage(image: RgbaImage): ImageHashes {
 	const grid = rgbaToGray(image, WORK_SIZE, WORK_SIZE);
 	const pair = (variant: Variant): HashPair => {

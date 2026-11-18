@@ -8,7 +8,7 @@ import {
 import { fail, redirect } from "@sveltejs/kit";
 import { parseLocalDateTime } from "#lib/listing-input.ts";
 import { db, engine, notifyRpc } from "#lib/server/context.ts";
-import { requestAllowlistInvites } from "#lib/server/notify-rpc.ts";
+import { requestAllowlistInvites, revokeLiveAccess } from "#lib/server/notify-rpc.ts";
 import { runExit } from "#lib/server/runtime.ts";
 import { field } from "#lib/server/forms.ts";
 import { findTimestampPhoto, publishPhotoState } from "#lib/server/images.ts";
@@ -86,6 +86,7 @@ export const actions: Actions = {
 				errors: { form: updated.error.message },
 			});
 		}
+		let accessRevoked = false;
 		if (form.access) {
 			const saved = await setPrivateAccess(db(), sale.id, form.access, now);
 			if (!saved.ok) {
@@ -95,10 +96,17 @@ export const actions: Actions = {
 					errors: { password: saved.error.message },
 				});
 			}
+			accessRevoked = saved.value.revoked;
 			// A published private sale invites addresses added now (drafts invite at publish).
 			if (current && current.status !== "draft")
 				await runExit("web.notifications.invites", requestAllowlistInvites(notifyRpc(), sale.id, seller.id));
 		}
+		// LIVE-access: a published sale that is now private, and was public or lost someone's
+		// access just now, closes every open live grid but the seller's.
+		const nowPrivate = form.details.visibility === "private";
+		const becamePrivate = nowPrivate && current?.visibility !== "private";
+		if (current && current.status !== "draft" && (becamePrivate || (nowPrivate && accessRevoked)))
+			await runExit("web.live.revoke", revokeLiveAccess(notifyRpc(), sale.id, seller.id));
 		return { action: "details" as const, saved: true };
 	},
 

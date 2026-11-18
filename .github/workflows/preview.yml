@@ -94,6 +94,26 @@ jobs:
         run: rm -f "$RUNNER_TEMP"/*-secrets.json
 
       # ── both ──────────────────────────────────────────────────────────────────
+      # A version that has just deployed can answer an empty 500 from the edge for a short
+      # while (seen on PR #30: the requests never reached the Worker). Wait for five
+      # successes in a row on the home page and /api/health; after 2 minutes, go on anyway
+      # and let the smoke test decide.
+      - name: Wait for the preview to answer
+        run: |
+          set -u
+          ok=0
+          for attempt in $(seq 1 60); do
+            home="$(curl -s -o /dev/null -w '%{http_code}' -H "CF-Access-Client-Id: $ACCESS_ID" -H "CF-Access-Client-Secret: $ACCESS_SECRET" "$URL/")"
+            health="$(curl -s -o /dev/null -w '%{http_code}' -H "CF-Access-Client-Id: $ACCESS_ID" -H "CF-Access-Client-Secret: $ACCESS_SECRET" "$URL/api/health")"
+            if [ "$home" = 200 ] && [ "$health" = 200 ]; then ok=$((ok + 1)); else ok=0; echo "attempt $attempt: / $home, /api/health $health"; fi
+            [ "$ok" -ge 5 ] && { echo "The preview answered 5 times in a row."; exit 0; }
+            sleep 2
+          done
+          echo "::warning::The preview didn't answer 5 times in a row within 2 minutes."
+        env:
+          URL: ${{ steps.pair.outputs.url || steps.web.outputs.url }}
+          ACCESS_ID: ${{ secrets.ACCESS_CLIENT_ID }}
+          ACCESS_SECRET: ${{ secrets.ACCESS_CLIENT_SECRET }}
       - name: Smoke test (@critical) against the preview
         run: |
           pnpm --filter @claimsale/web exec playwright install --with-deps chromium

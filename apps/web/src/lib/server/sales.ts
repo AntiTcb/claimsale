@@ -264,7 +264,9 @@ export interface PrivateAccessUpdate {
 }
 
 /**
- * Sets the password and allowlist of a private sale.
+ * Sets the password and allowlist of a private sale. `revoked` says whether anyone may have
+ * lost access: the password changed or was removed, the allowlist was turned off, or an
+ * address was taken off it (LIVE-access: their open live grids are then closed).
  *
  * @spec SM-2-visibility — a private sale must have at least one way in.
  */
@@ -273,8 +275,11 @@ export async function setPrivateAccess(
 	saleId: string,
 	update: PrivateAccessUpdate,
 	now: Millis,
-): Promise<Result<true, SaleRejection>> {
-	const current = await db.select().from(saleAccess).where(eq(saleAccess.saleId, saleId)).get();
+): Promise<Result<{ revoked: boolean }, SaleRejection>> {
+	const [current, before] = await Promise.all([
+		db.select().from(saleAccess).where(eq(saleAccess.saleId, saleId)).get(),
+		readAllowlist(db, saleId),
+	]);
 	const passwordHash =
 		update.passwordHash === undefined ? (current?.passwordHash ?? null) : update.passwordHash;
 	const allowlistEnabled = update.allowlist !== null && update.allowlist.length > 0;
@@ -282,6 +287,11 @@ export async function setPrivateAccess(
 		return reject("access_required", "Set a password or add at least one email to the invite list");
 	}
 	const emails = [...new Set((update.allowlist ?? []).map((e) => e.toLowerCase()))];
+	const kept = new Set(emails);
+	const revoked =
+		(current?.passwordHash != null && current.passwordHash !== passwordHash) ||
+		(current?.allowlistEnabled === true && !allowlistEnabled) ||
+		before.some((email) => !kept.has(email));
 	await db.batch([
 		db
 			.insert(saleAccess)
@@ -300,7 +310,7 @@ export async function setPrivateAccess(
 			db.insert(saleAllowlist).values({ saleId, email, createdAt: now }).onConflictDoNothing(),
 		),
 	]);
-	return ok(true);
+	return ok({ revoked });
 }
 
 export async function readAllowlist(db: Db, saleId: string): Promise<string[]> {

@@ -674,8 +674,9 @@ describe("rate limiting", () => {
 	it("caps claims and offers per buyer and writes nothing over the limit [SM-9-entry-rate-limit]", async () => {
 		const sale = await makeSale({ items: Array.from({ length: 30 }, () => ({})) });
 		const buyer = await addUser();
-		const results = [];
-		for (const itemId of sale.itemIds) results.push(await claim(sale, buyer, itemId));
+		// All at once, so the 30 claims land inside one 10 s window: sent one by one on a loaded
+		// machine they can take longer than that, and the limiter's window resets (it was flaky).
+		const results = await Promise.all(sale.itemIds.map((itemId) => claim(sale, buyer, itemId)));
 		const limited = results.filter((r) => r.ok && !r.value.ok && r.value.error.code === "rate_limited");
 		expect(limited.length).toBeGreaterThan(0);
 		const placed = await db

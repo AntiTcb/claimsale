@@ -398,6 +398,12 @@ describe("D1 migrations (expand/contract)", () => {
 		for (const statement of statements) expect(statement).toMatch(/^CREATE (UNIQUE )?(TABLE|INDEX) /i);
 	});
 
+	it("0012_drop_import_rows only drops import_rows (the contract step for 0006)", () => {
+		const migration = env.TEST_MIGRATIONS.find((m) => m.name.startsWith("0012_"));
+		const statements = migration!.queries.map((q) => q.replace(/^--.*$/gm, "").trim()).filter(Boolean);
+		expect(statements).toEqual(["DROP TABLE `import_rows`;"]);
+	});
+
 	it("seed the launch games, enabled, with their TCGplayer category IDs", async () => {
 		const { results } = await env.DB.prepare(
 			"SELECT id, tcgplayer_category_id FROM games WHERE id IN ('yugioh', 'pokemon', 'mtg', 'riftbound') ORDER BY sort_order",

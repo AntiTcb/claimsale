@@ -38,6 +38,12 @@
 		},
 	);
 
+	// The page's items after a refetch (before its snapshot below), so a deleted item doesn't
+	// look missing again and an added one isn't unknown.
+	$effect(() => {
+		grid.setTitles(Object.fromEntries(items.map((i) => [i.id, i.title])));
+	});
+
 	// A refetched page load (after a claim without the socket, or onStale) is a fresh snapshot.
 	let lastSnapshot = untrack(() => live);
 	$effect(() => {

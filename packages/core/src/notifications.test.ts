@@ -307,6 +307,24 @@ describe("sale events → notifications", () => {
 		expect(followUps).toEqual({ followers: null, matchWantLists: false, sendInvites: false });
 	});
 
+	it("[TCG-want-list-notify] items changed after publishing are matched again while the sale is open", () => {
+		const changed = [{ type: "listings_changed" }];
+		for (const status of ["scheduled", "live"]) {
+			const { drafts, followUps } = map(changed, context({ sale: { ...sale, status } }));
+			expect(followUps).toEqual({ followers: null, matchWantLists: true, sendInvites: false });
+			expect(drafts).toEqual([]);
+		}
+		for (const status of ["draft", "closed", "archived"]) {
+			expect(map(changed, context({ sale: { ...sale, status } })).followUps.matchWantLists).toBe(false);
+		}
+		// A context without a status (older callers) never re-matches.
+		expect(map(changed, context({ sale })).followUps.matchWantLists).toBe(false);
+		for (const visibility of ["unlisted", "private"]) {
+			const open = context({ sale: { ...sale, visibility, status: "live" } });
+			expect(map(changed, open).followUps.matchWantLists).toBe(false);
+		}
+	});
+
 	it("collects the IDs the events refer to", () => {
 		expect(
 			referencedIds([{ entryId: "e1", itemId: "i1" }, { entryId: "e1", invoiceId: "v1" }, "junk", null]),
