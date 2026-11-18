@@ -46,6 +46,28 @@ const context = (overrides: Partial<SaleEventContext> = {}): SaleEventContext =>
 
 const map = (events: unknown[], ctx = context()) => notificationsForSaleEvents(events, ctx, "msg-1");
 
+/** A seller's rescind of buyer-a's win, as the engine commits it (WS-I). */
+const rescind = (phase: string) => [
+	{ type: "entry_ended", entryId: "e-claim", status: "rescinded", itemId: "item-1" },
+	{
+		type: "winner_removed",
+		entryId: "e-claim",
+		buyerId: "buyer-a",
+		by: "seller",
+		reasonCode: "mutual_agreement",
+		itemId: "item-1",
+	},
+	{
+		type: "rescind_recorded",
+		rescindId: "r1",
+		entryId: "e-claim",
+		buyerId: "buyer-a",
+		reasonCode: "mutual_agreement",
+		phase,
+		itemId: "item-1",
+	},
+];
+
 describe("sale events → notifications", () => {
 	it("[NOTIF-idempotent] a buyer's win notifies them, keyed by batch and position", () => {
 		const { drafts } = map([
@@ -156,6 +178,62 @@ describe("sale events → notifications", () => {
 		]);
 		// An invoice the consumer couldn't read tells nobody.
 		expect(map([{ type: "invoice_sent", invoiceId: "missing" }]).drafts).toEqual([]);
+	});
+
+	it("links buyers' invoice notifications to their invoice and the seller's to the sale's invoices", () => {
+		for (const type of [
+			"invoice_sent",
+			"invoice_overdue",
+			"payment_not_received",
+			"payment_confirmed",
+			"invoice_shipped",
+		] as const) {
+			expect(describeNotification(type, { invoiceId: "inv-1" }).path).toBe("/me/invoices/inv-1");
+			expect(describeNotification(type, {}).path).toBe("/me/invoices");
+		}
+		expect(describeNotification("seller_buyer_paid", { saleId: "sale-1" }).path).toBe(
+			"/sell/sale-1/invoices",
+		);
+	});
+
+	it("[SM-4.3.1-mutual] a seller's rescind tells the buyer once; a mutual one asks them to answer", () => {
+		const { drafts } = map(rescind("awaiting_buyer"));
+		expect(drafts).toHaveLength(1);
+		expect(drafts[0]).toMatchObject({
+			userId: "buyer-a",
+			type: "win_rescinded",
+			payload: { rescindId: "r1", phase: "awaiting_buyer", itemTitle: "Blue-Eyes" },
+		});
+		const ask = describeNotification("win_rescinded", drafts[0]!.payload);
+		expect(ask).toMatchObject({ path: "/me/rescinds", action: "Answer the seller" });
+		expect(ask.body).toContain("72 hours");
+		const final = describeNotification("win_rescinded", map(rescind("final")).drafts[0]!.payload);
+		expect(final).toMatchObject({ path: "/me/rescinds", action: "See the reason" });
+	});
+
+	it("[SM-4.3.1-contest] tells the seller about a contest, and both sides about the admin's decision", () => {
+		const { drafts } = map([
+			{ type: "rescind_contested", rescindId: "r1", entryId: "e-claim", itemId: "item-1" },
+			{ type: "rescind_mutual_disputed", rescindId: "r2", entryId: "e-claim", itemId: "item-1" },
+			{ type: "rescind_mutual_agreed", rescindId: "r3", entryId: "e-claim", itemId: "item-1" },
+			{ type: "rescind_resolved", rescindId: "r1", entryId: "e-claim", fault: "seller", itemId: "item-1" },
+		]);
+		expect(drafts.map((d) => [d.userId, d.type])).toEqual([
+			["seller", "seller_rescind_contested"],
+			["seller", "seller_rescind_contested"],
+			["buyer-a", "rescind_resolved"],
+			["seller", "seller_rescind_resolved"],
+		]);
+		const buyer = describeNotification("rescind_resolved", drafts[2]!.payload);
+		expect(buyer).toMatchObject({ path: "/me/rescinds" });
+		expect(buyer.body).toContain("the seller's fault");
+		expect(describeNotification("seller_rescind_contested", drafts[0]!.payload).path).toBe(
+			"/sell/sale-1/manage",
+		);
+		expect(categoryOf("seller_rescind_resolved")).toBe("selling");
+		expect(
+			sellerDigest([{ type: "seller_rescind_contested", payload: drafts[0]!.payload }]).lines[0],
+		).toContain("1 contested rescind");
 	});
 
 	it("tells the seller about new claims, offers and decisions, once per entry", () => {

@@ -66,9 +66,13 @@ export const imageHashes = sqliteTable(
 	],
 );
 
-export const ACCOUNT_FLAG_REASONS = ["repeat_photo_rejections"] as const;
+/** `overturned_rescinds`: the rescind abuse guard (SM-4.3.1-abuse-guard, WS-I). */
+export const ACCOUNT_FLAG_REASONS = ["repeat_photo_rejections", "overturned_rescinds"] as const;
 
-/** Accounts flagged for admin review (IMG-repeat-offender). At most one open flag per reason. */
+/**
+ * Accounts flagged for admin review (IMG-repeat-offender, SM-4.3.1-abuse-guard). At most
+ * one open flag per reason.
+ */
 export const accountFlags = sqliteTable(
 	"account_flags",
 	{

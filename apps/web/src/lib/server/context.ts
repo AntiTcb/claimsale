@@ -3,6 +3,7 @@ import { env } from "cloudflare:workers";
 import { authSecret, createAuth, type Auth } from "./auth.ts";
 import { rpcEngine, type Engine } from "./engine.ts";
 import type { ImageStore } from "./images.ts";
+import { invoiceCommands, type InvoiceCommands } from "./invoices.ts";
 import { makeMailer, type Mailer } from "./mailer.ts";
 import type { NotifyRpc } from "./notify-rpc.ts";
 import { makePhoneVerifier, type PhoneVerifier } from "./sms.ts";
@@ -41,14 +42,19 @@ export function engine(): Engine {
 	return rpcEngine(env.ENGINE);
 }
 
-/** The engine Worker's RPC binding for the catalog type-ahead and item import batches. */
-export function engineRpc(): Pick<Env["ENGINE"], "searchCatalog" | "applyImportBatch"> {
+/** The engine Worker's RPC binding for the catalog type-ahead, item import batches and exports. */
+export function engineRpc(): Pick<Env["ENGINE"], "searchCatalog" | "applyImportBatch" | "requestExport"> {
 	return env.ENGINE;
 }
 
 /** The engine's notification RPC (messages, invite lists; WS-K). */
 export function notifyRpc(): NotifyRpc {
 	return env.ENGINE;
+}
+
+/** Invoice commands through the sale engine (WS-J). */
+export function invoiceEngine(): InvoiceCommands {
+	return invoiceCommands(env.ENGINE);
 }
 
 /** The key for sale unlock cookies (shared with Better Auth's signing secret). */

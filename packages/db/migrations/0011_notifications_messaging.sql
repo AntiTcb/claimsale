@@ -50,24 +50,6 @@ CREATE TABLE `notification_preferences` (
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE TABLE `reports` (
-	`id` text PRIMARY KEY NOT NULL,
-	`reporter_id` text NOT NULL,
-	`target_kind` text NOT NULL,
-	`target_id` text NOT NULL,
-	`reported_user_id` text,
-	`reason` text NOT NULL,
-	`details` text,
-	`status` text DEFAULT 'open' NOT NULL,
-	`resolved_by` text,
-	`resolved_at` integer,
-	`created_at` integer NOT NULL,
-	FOREIGN KEY (`reporter_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`reported_user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
-CREATE INDEX `reports_status_created` ON `reports` (`status`,`created_at`);--> statement-breakpoint
-CREATE UNIQUE INDEX `reports_one_open` ON `reports` (`reporter_id`,`target_kind`,`target_id`) WHERE "reports"."status" = 'open';--> statement-breakpoint
 ALTER TABLE `notifications` ADD `dedupe_key` text;--> statement-breakpoint
 ALTER TABLE `notifications` ADD `email_status` text;--> statement-breakpoint
 ALTER TABLE `notifications` ADD `email_due_at` integer;--> statement-breakpoint

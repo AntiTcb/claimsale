@@ -41,6 +41,16 @@ export const users = sqliteTable("users", {
 	role: text("role", { enum: ["user", "admin"] })
 		.notNull()
 		.default("user"),
+	/** ADMIN-ban: set by an admin; a banned account can't sign in, claim or offer. */
+	bannedAt: ms("banned_at"),
+	bannedReason: text("banned_reason"),
+	bannedBy: text("banned_by"),
+	/** D68: a Pro seller's admin-approved decision-window cap in hours; null means the 7-day default. */
+	decisionWindowMaxHours: integer("decision_window_max_hours"),
+	/** D68: a pending request for a longer cap (hours, the seller's reason, when). Cleared when decided. */
+	decisionWindowRequestHours: integer("decision_window_request_hours"),
+	decisionWindowRequestReason: text("decision_window_request_reason"),
+	decisionWindowRequestedAt: ms("decision_window_requested_at"),
 	createdAt: ms("created_at").notNull(),
 	updatedAt: ms("updated_at").notNull(),
 });
@@ -436,12 +446,22 @@ export const rescinds = sqliteTable(
 		resolvedBy: text("resolved_by"),
 		resolvedFault: text("resolved_fault"),
 		resolvedAt: millis("resolved_at"),
+		/** The admin's note when resolving (shown to the admin only). */
+		resolutionNote: text("resolution_note"),
+		/**
+		 * Core's RescindPhase: awaiting_buyer | contested | admin_review | final. Null on
+		 * rows written before WS-I; core's `fromStored` derives it from the other columns.
+		 */
+		phase: text("phase", { enum: ["awaiting_buyer", "contested", "admin_review", "final"] }),
+		/** When the buyer agreed to or disputed a mutual agreement, or the 72h ran out. */
+		answeredAt: millis("answered_at"),
 		createdAt: millis("created_at").notNull(),
 	},
 	(t) => [
 		index("rescinds_buyer").on(t.buyerId, t.createdAt),
 		index("rescinds_seller").on(t.sellerId, t.createdAt),
 		index("rescinds_entry").on(t.entryId),
+		index("rescinds_phase").on(t.phase, t.createdAt),
 	],
 );
 
@@ -482,6 +502,8 @@ export const invoices = sqliteTable(
 		/** Recorded when the invoice becomes `paid` (SM-6-gmv). */
 		gmvCents: cents("gmv_cents"),
 		shippingOptionId: text("shipping_option_id"),
+		/** The chosen option's label at payment, so later menu edits don't rename it (WS-J). */
+		shippingOptionLabel: text("shipping_option_label"),
 		/** Snapshot of the buyer's address at payment. */
 		shippingAddress: json<Record<string, unknown>>("shipping_address"),
 		paymentRef: text("payment_ref"),
@@ -632,6 +654,46 @@ export const blocks = sqliteTable(
 	(t) => [primaryKey({ columns: [t.sellerId, t.blockedUserId] })],
 );
 
+export const REPORT_TARGETS = ["user", "sale", "item", "message"] as const;
+export const REPORT_REASONS = [
+	"counterfeit",
+	"stolen_photo",
+	"prohibited_item",
+	"scam",
+	"harassment",
+	"spam",
+	"off_platform_payment",
+	"other",
+] as const;
+export const REPORT_STATUSES = ["open", "resolved", "dismissed"] as const;
+
+/** Reports of a user, sale, item or message, for the admin queue (ADMIN-report-queue, PLAN §9). */
+export const reports = sqliteTable(
+	"reports",
+	{
+		id: text("id").primaryKey(),
+		reporterId: text("reporter_id")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		targetKind: text("target_kind", { enum: REPORT_TARGETS }).notNull(),
+		targetId: text("target_id").notNull(),
+		reason: text("reason", { enum: REPORT_REASONS }).notNull(),
+		details: text("details"),
+		status: text("status", { enum: REPORT_STATUSES }).notNull().default("open"),
+		createdAt: millis("created_at").notNull(),
+		resolvedAt: millis("resolved_at"),
+		resolvedBy: text("resolved_by"),
+		resolutionNote: text("resolution_note"),
+	},
+	(t) => [
+		// One open report per reporter and target.
+		uniqueIndex("reports_one_open")
+			.on(t.reporterId, t.targetKind, t.targetId)
+			.where(sql`${t.status} = 'open'`),
+		index("reports_status_created").on(t.status, t.createdAt),
+	],
+);
+
 /** Plan catalogue (PLAN §3a). The migration seeds free, seller_pro, buyer_pro and bundle. */
 export const plans = sqliteTable("plans", {
 	id: text("id").primaryKey(),
@@ -710,6 +772,8 @@ export const ioJobs = sqliteTable(
 		status: text("status", { enum: IO_JOB_STATUSES }).notNull(),
 		/** `csv` or `xlsx`. */
 		format: text("format"),
+		/** Shipping exports: `pirate_ship` or `generic` (WS-J). */
+		layout: text("layout"),
 		/** R2 keys of the uploaded file and the results file, when kept. */
 		fileKey: text("file_key"),
 		resultKey: text("result_key"),

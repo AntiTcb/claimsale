@@ -7,6 +7,7 @@ import {
 	verifySeller,
 	waitForWelcome,
 	type Identity,
+	waitForRouter,
 } from "./auth-helpers.ts";
 import { expect, test } from "./fixtures.ts";
 
@@ -115,6 +116,8 @@ export async function waitForChecks(page: Page): Promise<void> {
 
 export async function startSale(page: Page, title: string): Promise<void> {
 	await page.goto("/sell");
+	// WebKit: a click on a link before the router has started can be dropped (waitForRouter).
+	await waitForRouter(page);
 	await page.getByRole("link", { name: "New sale" }).click();
 	await page.getByLabel("Title").fill(title);
 	await page.getByRole("button", { name: "Continue to terms" }).click();

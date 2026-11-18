@@ -21,6 +21,8 @@ const MESSAGES: Record<string, string> = {
 	VERIFICATION_FAILED: "We couldn't confirm you're a person. Try the check again.",
 	UNKNOWN_ERROR: "We couldn't run the check that you're a person. Try again in a minute.",
 	EMAIL_PASSWORD_SIGN_UP_DISABLED: "Sign-up is unavailable right now. Try again later.",
+	// ADMIN-ban (auth.ts databaseHooks).
+	ACCOUNT_SUSPENDED: "This account is suspended. Contact support if you think this is a mistake.",
 };
 
 const GENERIC = "Something went wrong. Try again.";

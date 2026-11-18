@@ -72,5 +72,7 @@ export function publicItem(item: ItemRow) {
 		attributes: item.attributes,
 		state: item.state,
 		unitsWon: item.unitsWon,
+		/** Whether offers are on; never whether a hidden minimum exists (D27). */
+		offersEnabled: item.offersMode !== "off",
 	};
 }

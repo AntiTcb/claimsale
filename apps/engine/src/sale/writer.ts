@@ -1,6 +1,17 @@
 import {
 	addWin,
+	answerMutual as coreAnswerMutual,
 	award as awardEntry,
+	contest as coreContest,
+	flagsSeller,
+	fromStored,
+	isOverturned,
+	overturnCountSince,
+	mutualAnswerDueAt,
+	resolve as coreResolve,
+	validateContestText,
+	type Rescind,
+	type ResolvedFault,
 	buyerRescind as coreBuyerRescind,
 	can,
 	cancelTakeback as coreCancelTakeback,
@@ -27,10 +38,12 @@ import {
 	ok,
 	paymentNotReceived as corePaymentNotReceived,
 	place as placeEntry,
+	planTracking,
 	publish as publishSale,
 	reject,
 	releaseForTakeback,
 	removeLine,
+	replaceTracking as coreReplaceTracking,
 	reorder as coreReorder,
 	requestTakeback as coreRequestTakeback,
 	respondToCounter as coreRespondToCounter,
@@ -52,6 +65,7 @@ import {
 	type Item,
 	type ItemContext,
 	type ItemEvent,
+	type ItemKind,
 	type ItemResult,
 	type ItemState,
 	type Millis,
@@ -61,12 +75,15 @@ import {
 	type SaleStatus,
 	type Tier,
 	type Timer,
+	type Tracking,
 } from "@claimsale/core";
 import { readPublishPhotoState } from "../photos/store.ts";
 import { planImportBatch, type ImportBatchInput, type ImportBatchResult } from "./import.ts";
 import { itemKey, KeyedLocks, lockOrder, type LockKey } from "./locks.ts";
-import { toTakeback, type TakebackRow } from "./rows.ts";
+import { toStoredRescind, toTakeback, type RescindRow, type TakebackRow } from "./rows.ts";
 import {
+	loadAddress,
+	loadInvoiceKinds,
 	loadInvoices,
 	loadSale,
 	loadSaleAndItems,
@@ -113,6 +130,38 @@ export interface SaleView {
 export interface InvoiceView extends Invoice {
 	readonly saleId: string;
 }
+
+/** A rescind after a contest, an answer or a resolution (§4.3.1). */
+export interface RescindView {
+	readonly id: string;
+	readonly phase: Rescind["phase"];
+	readonly fault: Rescind["fault"];
+	readonly resolvedFault: Rescind["resolvedFault"];
+	readonly contestedAt: Millis | null;
+}
+
+const rescindView = (id: string, rescind: Rescind): RescindView => ({
+	id,
+	phase: rescind.phase,
+	fault: rescind.fault,
+	resolvedFault: rescind.resolvedFault,
+	contestedAt: rescind.contestedAt,
+});
+
+/** One tracking re-import row's result (PLAN §3c.3). */
+export type TrackingRowResult =
+	| {
+			readonly row: number;
+			readonly invoiceId: string;
+			readonly outcome: "shipped" | "replaced" | "unchanged";
+	  }
+	| {
+			readonly row: number;
+			readonly invoiceId: string;
+			readonly outcome: "error";
+			readonly code: string;
+			readonly message: string;
+	  };
 
 /** Called after each successful commit: re-arm the alarm, publish the events. */
 export type AfterCommit = (work: Work) => Promise<void>;
@@ -552,14 +601,18 @@ export class SaleWriter {
 			new Map([[input.entryId, rescind.refundOwed]]),
 		);
 		if (!applied.ok) return applied;
+		const rescindId = newId();
+		// SM-4.3.1-mutual: the 72h answer deadline is one of the sale's timers.
+		const answerDue = mutualAnswerDueAt(rescind);
+		if (answerDue !== null) work.extraTimers.push({ kind: "mutual_answer_due", at: answerDue, rescindId });
 		work.extra.push(
 			this.db
 				.prepare(
-					`INSERT INTO rescinds (id, entry_id, seller_id, buyer_id, reason_code, explanation, attachment_key, fault, refund_owed, created_at)
-					VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
+					`INSERT INTO rescinds (id, entry_id, seller_id, buyer_id, reason_code, explanation, attachment_key, fault, refund_owed, created_at, phase)
+					VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
 				)
 				.bind(
-					newId(),
+					rescindId,
 					input.entryId,
 					work.sale.sellerId,
 					entry.buyerId,
@@ -569,13 +622,29 @@ export class SaleWriter {
 					rescind.fault,
 					rescind.refundOwed ? 1 : 0,
 					now,
+					rescind.phase,
 				),
 		);
+		// The buyer is told the reason; a mutual agreement asks them to agree or dispute (WS-K).
+		work.event({
+			type: "rescind_recorded",
+			rescindId,
+			entryId: input.entryId,
+			buyerId: entry.buyerId,
+			itemId: item.id,
+			reasonCode: input.reasonCode,
+			phase: rescind.phase,
+		});
 		work.audit({
 			action: input.passToNext ? "rescinded_and_passed" : "rescinded",
 			actorId: auditActor,
 			itemId: item.id,
-			input: { entryId: input.entryId, reasonCode: input.reasonCode, refundOwed: rescind.refundOwed },
+			input: {
+				entryId: input.entryId,
+				rescindId,
+				reasonCode: input.reasonCode,
+				refundOwed: rescind.refundOwed,
+			},
 			events: result.value.events,
 		});
 		return ok({ work, value: this.#itemResult(work, item.id, input.entryId, result.value.events) });
@@ -785,6 +854,230 @@ export class SaleWriter {
 	}
 
 	// -------------------------------------------------------------------------
+	// Rescind contests, mutual-agreement answers and admin resolution (§4.3.1, WS-I)
+
+	async #rescindRow(rescindId: string) {
+		return this.db
+			.prepare(
+				`SELECT r.*, e.item_id FROM rescinds r JOIN entries e ON e.id = r.entry_id JOIN items i ON i.id = e.item_id
+				WHERE r.id = ?1 AND i.sale_id = ?2`,
+			)
+			.bind(rescindId, this.saleId)
+			.first<RescindRow & { item_id: string }>();
+	}
+
+	/**
+	 * Runs a rescind command under the lock of the rescind's item. `body` gets the stored
+	 * rescind as core's type and returns the row update to commit with its audit.
+	 */
+	async #rescindCommand<A>(
+		rescindId: string,
+		body: (
+			work: Work,
+			row: RescindRow & { item_id: string },
+			rescind: Rescind,
+			now: Millis,
+		) => Promise<Outcome<A>>,
+	): Promise<Outcome<A>> {
+		const located = await this.#rescindRow(rescindId);
+		if (!located) return notFound("rescind");
+		return this.#transact([itemKey(located.item_id)], async (_session, now) => {
+			const row = await this.#rescindRow(rescindId);
+			if (!row) return notFound("rescind");
+			const sale = await loadSale(this.db, this.saleId, now);
+			if (!sale) return notFound();
+			const rescind = fromStored(toStoredRescind(row));
+			if (!rescind) return notFound("rescind");
+			const work = new Work(this.db, sale, now);
+			const result = await body(work, row, rescind, now);
+			if (!result.ok) return result;
+			return ok({ work, value: result.value });
+		});
+	}
+
+	/** The rescind's phase columns after a transition; the WHERE re-checks the phase it was read in. */
+	#updateRescind(
+		row: RescindRow,
+		before: Rescind,
+		after: Rescind,
+		columns: Record<string, string | number | null>,
+	): D1PreparedStatement {
+		const names = Object.keys(columns);
+		const sets = ["phase = ?1", ...names.map((name, i) => `${name} = ?${i + 4}`)].join(", ");
+		return this.db
+			.prepare(`UPDATE rescinds SET ${sets} WHERE id = ?2 AND COALESCE(phase, ?3) = ?3`)
+			.bind(after.phase, row.id, before.phase, ...names.map((name) => columns[name] ?? null));
+	}
+
+	/**
+	 * The buyer contests the rescind's attribution with their side of the story.
+	 *
+	 * @spec SM-4.3.1-contest — within 7 days; it freezes the attribution until the admin resolves it.
+	 */
+	contestRescind(input: { rescindId: string; buyerId: string; text: string }): Promise<Outcome<RescindView>> {
+		return this.#rescindCommand(input.rescindId, async (work, row, rescind, now) => {
+			const text = validateContestText(input.text);
+			if (!text.ok) return text;
+			const contested = coreContest(
+				rescind,
+				{ kind: "buyer", id: input.buyerId, tier: "free" },
+				row.buyer_id,
+				now,
+			);
+			if (!contested.ok) return contested;
+			work.extra.push(
+				this.#updateRescind(row, rescind, contested.value, {
+					contested_at: now,
+					contest_text: text.value,
+				}),
+			);
+			const event = { type: "rescind_contested", rescindId: row.id, entryId: row.entry_id };
+			work.event({ ...event, itemId: row.item_id });
+			work.audit({
+				action: "rescind_contested",
+				actorId: input.buyerId,
+				itemId: row.item_id,
+				input: { rescindId: row.id },
+				events: [event],
+			});
+			return ok(rescindView(row.id, contested.value));
+		});
+	}
+
+	/**
+	 * The buyer agrees to or disputes a mutual-agreement rescind.
+	 *
+	 * @spec SM-4.3.1-mutual — agreeing makes it neutral; disputing sends it to the admin like a contest.
+	 */
+	answerMutualRescind(input: {
+		rescindId: string;
+		buyerId: string;
+		agree: boolean;
+	}): Promise<Outcome<RescindView>> {
+		return this.#rescindCommand(input.rescindId, async (work, row, rescind, now) => {
+			const answered = coreAnswerMutual(
+				rescind,
+				{ kind: "buyer", id: input.buyerId, tier: "free" },
+				row.buyer_id,
+				input.agree ? "agree" : "dispute",
+				now,
+			);
+			if (!answered.ok) return answered;
+			work.extra.push(
+				this.#updateRescind(row, rescind, answered.value, {
+					answered_at: now,
+					contested_at: answered.value.contestedAt,
+				}),
+			);
+			const type = input.agree ? "rescind_mutual_agreed" : "rescind_mutual_disputed";
+			const event = { type, rescindId: row.id, entryId: row.entry_id };
+			work.event({ ...event, itemId: row.item_id });
+			work.audit({
+				action: type,
+				actorId: input.buyerId,
+				itemId: row.item_id,
+				input: { rescindId: row.id },
+				events: [event],
+			});
+			return ok(rescindView(row.id, answered.value));
+		});
+	}
+
+	/**
+	 * The 72h answer deadline of a mutual agreement passed: it counts as agreed.
+	 *
+	 * @spec SM-4.3.1-mutual — no response in 72h counts as neutral.
+	 */
+	mutualAnswerTimeout(rescindId: string): Promise<Outcome<RescindView>> {
+		return this.#rescindCommand(rescindId, async (work, row, rescind, now) => {
+			const timedOut = coreAnswerMutual(rescind, SYSTEM, row.buyer_id, "timeout", now);
+			if (!timedOut.ok) return timedOut;
+			work.extra.push(this.#updateRescind(row, rescind, timedOut.value, { answered_at: now }));
+			const event = { type: "rescind_mutual_timed_out", rescindId: row.id, entryId: row.entry_id };
+			work.event({ ...event, itemId: row.item_id });
+			work.audit({
+				action: "rescind_mutual_timed_out",
+				actorId: "system",
+				itemId: row.item_id,
+				input: { rescindId: row.id },
+				events: [event],
+			});
+			return ok(rescindView(row.id, timedOut.value));
+		});
+	}
+
+	/**
+	 * An admin resolves a contested or held rescind, optionally re-attributing it. The
+	 * engine checks the admin role itself.
+	 *
+	 * @spec SM-4.3.1-contest — the admin can re-attribute a contested rescind.
+	 * @spec SM-4.3.1-fraud-review — a held suspected-fraud rescind counts once resolved.
+	 * @spec SM-4.3.1-abuse-guard — the third overturned buyer-fault rescind in 30 days flags the seller.
+	 */
+	resolveRescind(input: {
+		rescindId: string;
+		adminId: string;
+		fault: ResolvedFault;
+		note?: string | null;
+	}): Promise<Outcome<RescindView>> {
+		return this.#rescindCommand(input.rescindId, async (work, row, rescind, now) => {
+			const user = await this.db
+				.prepare("SELECT role FROM users WHERE id = ?1")
+				.bind(input.adminId)
+				.first<{ role: string }>();
+			if (user?.role !== "admin") return notAllowed();
+			const resolved = coreResolve(rescind, { kind: "admin", id: input.adminId }, input.fault);
+			if (!resolved.ok) return resolved;
+			work.extra.push(
+				this.#updateRescind(row, rescind, resolved.value, {
+					resolved_fault: input.fault,
+					resolved_by: input.adminId,
+					resolved_at: now,
+					resolution_note: input.note?.trim() || null,
+				}),
+			);
+			let flagged = false;
+			if (isOverturned(resolved.value)) {
+				const earlier = await this.db
+					.prepare(
+						`SELECT count(*) AS n FROM rescinds WHERE seller_id = ?1 AND id != ?2 AND fault = 'buyer'
+						AND contested_at IS NOT NULL AND resolved_fault IN ('seller', 'neutral') AND resolved_at >= ?3`,
+					)
+					.bind(row.seller_id, row.id, overturnCountSince(now))
+					.first<{ n: number }>();
+				const overturned = (earlier?.n ?? 0) + 1;
+				if (flagsSeller(overturned)) {
+					flagged = true;
+					// One open flag per reason (the partial unique index); a repeat is ignored.
+					work.extra.push(
+						this.db
+							.prepare(
+								`INSERT OR IGNORE INTO account_flags (id, user_id, reason, count, created_at)
+								VALUES (?1, ?2, 'overturned_rescinds', ?3, ?4)`,
+							)
+							.bind(newId(), row.seller_id, overturned, now),
+					);
+				}
+			}
+			const event = {
+				type: "rescind_resolved",
+				rescindId: row.id,
+				entryId: row.entry_id,
+				fault: input.fault,
+			};
+			work.event({ ...event, itemId: row.item_id });
+			work.audit({
+				action: "rescind_resolved",
+				actorId: input.adminId,
+				itemId: row.item_id,
+				input: { rescindId: row.id, fault: input.fault, sellerFlagged: flagged },
+				events: [event],
+			});
+			return ok(rescindView(row.id, resolved.value));
+		});
+	}
+
+	// -------------------------------------------------------------------------
 	// Sale lifecycle (§2)
 
 	async #activeSaleCount(sellerId: string): Promise<number> {
@@ -963,6 +1256,8 @@ export class SaleWriter {
 				);
 			case "invoice_due":
 				return this.markOverdue(timer.invoiceId);
+			case "mutual_answer_due":
+				return this.mutualAnswerTimeout(timer.rescindId);
 			case "invoice_autocomplete":
 				break;
 		}
@@ -1100,14 +1395,26 @@ export class SaleWriter {
 		});
 	}
 
-	/** @spec SM-6-shipping-threshold — the buyer picks one of the options their subtotal allows. */
+	/**
+	 * The buyer picks shipping and an address from their address book, and says "I've paid".
+	 *
+	 * @spec SM-6-shipping-threshold — the buyer picks one of the options their subtotal allows.
+	 * @spec TCG-tracked-graded-sealed — graded and sealed lines only offer tracked options.
+	 * @spec SM-6-address-snapshot — the address is copied onto the invoice; later edits to the
+	 * address book don't change it.
+	 */
 	markBuyerPaid(input: {
 		invoiceId: string;
 		buyerId: string;
 		shippingOptionId: string;
 		paymentRef: string | null;
+		addressId: string;
 	}): Promise<Outcome<InvoiceView>> {
 		return this.#invoiceCommand(input.invoiceId, false, async (_session, work, invoice, now) => {
+			if (invoice.buyerId !== input.buyerId) return notAllowed();
+			const address = await loadAddress(this.db, input.buyerId, input.addressId);
+			if (!address) return reject("address_not_found", "Choose one of your saved addresses");
+			const kinds = await loadInvoiceKinds(this.db, invoice.id);
 			const paid = this.#applyInvoice(
 				work,
 				coreMarkBuyerPaid(
@@ -1117,9 +1424,16 @@ export class SaleWriter {
 					input.shippingOptionId,
 					input.paymentRef?.trim() || null,
 					now,
+					kinds,
 				),
 			);
 			if (!paid.ok) return paid;
+			const option = work.sale.settings.shippingMenu.find((o) => o.id === input.shippingOptionId);
+			work.extra.push(
+				this.db
+					.prepare("UPDATE invoices SET shipping_address = ?1, shipping_option_label = ?2 WHERE id = ?3")
+					.bind(JSON.stringify(address), option?.label ?? null, invoice.id),
+			);
 			work.audit({
 				action: "invoice_buyer_paid",
 				actorId: input.buyerId,
@@ -1188,16 +1502,20 @@ export class SaleWriter {
 		});
 	}
 
-	/** @spec SM-6-paid-flow — tracking is required above the threshold. */
+	/**
+	 * @spec SM-6-paid-flow — tracking is required above the threshold.
+	 * @spec TCG-tracked-graded-sealed — and always for graded and sealed lines.
+	 */
 	ship(input: {
 		invoiceId: string;
 		sellerId: string;
-		tracking: { carrier: string; number: string } | null;
+		tracking: Tracking | null;
 	}): Promise<Outcome<InvoiceView>> {
 		return this.#invoiceCommand(input.invoiceId, false, async (_session, work, invoice, now) => {
+			const kinds = await loadInvoiceKinds(this.db, invoice.id);
 			const shipped = this.#applyInvoice(
 				work,
-				shipInvoice(invoice, actorFor(work.sale, input.sellerId), input.tracking, now),
+				shipInvoice(invoice, actorFor(work.sale, input.sellerId), input.tracking, now, kinds),
 			);
 			if (!shipped.ok) return shipped;
 			work.audit({
@@ -1208,6 +1526,125 @@ export class SaleWriter {
 				events: [],
 			});
 			return ok(this.#view(shipped.value));
+		});
+	}
+
+	/**
+	 * The seller corrects a shipped order's tracking, after confirming the replacement.
+	 *
+	 * @spec IO-tracking-replace — the replacement is audit-logged with the old number.
+	 */
+	replaceTracking(input: {
+		invoiceId: string;
+		sellerId: string;
+		tracking: Tracking;
+	}): Promise<Outcome<InvoiceView>> {
+		return this.#invoiceCommand(input.invoiceId, false, async (_session, work, invoice) => {
+			const result = coreReplaceTracking(invoice, actorFor(work.sale, input.sellerId), input.tracking);
+			const replaced = this.#applyInvoice(work, result);
+			if (!replaced.ok) return replaced;
+			work.audit({
+				action: "tracking_replaced",
+				actorId: input.sellerId,
+				itemId: null,
+				input: { invoiceId: invoice.id },
+				events: result.ok ? [...result.value.events] : [],
+			});
+			return ok(this.#view(replaced.value));
+		});
+	}
+
+	/**
+	 * A batch of tracking re-import rows (PLAN §3c.3), already matched to invoices in the
+	 * browser and on the web Worker. Each row goes through the normal `paid → shipped`
+	 * transition; one batch is one D1 write.
+	 *
+	 * @spec IO-tracking-transition — rows for invoices that aren't `paid` are rejected with the reason.
+	 * @spec IO-tracking-replace — a different number on a shipped invoice needs `replace`, and is logged.
+	 */
+	async applyTracking(input: {
+		sellerId: string;
+		rows: ReadonlyArray<{
+			row: number;
+			invoiceId: string;
+			carrier: string;
+			number: string;
+			replace: boolean;
+		}>;
+	}): Promise<Outcome<{ rows: TrackingRowResult[] }>> {
+		const kindsByInvoice = new Map<string, ItemKind[]>();
+		for (const row of input.rows) {
+			if (!kindsByInvoice.has(row.invoiceId))
+				kindsByInvoice.set(row.invoiceId, await loadInvoiceKinds(this.db, row.invoiceId));
+		}
+		return this.#transact(["invoices"], async (session, now) => {
+			const sale = await loadSale(this.db, this.saleId, now);
+			if (!sale || sale.sellerId !== input.sellerId) return notFound();
+			const work = new Work(this.db, sale, now);
+			await this.#withInvoices(session, work);
+			const actor = sellerActor(sale);
+			const results: TrackingRowResult[] = [];
+			const events: unknown[] = [];
+			const seen = new Set<string>();
+			for (const row of input.rows) {
+				const invoice = work.invoice(row.invoiceId);
+				const fail = (code: string, message: string) =>
+					results.push({ row: row.row, invoiceId: row.invoiceId, outcome: "error", code, message });
+				if (!invoice) {
+					fail("not_found", "No such invoice in this sale");
+					continue;
+				}
+				if (seen.has(invoice.id)) {
+					fail("duplicate", "Another row already has tracking for this invoice");
+					continue;
+				}
+				seen.add(invoice.id);
+				const tracking = { carrier: row.carrier, number: row.number };
+				const plan = planTracking(invoice, row.number, row.replace);
+				if (plan.action === "rejected") {
+					fail(plan.code, plan.message);
+					continue;
+				}
+				if (plan.action === "unchanged") {
+					results.push({ row: row.row, invoiceId: invoice.id, outcome: "unchanged" });
+					continue;
+				}
+				const result =
+					plan.action === "ship"
+						? shipInvoice(invoice, actor, tracking, now, kindsByInvoice.get(invoice.id) ?? [])
+						: coreReplaceTracking(invoice, actor, tracking);
+				const applied = this.#applyInvoice(work, result);
+				if (!applied.ok) {
+					fail(applied.error.code, applied.error.message);
+					continue;
+				}
+				if (plan.action === "replace") {
+					work.audit({
+						action: "tracking_replaced",
+						actorId: input.sellerId,
+						itemId: null,
+						input: { invoiceId: invoice.id, row: row.row },
+						events: [{ type: "tracking_replaced", previous: plan.previous }],
+					});
+				}
+				events.push({
+					type: plan.action === "ship" ? "invoice_shipped" : "tracking_replaced",
+					invoiceId: invoice.id,
+				});
+				results.push({
+					row: row.row,
+					invoiceId: invoice.id,
+					outcome: plan.action === "ship" ? "shipped" : "replaced",
+				});
+			}
+			work.audit({
+				action: "tracking_imported",
+				actorId: input.sellerId,
+				itemId: null,
+				input: { rows: input.rows.length },
+				events,
+			});
+			return ok({ work, value: { rows: results } });
 		});
 	}
 
@@ -1267,7 +1704,6 @@ export class SaleWriter {
 				markOverdue(invoice, work.sale.settings.autoRescindOverdue, now),
 			);
 			if (!overdue.ok) return overdue;
-			const request = work.sale.settings.autoRescindOverdue ? overdue.value.lines : [];
 			work.audit({
 				action: "invoice_overdue",
 				actorId: "system",
@@ -1275,31 +1711,79 @@ export class SaleWriter {
 				input: { invoiceId: invoice.id },
 				events: [],
 			});
-			for (const line of request) {
-				const itemId = [...work.items].find(([, slot]) =>
-					slot.after.entries.some((e) => e.id === line.entryId),
-				)?.[0];
-				const item = itemId === undefined ? undefined : work.item(itemId);
-				if (!item) continue;
-				const rescinded = await this.#rescind(
+			if (work.sale.settings.autoRescindOverdue) {
+				const rescinded = await this.#rescindForNonpayment(
 					session,
 					work,
-					item,
-					sellerActor(work.sale),
-					{
-						itemId: item.id,
-						entryId: line.entryId,
-						reasonCode: "buyer_nonpayment",
-						explanation: "Automatic rescind: the payment deadline passed.",
-						passToNext: true,
-						confirmed: true,
-					},
+					overdue.value,
 					"system",
+					"Automatic rescind: the payment deadline passed.",
 					now,
 				);
 				if (!rescinded.ok) return rescinded;
 			}
 			return ok(this.#view(work.invoice(invoiceId)!));
 		});
+	}
+
+	/**
+	 * "Rescind and pass to next" on an overdue invoice, in one click (D13): every line
+	 * is rescinded for non-payment and its item passes to the next backup.
+	 *
+	 * @spec SM-6-overdue-rescind
+	 */
+	rescindOverdue(input: { invoiceId: string; sellerId: string }): Promise<Outcome<InvoiceView>> {
+		return this.#invoiceCommand(input.invoiceId, true, async (session, work, invoice, now) => {
+			if (input.sellerId !== work.sale.sellerId) return notAllowed();
+			if (!permitted(sellerActor(work.sale), "rescind_and_pass")) return notAllowed();
+			if (invoice.status !== "overdue")
+				return reject("invalid_status", "Only an overdue invoice can be rescinded in one click");
+			const rescinded = await this.#rescindForNonpayment(
+				session,
+				work,
+				invoice,
+				input.sellerId,
+				"The payment deadline passed without payment.",
+				now,
+			);
+			if (!rescinded.ok) return rescinded;
+			return ok(this.#view(work.invoice(invoice.id)!));
+		});
+	}
+
+	/** Rescinds every line of an overdue invoice for non-payment, passing each item on. */
+	async #rescindForNonpayment(
+		session: LockSession,
+		work: Work,
+		invoice: Invoice,
+		auditActor: string,
+		explanation: string,
+		now: Millis,
+	): Promise<Outcome<true>> {
+		for (const line of invoice.lines) {
+			const itemId = [...work.items].find(([, slot]) =>
+				slot.after.entries.some((e) => e.id === line.entryId),
+			)?.[0];
+			const item = itemId === undefined ? undefined : work.item(itemId);
+			if (!item) continue;
+			const rescinded = await this.#rescind(
+				session,
+				work,
+				item,
+				sellerActor(work.sale),
+				{
+					itemId: item.id,
+					entryId: line.entryId,
+					reasonCode: "buyer_nonpayment",
+					explanation,
+					passToNext: true,
+					confirmed: true,
+				},
+				auditActor,
+				now,
+			);
+			if (!rescinded.ok) return rescinded;
+		}
+		return ok(true);
 	}
 }

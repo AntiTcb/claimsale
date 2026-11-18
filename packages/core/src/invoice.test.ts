@@ -9,6 +9,7 @@ import {
 	markOverdue,
 	paymentNotReceived,
 	removeLine,
+	replaceTracking,
 	send,
 	ship,
 	subtotal,
@@ -34,13 +35,15 @@ const line = (entryId: string, amountCents: number) => ({
 	amountCents,
 });
 const buyer = buyerActor("buyer_1");
+/** The item kinds on most test invoices: raw singles, which follow the plain threshold. */
+const RAW = ["single"] as const;
 const draftWith = (...amounts: number[]): Invoice =>
 	makeInvoice({ lines: amounts.map((a, i) => ({ ...line(`e${i}`, a), refundOwed: false })) });
 const sent = (...amounts: number[]) =>
 	expectOk(send(draftWith(...amounts), seller(), "closed", 48 * HOUR, T0)).invoice;
 const paidUp = (...amounts: number[]) => {
 	const marked = expectOk(
-		markBuyerPaid(sent(...amounts), buyer, SHIPPING_MENU, "ground", "ref-1", T0 + HOUR),
+		markBuyerPaid(sent(...amounts), buyer, SHIPPING_MENU, "ground", "ref-1", T0 + HOUR, RAW),
 	).invoice;
 	return expectOk(confirmPaid(marked, seller())).invoice;
 };
@@ -95,18 +98,20 @@ describe("sending and paying", () => {
 		expect(ids(2001, "free")).toEqual(["ground"]);
 		expect(ids(4000, "pro")).toEqual(["pwe", "ground"]);
 		expect(ids(4001, "pro")).toEqual(["ground"]);
-		expect(expectRejected(markBuyerPaid(sent(2500), buyer, SHIPPING_MENU, "pwe", null, T0))).toBe(
+		expect(expectRejected(markBuyerPaid(sent(2500), buyer, SHIPPING_MENU, "pwe", null, T0, RAW))).toBe(
 			"unknown_shipping_option",
 		);
 	});
 
 	it("[SM-6-paid-flow] buyer_paid → paid → shipped → completed, with late payment allowed", () => {
 		const overdue = expectOk(markOverdue(sent(1500), false, T0 + 48 * HOUR)).invoice;
-		const marked = expectOk(markBuyerPaid(overdue, buyer, SHIPPING_MENU, "pwe", "pp-123", T0 + 50 * HOUR));
+		const marked = expectOk(
+			markBuyerPaid(overdue, buyer, SHIPPING_MENU, "pwe", "pp-123", T0 + 50 * HOUR, RAW),
+		);
 		expect(marked.invoice).toMatchObject({ status: "buyer_paid", shippingCents: 100, paymentRef: "pp-123" });
 		expect(total(marked.invoice)).toBe(1600);
 		const confirmed = expectOk(confirmPaid(marked.invoice, seller())).invoice;
-		const shipped = expectOk(ship(confirmed, seller(), null, T0 + 3 * DAY)).invoice;
+		const shipped = expectOk(ship(confirmed, seller(), null, T0 + 3 * DAY, RAW)).invoice;
 		expect(shipped).toMatchObject({ status: "shipped", tracking: null });
 		expect(expectOk(complete(shipped, buyer, T0 + 4 * DAY)).invoice.status).toBe("completed");
 	});
@@ -114,16 +119,58 @@ describe("sending and paying", () => {
 	it("[SM-6-paid-flow] tracking is required to ship above the threshold", () => {
 		const invoice = paidUp(2500);
 		expect(trackingRequired(invoice)).toBe(true);
-		expect(expectRejected(ship(invoice, seller(), null, T0))).toBe("tracking_required");
-		expect(expectRejected(ship(invoice, seller(), { carrier: "USPS", number: " " }, T0))).toBe(
+		expect(expectRejected(ship(invoice, seller(), null, T0, RAW))).toBe("tracking_required");
+		expect(expectRejected(ship(invoice, seller(), { carrier: "USPS", number: " " }, T0, RAW))).toBe(
 			"tracking_required",
 		);
-		const shipped = expectOk(ship(invoice, seller(), { carrier: "USPS", number: "9400" }, T0)).invoice;
+		const shipped = expectOk(ship(invoice, seller(), { carrier: "USPS", number: "9400" }, T0, RAW)).invoice;
 		expect(shipped.tracking).toEqual({ carrier: "USPS", number: "9400" });
 	});
 
+	it("[TCG-tracked-graded-sealed] a graded or sealed line needs tracking to ship, even under the threshold", () => {
+		const invoice = paidUp(1000);
+		expect(expectRejected(ship(invoice, seller(), null, T0, ["single", "graded"]))).toBe("tracking_required");
+		expect(expectRejected(ship(invoice, seller(), null, T0, ["sealed"]))).toBe("tracking_required");
+		expect(
+			expectOk(ship(invoice, seller(), { carrier: "USPS", number: "9400" }, T0, ["sealed"])).invoice,
+		).toMatchObject({ status: "shipped", tracking: { carrier: "USPS", number: "9400" } });
+		expect(expectOk(ship(invoice, seller(), null, T0, RAW)).invoice.status).toBe("shipped");
+	});
+
+	it("[TCG-tracked-graded-sealed] a buyer can't pick untracked shipping for a graded or sealed line", () => {
+		expect(expectRejected(markBuyerPaid(sent(1000), buyer, SHIPPING_MENU, "pwe", null, T0, ["graded"]))).toBe(
+			"unknown_shipping_option",
+		);
+		expect(
+			expectOk(markBuyerPaid(sent(1000), buyer, SHIPPING_MENU, "ground", null, T0, ["graded"])).invoice
+				.status,
+		).toBe("buyer_paid");
+	});
+
+	it("[IO-tracking-replace] only a shipped order's tracking can be replaced, keeping the old number in the event", () => {
+		const shipped = expectOk(
+			ship(paidUp(2500), seller(), { carrier: "USPS", number: "9400" }, T0, RAW),
+		).invoice;
+		const { invoice, events } = expectOk(
+			replaceTracking(shipped, seller(), { carrier: " UPS ", number: "1Z99" }),
+		);
+		expect(invoice.tracking).toEqual({ carrier: "UPS", number: "1Z99" });
+		expect(events).toEqual([{ type: "tracking_replaced", previous: "9400" }]);
+		expect(expectRejected(replaceTracking(shipped, buyer, { carrier: "UPS", number: "1Z99" }))).toBe(
+			"not_allowed",
+		);
+		expect(expectRejected(replaceTracking(shipped, seller(), { carrier: "UPS", number: " " }))).toBe(
+			"tracking_required",
+		);
+		expect(expectRejected(replaceTracking(paidUp(2500), seller(), { carrier: "UPS", number: "1Z" }))).toBe(
+			"invalid_status",
+		);
+	});
+
 	it("[SM-6-paid-flow] the seller can say a payment didn't arrive; the deadline doesn't restart", () => {
-		const marked = expectOk(markBuyerPaid(sent(1000), buyer, SHIPPING_MENU, "pwe", null, T0 + HOUR)).invoice;
+		const marked = expectOk(
+			markBuyerPaid(sent(1000), buyer, SHIPPING_MENU, "pwe", null, T0 + HOUR, RAW),
+		).invoice;
 		const back = expectOk(paymentNotReceived(marked, seller())).invoice;
 		expect(back).toMatchObject({ status: "sent", dueAt: T0 + 48 * HOUR, paidAt: null });
 		expect(expectRejected(paymentNotReceived(back, seller()))).toBe("invalid_status");
@@ -131,20 +178,22 @@ describe("sending and paying", () => {
 	});
 
 	it("[SM-6-paid-flow] each step is for the right party, in order", () => {
-		expect(expectRejected(markBuyerPaid(sent(1000), seller(), SHIPPING_MENU, "pwe", null, T0))).toBe(
+		expect(expectRejected(markBuyerPaid(sent(1000), seller(), SHIPPING_MENU, "pwe", null, T0, RAW))).toBe(
 			"not_allowed",
 		);
-		expect(expectRejected(markBuyerPaid(draftWith(1000), buyer, SHIPPING_MENU, "pwe", null, T0))).toBe(
+		expect(expectRejected(markBuyerPaid(draftWith(1000), buyer, SHIPPING_MENU, "pwe", null, T0, RAW))).toBe(
 			"invalid_status",
 		);
 		expect(expectRejected(confirmPaid(sent(1000), seller()))).toBe("invalid_status");
-		expect(expectRejected(ship(sent(1000), seller(), null, T0))).toBe("invalid_status");
-		expect(expectRejected(ship(paidUp(1000), buyer, null, T0))).toBe("not_allowed");
+		expect(expectRejected(ship(sent(1000), seller(), null, T0, RAW))).toBe("invalid_status");
+		expect(expectRejected(ship(paidUp(1000), buyer, null, T0, RAW))).toBe("not_allowed");
 		expect(expectRejected(complete(paidUp(1000), buyer, T0))).toBe("invalid_status");
 	});
 
 	it("[SM-6-gmv] gmv_cents is recorded when the invoice becomes paid", () => {
-		const marked = expectOk(markBuyerPaid(sent(1000, 500), buyer, SHIPPING_MENU, "ground", null, T0)).invoice;
+		const marked = expectOk(
+			markBuyerPaid(sent(1000, 500), buyer, SHIPPING_MENU, "ground", null, T0, RAW),
+		).invoice;
 		expect(marked.gmvCents).toBeNull();
 		const { invoice, events } = expectOk(confirmPaid(marked, seller()));
 		expect(invoice.gmvCents).toBe(2050);
@@ -153,7 +202,7 @@ describe("sending and paying", () => {
 	});
 
 	it("[SM-6-autocomplete] completes 14 days after shipping, and feedback opens", () => {
-		const shipped = expectOk(ship(paidUp(1000), seller(), null, T0)).invoice;
+		const shipped = expectOk(ship(paidUp(1000), seller(), null, T0, RAW)).invoice;
 		expect(expectRejected(complete(shipped, system, T0 + 13 * DAY))).toBe("not_due");
 		const { events } = expectOk(complete(shipped, system, T0 + 14 * DAY));
 		expect(events).toEqual([{ type: "invoice_completed", by: "auto" }, { type: "feedback_opened" }]);
@@ -183,7 +232,7 @@ describe("rescinded lines", () => {
 		expect(events).toEqual([{ type: "line_refund_owed", entryId: "e1" }]);
 		expect(expectOk(removeLine(invoice, "e1", false)).events).toEqual([]);
 		expect(expectRejected(removeLine(invoice, "zz", true))).toBe("line_not_found");
-		const shipped = expectOk(ship(paidUp(1000), seller(), null, T0)).invoice;
+		const shipped = expectOk(ship(paidUp(1000), seller(), null, T0, RAW)).invoice;
 		expect(expectRejected(removeLine(shipped, "e0", true))).toBe("invalid_status");
 	});
 

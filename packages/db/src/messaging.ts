@@ -89,34 +89,3 @@ export const messageAttachments = sqliteTable(
 	},
 	(t) => [index("message_attachments_message").on(t.messageId)],
 );
-
-export const REPORT_TARGETS = ["message", "user", "sale"] as const;
-export const REPORT_STATUSES = ["open", "resolved", "dismissed"] as const;
-
-/** Reports go to the admin queue (PLAN §9). */
-export const reports = sqliteTable(
-	"reports",
-	{
-		id: text("id").primaryKey(),
-		reporterId: text("reporter_id")
-			.notNull()
-			.references(() => users.id, { onDelete: "cascade" }),
-		targetKind: text("target_kind", { enum: REPORT_TARGETS }).notNull(),
-		targetId: text("target_id").notNull(),
-		/** The user the report is about (the message's sender, the sale's seller…). */
-		reportedUserId: text("reported_user_id").references(() => users.id, { onDelete: "cascade" }),
-		reason: text("reason").notNull(),
-		details: text("details"),
-		status: text("status", { enum: REPORT_STATUSES }).notNull().default("open"),
-		resolvedBy: text("resolved_by"),
-		resolvedAt: millis("resolved_at"),
-		createdAt: millis("created_at").notNull(),
-	},
-	(t) => [
-		index("reports_status_created").on(t.status, t.createdAt),
-		// One open report per reporter per target.
-		uniqueIndex("reports_one_open")
-			.on(t.reporterId, t.targetKind, t.targetId)
-			.where(sql`${t.status} = 'open'`),
-	],
-);

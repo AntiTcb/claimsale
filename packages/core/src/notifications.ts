@@ -34,6 +34,7 @@ export const NOTIFICATION_TYPES = [
 	"offer_countered",
 	"offer_declined",
 	"win_rescinded",
+	"rescind_resolved",
 	"invoice_sent",
 	"invoice_overdue",
 	"payment_not_received",
@@ -45,6 +46,8 @@ export const NOTIFICATION_TYPES = [
 	"seller_decision_needed",
 	"seller_buyer_paid",
 	"seller_takeback_requested",
+	"seller_rescind_contested",
+	"seller_rescind_resolved",
 	// Discovery
 	"followed_sale_scheduled",
 	"followed_sale_live",
@@ -60,6 +63,7 @@ const CATEGORY: Readonly<Record<NotificationType, NotificationCategory>> = {
 	offer_countered: "purchases",
 	offer_declined: "purchases",
 	win_rescinded: "purchases",
+	rescind_resolved: "purchases",
 	invoice_sent: "purchases",
 	invoice_overdue: "purchases",
 	payment_not_received: "purchases",
@@ -70,6 +74,8 @@ const CATEGORY: Readonly<Record<NotificationType, NotificationCategory>> = {
 	seller_decision_needed: "selling",
 	seller_buyer_paid: "selling",
 	seller_takeback_requested: "selling",
+	seller_rescind_contested: "selling",
+	seller_rescind_resolved: "selling",
 	followed_sale_scheduled: "followed_sellers",
 	followed_sale_live: "followed_sellers",
 	want_list_match: "want_list",
@@ -239,6 +245,13 @@ export function notificationsForSaleEvents(
 	let followers: SaleEventFollowUps["followers"] = null;
 	let published = false;
 	const types = new Set(events.map((e) => str(asRecord(e)["type"])));
+	// A seller's rescind commits winner_removed and rescind_recorded; the buyer hears it once, from
+	// rescind_recorded, which says whether they're asked to agree (SM-4.3.1-mutual).
+	const recorded = new Set(
+		events.flatMap((e) =>
+			str(asRecord(e)["type"]) === "rescind_recorded" ? [str(asRecord(e)["entryId"])] : [],
+		),
+	);
 
 	events.forEach((raw, index) => {
 		const e = asRecord(raw);
@@ -272,9 +285,26 @@ export function notificationsForSaleEvents(
 				if (e["status"] === "declined") push(entry?.buyerId, "offer_declined", {});
 				break;
 			case "winner_removed":
-				if (e["by"] === "seller")
+				if (e["by"] === "seller" && !recorded.has(str(e["entryId"])))
 					push(str(e["buyerId"]), "win_rescinded", { reasonCode: str(e["reasonCode"]) });
 				break;
+			case "rescind_recorded":
+				push(str(e["buyerId"]) ?? entry?.buyerId, "win_rescinded", {
+					reasonCode: str(e["reasonCode"]),
+					rescindId: str(e["rescindId"]),
+					phase: str(e["phase"]),
+				});
+				break;
+			case "rescind_contested":
+			case "rescind_mutual_disputed":
+				push(sale.sellerId, "seller_rescind_contested", { rescindId: str(e["rescindId"]) });
+				break;
+			case "rescind_resolved": {
+				const resolved = { rescindId: str(e["rescindId"]), fault: str(e["fault"]) };
+				push(entry?.buyerId, "rescind_resolved", resolved);
+				push(sale.sellerId, "seller_rescind_resolved", resolved);
+				break;
+			}
 			case "entry_placed":
 				if (entry) push(sale.sellerId, entry.kind === "offer" ? "seller_new_offer" : "seller_new_claim", {});
 				break;
@@ -474,13 +504,25 @@ export function describeStoredNotification(type: string, payload: unknown): Noti
 			};
 }
 
-/** What a notification says. Invoice links go to the sale until the buyer's invoice page exists (WS-J). */
+const faultPhrase = (payload: NotificationPayload): string => {
+	switch (payload["fault"]) {
+		case "buyer":
+			return "it was the buyer's fault";
+		case "seller":
+			return "it was the seller's fault";
+		default:
+			return "no one at fault";
+	}
+};
+
+/** What a notification says: buyers' invoice links go to /me/invoices, rescinds to /me/rescinds. */
 export function describeNotification(type: NotificationType, payload: NotificationPayload): NotificationCopy {
 	const sale = quoted(text(payload, "saleTitle", "a sale"));
 	const item = quoted(text(payload, "itemTitle", "an item"));
 	const salePath = `/s/${text(payload, "saleSlug")}`;
 	const itemPath = payload["itemId"] ? `${salePath}/i/${text(payload, "itemId")}` : salePath;
 	const sellerPath = `/sell/${text(payload, "saleId")}`;
+	const invoicePath = payload["invoiceId"] ? `/me/invoices/${text(payload, "invoiceId")}` : "/me/invoices";
 	switch (type) {
 		case "claim_won":
 			return {
@@ -511,45 +553,59 @@ export function describeNotification(type: NotificationType, payload: Notificati
 				action: "View the item",
 			};
 		case "win_rescinded":
+			return payload["phase"] === "awaiting_buyer"
+				? {
+						title: `The seller asks to cancel your win on ${item}`,
+						body: `The seller of ${sale} asked to cancel your win on ${item} by mutual agreement. Agree or dispute it within 72 hours.`,
+						path: "/me/rescinds",
+						action: "Answer the seller",
+					}
+				: {
+						title: `The seller rescinded your win on ${item}`,
+						body: `The seller of ${sale} rescinded your win on ${item}. See the reason, and contest it if it's wrong.`,
+						path: "/me/rescinds",
+						action: "See the reason",
+					};
+		case "rescind_resolved":
 			return {
-				title: `The seller rescinded your win on ${item}`,
-				body: `The seller of ${sale} rescinded your win on ${item}. You can see the reason on the sale.`,
-				path: itemPath,
-				action: "View the item",
+				title: `An admin decided the rescind of ${item}`,
+				body: `An admin reviewed the rescind of your win on ${item} in ${sale} and found ${faultPhrase(payload)}.`,
+				path: "/me/rescinds",
+				action: "See the decision",
 			};
 		case "invoice_sent":
 			return {
 				title: `Invoice from ${sale}`,
 				body: `Your invoice${typeof payload["totalCents"] !== "number" ? "" : ` for ${money(payload, "totalCents")}`} is ready. Pick shipping and pay the seller before the deadline.`,
-				path: salePath,
+				path: invoicePath,
 				action: "View the invoice",
 			};
 		case "invoice_overdue":
 			return {
 				title: `Your invoice from ${sale} is overdue`,
 				body: `The payment deadline passed. Pay now or message the seller, or the seller may rescind your wins.`,
-				path: salePath,
+				path: invoicePath,
 				action: "View the invoice",
 			};
 		case "payment_not_received":
 			return {
 				title: `The seller hasn't received your payment for ${sale}`,
 				body: `The seller marked your payment as not received. Check the payment and message the seller.`,
-				path: salePath,
+				path: invoicePath,
 				action: "View the invoice",
 			};
 		case "payment_confirmed":
 			return {
 				title: `Payment confirmed for ${sale}`,
 				body: `The seller confirmed your payment. You'll hear from us when it ships.`,
-				path: salePath,
+				path: invoicePath,
 				action: "View the invoice",
 			};
 		case "invoice_shipped":
 			return {
 				title: `Your order from ${sale} shipped`,
 				body: `The seller marked your order as shipped. Confirm when it arrives.`,
-				path: salePath,
+				path: invoicePath,
 				action: "View the order",
 			};
 		case "seller_new_claim":
@@ -580,7 +636,7 @@ export function describeNotification(type: NotificationType, payload: Notificati
 			return {
 				title: `A buyer says they paid for ${sale}`,
 				body: `Check your payment app and confirm the payment${typeof payload["totalCents"] !== "number" ? "" : ` of ${money(payload, "totalCents")}`}.`,
-				path: sellerPath,
+				path: `${sellerPath}/invoices`,
 				action: "Open the sale",
 			};
 		case "seller_takeback_requested":
@@ -589,6 +645,20 @@ export function describeNotification(type: NotificationType, payload: Notificati
 				body: `A buyer asked to give back ${item} in ${sale}. Approve or deny it.`,
 				path: sellerPath,
 				action: "Open the sale",
+			};
+		case "seller_rescind_contested":
+			return {
+				title: `A buyer contested your rescind of ${item}`,
+				body: `The buyer contested your rescind of ${item} in ${sale}. An admin will review it; you'll hear the decision.`,
+				path: `${sellerPath}/manage`,
+				action: "Open the control room",
+			};
+		case "seller_rescind_resolved":
+			return {
+				title: `An admin decided your rescind of ${item}`,
+				body: `An admin reviewed your rescind of ${item} in ${sale} and found ${faultPhrase(payload)}.`,
+				path: `${sellerPath}/manage`,
+				action: "Open the control room",
 			};
 		case "followed_sale_scheduled":
 			return {
@@ -677,6 +747,10 @@ function digestPhrase(type: NotificationType, n: number): string {
 			return plural("payment to confirm", "payments to confirm");
 		case "seller_takeback_requested":
 			return plural("take-back request", "take-back requests");
+		case "seller_rescind_contested":
+			return plural("contested rescind", "contested rescinds");
+		case "seller_rescind_resolved":
+			return plural("rescind decided", "rescinds decided");
 		default:
 			return plural("update", "updates");
 	}

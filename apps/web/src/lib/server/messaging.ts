@@ -14,11 +14,12 @@ import {
 	type Result,
 } from "@claimsale/core";
 import { and, asc, desc, eq, gt, inArray, or, sql, type Db } from "@claimsale/db";
-import { conversations, messageAttachments, messages, reports } from "@claimsale/db/messaging";
+import { conversations, messageAttachments, messages } from "@claimsale/db/messaging";
 import { blocks, sales, users } from "@claimsale/db/schema";
 import { uuidv7 } from "uuidv7";
 import { sanitizeImage, type SanitizeError } from "./image-sanitize.ts";
 import type { ImageStore } from "./images.ts";
+import { fileReport } from "./moderation.ts";
 
 /**
  * Buyer↔seller messaging (PLAN §3 "Messaging", D18; WS-K): one conversation per buyer per
@@ -39,6 +40,7 @@ export type MessagingRejection = Rejection<
 	| "too_many_attachments"
 	| "invalid_reason"
 	| "already_reported"
+	| "rate_limited"
 	| SanitizeError
 >;
 
@@ -445,7 +447,8 @@ export async function unblockBuyer(
 }
 
 /**
- * A participant reports a message to the admin queue.
+ * A participant reports a message to the admin queue. It goes through the shared report path
+ * (`fileReport`, ADMIN-report-queue), so the admin sees it on /admin/reports with the rest.
  *
  * @spec MSG-report — one open report per message per reporter; you can't report your own message.
  */
@@ -461,88 +464,19 @@ export async function reportMessage(
 	if (!(REPORT_REASONS as readonly string[]).includes(input.reason))
 		return reject("invalid_reason", "Pick a reason");
 	const details = input.details.trim().slice(0, REPORT_MAX_LENGTH);
-	const senderId = conversation.side === "buyer" ? conversation.seller.id : conversation.buyer.id;
-	const inserted = await db
-		.insert(reports)
-		.values({
-			id: uuidv7(),
-			reporterId,
-			targetKind: "message",
-			targetId: input.messageId,
-			reportedUserId: senderId,
-			reason: input.reason,
-			details: details === "" ? null : details,
-			createdAt: now,
-		})
-		.onConflictDoNothing()
-		.returning({ id: reports.id })
-		.all();
-	if (inserted.length === 0) return reject("already_reported", "You already reported this message");
-	return ok(true);
-}
-
-export interface OpenReport {
-	readonly id: string;
-	readonly reason: string;
-	readonly details: string | null;
-	readonly targetKind: string;
-	readonly targetId: string;
-	readonly reporterHandle: string | null;
-	readonly reportedHandle: string | null;
-	/** The reported message's text, for the admin only. */
-	readonly messageBody: string | null;
-	readonly createdAt: Millis;
-}
-
-/** The admin queue (PLAN §9), oldest first. */
-export async function openReports(db: Db, limit = 100): Promise<OpenReport[]> {
-	const rows = await db
-		.select({
-			id: reports.id,
-			reason: reports.reason,
-			details: reports.details,
-			targetKind: reports.targetKind,
-			targetId: reports.targetId,
-			reporterId: reports.reporterId,
-			reportedUserId: reports.reportedUserId,
-			messageBody: messages.body,
-			createdAt: reports.createdAt,
-		})
-		.from(reports)
-		.leftJoin(messages, and(eq(reports.targetKind, "message"), eq(messages.id, reports.targetId)))
-		.where(eq(reports.status, "open"))
-		.orderBy(asc(reports.createdAt))
-		.limit(limit)
-		.all();
-	const names = await namesOf(
+	const filed = await fileReport(
 		db,
-		rows.flatMap((r) => [r.reporterId, ...(r.reportedUserId ? [r.reportedUserId] : [])]),
+		reporterId,
+		{ targetKind: "message", targetId: input.messageId, reason: input.reason, details },
+		now,
 	);
-	return rows.map((r) => ({
-		id: r.id,
-		reason: r.reason,
-		details: r.details,
-		targetKind: r.targetKind,
-		targetId: r.targetId,
-		reporterHandle: names.get(r.reporterId)?.handle ?? null,
-		reportedHandle: r.reportedUserId ? (names.get(r.reportedUserId)?.handle ?? null) : null,
-		messageBody: r.messageBody,
-		createdAt: r.createdAt,
-	}));
-}
-
-export async function closeReport(
-	db: Db,
-	reportId: string,
-	adminId: string,
-	status: "resolved" | "dismissed",
-	now: Millis,
-): Promise<boolean> {
-	const rows = await db
-		.update(reports)
-		.set({ status, resolvedBy: adminId, resolvedAt: now })
-		.where(and(eq(reports.id, reportId), eq(reports.status, "open")))
-		.returning({ id: reports.id })
-		.all();
-	return rows.length > 0;
+	if (filed.ok) return ok(true);
+	switch (filed.error.code) {
+		case "already_reported":
+			return reject("already_reported", "You already reported this message");
+		case "rate_limited":
+			return reject("rate_limited", filed.error.message);
+		default:
+			return reject("not_found", "No such message");
+	}
 }

@@ -16,9 +16,9 @@
 | 4. Sales and items | Not started (schema has only auth tables) |
 | 4b. TCG catalog + photo authenticity | Not started |
 | 5. Engine (SaleEngine DO write path) | WS-E: write path, RPC, alarms, cron sweep, rate limit (k6 run pending) |
-| 6. Live grid | Not started |
+| 6. Live grid | WS-H: live socket on the SaleEngine, claim/offer UI, filters, running total |
 | 7. Seller control room + admin disputes | Not started |
-| 8. Invoices after close + exports + tracking import | Pure invoice machine done; no I/O |
+| 8. Invoices after close + exports + tracking import | WS-J: invoice pages, shipping menu, CSV exports, tracking re-import |
 | 9. Notifications and messaging | Email outbox + Email Service binding exist; no Queue consumer logic |
 | 10. Discovery + pilot | Not started |
 
@@ -246,7 +246,7 @@ Wave 4:                     WS-L → pilot sale
   the authenticated user's ID; the engine works out seller / buyer and tiers itself.
 - Sale settings the engine reads from `sales.terms` (beyond the web form's fields):
   `decisionWindowHours` (Pro), `autoSendAtClose`, `autoRescindOverdue`,
-  `requireVerifiedEmail`, `minAccountAgeDays`; the shipping menu from `sales.shipping`
+  `minAccountAgeDays` (a verified email is always required, D20/D68); the shipping menu from `sales.shipping`
   as `[{ id, label, priceCents, tracked }]`. WS-I / WS-J add the form fields.
 - `POST /api/sales/[saleId]/entries` takes a claim or offer as JSON (session + sale access
   checked in web). WS-H can use it or call `placeEntry` from a remote function.
@@ -287,10 +287,18 @@ Wave 4:                     WS-L → pilot sale
   `allowlist_invites` and WS-F2's `photo_verify`. The consumer (`apps/engine/src/notifications`)
   maps events to `notifications` rows with core's `notificationsForSaleEvents`; to notify about a
   new event type, add a case there and its copy in `describeNotification` (one place for the bell
-  and email). Invoice links point at the sale page until WS-J's buyer invoice page exists.
+  and email). Buyers' invoice notifications link to `/me/invoices/<id>` and the seller's
+  "buyer paid" to `/sell/<sale>/invoices` (WS-J).
+- Rescinds (WS-I's events): the buyer is told once per rescind, from `rescind_recorded` (a
+  mutual-agreement one asks them to answer within 72h); the seller hears about contests and
+  disputes; both sides hear the admin's decision. Buyer links go to `/me/rescinds`, seller
+  links to the control room.
+- Message reports use WS-I's `reports` table and `fileReport` (ADMIN-report-queue), so they
+  land on `/admin/reports` with the rest; the admin sees the reported message's text there.
+  The message form offers `spam` and `off_platform_payment`, now also report reasons.
 - Email: per-category preferences, verified addresses only, seller activity as a 5-minute digest,
   message emails only if unread after 10 minutes; the cron sweep sends what a lost message left.
-  Delivery state lives on `notifications` (migration `0009_notifications_messaging`).
+  Delivery state lives on `notifications` (migration `0011_notifications_messaging`).
 - Followers and want lists are told about **public** sales only, when scheduled and when live.
   Items added to an already-published sale aren't matched against want lists yet.
 - Messaging is server load + form actions; `#lib/messaging/live.ts` polls today. **WS-H seam:**
@@ -299,6 +307,100 @@ Wave 4:                     WS-L → pilot sale
 - Allowlist invites go out when a private sale is published, and when the invite list of a
   published sale is saved (`ENGINE.sendAllowlistInvites`); `setPrivateAccess` keeps `invited_at`.
 - Seller blocks reuse `blocks`, so a blocked buyer can neither message nor claim.
+
+### Wave 3 integration notes (WS-I, control room and admin)
+- New engine RPCs: `contestRescind` (buyer), `answerMutualRescind` (buyer), `resolveRescind`
+  (admin; the engine checks `users.role`). The 72h mutual-agreement answer is a sale timer
+  (`mutual_answer_due`) in the alarm and the cron sweep. Committed events now include
+  `rescind_recorded`, `rescind_contested`, `rescind_mutual_agreed` / `_disputed` /
+  `_timed_out` and `rescind_resolved` for WS-K's notifications.
+- Migration `0010_control_room` (expand only): `rescinds.phase` / `answered_at` /
+  `resolution_note`, `users.banned_at` / `banned_reason` / `banned_by`, and `reports`.
+  Rows from before `phase` get it derived (core `fromStored`).
+- Bans: the engine treats a banned account as a blocked buyer; Better Auth refuses a new
+  session (`ACCOUNT_SUSPENDED`); banning deletes the account's sessions.
+- `POST /api/reports` takes `{ targetKind: user | sale | item | message, targetId, reason,
+  details? }` for WS-H's and WS-K's report buttons; messages aren't checked to exist yet.
+- `/me/rescinds` is the buyer's side of rescinds (reason, contest, agree / dispute); WS-K
+  should link it from the rescind notification.
+- The terms form now writes `decisionWindowHours` (Pro) and `minAccountAgeDays`; WS-J adds its
+  own fields to the same `SaleTerms`. Sellers can't turn off the verified-email requirement (D68).
+- D68 (owner, 2026-11-17):
+  - The abuse guard counts overturned rescinds resolved in the last 30 days.
+  - A Pro seller's decision window is capped at 7 days. The seller can ask for more on the
+    terms page; an admin approves or declines on `/admin/users`, up to 30 days, and can reset
+    it. The cap lives in `users.decision_window_max_hours`, which the engine reads with the sale
+    and applies when it reads the terms, so a revoked cap shortens existing sales' windows too.
+  - Contests stay 10 to 2,000 characters; suspected-fraud rescinds still go straight to the
+    admin without a contest; admins see account emails on `/admin/users`.
+
+### Wave 3 integration notes (WS-J, invoices after close, exports, tracking import)
+- New engine RPCs: `rescindOverdueInvoice` (SM-6-overdue-rescind), `replaceInvoiceTracking`
+  (IO-tracking-replace), `applyTracking` (≤ 200 matched rows, IO-tracking-transition) and
+  `requestExport`. `markInvoicePaid` now **requires `addressId`** (one of the buyer's saved
+  addresses; the engine snapshots it and the option label onto the invoice,
+  SM-6-address-snapshot). `shipInvoice` and `markInvoicePaid` pass the invoice's item kinds
+  to core, so graded and sealed lines always need tracked shipping (TCG-tracked-graded-sealed).
+- Exports reuse the engine's queue (`export_job` messages) and the `IMAGES` bucket (keys
+  `exports/<seller>/<job>.csv`, served only by `/sell/exports/[jobId]` to their seller): no new
+  Cloudflare resource. The 5-minute cron deletes files whose 24h link expired. CSV only; XLSX
+  and the JSON account export are not built yet.
+- Migration `0009_invoices_exports`: `invoices.shipping_option_label`, `io_jobs.layout` (expand only).
+- Invoice numbers are shown as `CS-<n>` (core `invoiceNumberLabel`); the tracking import and
+  Pirate Ship's "Order ID" use the same label.
+- The shipping menu, the `autoSendAtClose` / `autoRescindOverdue` switches and the seller's
+  payment handles live on `/sell/[saleId]/shipping` (not the terms form). `updateTerms` now
+  merges into `sales.terms`, so fields saved elsewhere (these switches, WS-I's) survive it.
+- Events for WS-K come from the engine as usual (`invoice_sent`, `buyer_marked_paid`,
+  `payment_confirmed`, `invoice_shipped`, `tracking_replaced`, `invoice_completed`,
+  `feedback_opened`); WS-J sends no email.
+- Not built: seller adjustments / discounts on an invoice, per-item or "free over $X" shipping
+  pricing, a feedback table and form (only the `feedback_opened` event). WS-J's E2E claims
+  through `POST /api/sales/[saleId]/entries`, not WS-H's live grid.
+
+### Wave 3 integration notes (WS-H, the live grid)
+- **Path:** the browser opens `GET /api/sales/[saleId]/live` (WebSocket). The web Worker checks the
+  upgrade, the `Origin` (same site only) and sale access exactly like the sale page
+  (`liveUpgrade` in `#lib/server/live.ts`), then forwards to the engine's `fetch` at
+  `/live/<saleId>` with the session's user in `x-claimsale-viewer` (core `LIVE_VIEWER_HEADER`).
+  The engine has no public route, so only the web Worker can set that header. The Engine
+  entrypoint passes the request to the sale's `SaleEngine`, which accepts it with the
+  Hibernation API (`apps/engine/src/live/`).
+- **Protocol** (`LiveMessage` in `packages/core/src/live.ts`; one JSON object per frame):
+  `hello { protocol: 1, serverNow }` first, then `snapshot { serverNow, sale, items }` on every
+  (re)connect, then per commit `sale { sale: { status, liveAt, closesAt, at } }` when the sale's
+  status changed and `items { items: LiveItem[] }` with every item the commit touched. A
+  `LiveItem` is `{ id, version, state, quantity, freeUnits, unitsWon, claimCount, offerCount,
+  decisionDeadline, offers: [{ label, amountCents }], mine: MyEntry[] }`, projected per viewer by
+  core's `liveItem` (no buyer IDs, no hidden minimum, no market price; offers per
+  `SM-3-offer-visibility`; `mine` = the viewer's own entries with their `position`). Clients keep
+  each item's highest `version` and the newest sale `at`. The browser sends only `"ping"`
+  (every 25 s), which the runtime answers with `"pong"` without waking the object. Close codes:
+  4403 (the sale went back to draft; every non-seller socket is closed) and 4404 (sale gone).
+- **First render:** the sale page calls the new `ENGINE.liveSnapshot({ saleId, viewerId })` RPC
+  (same projection, D1 read in the entrypoint, no DO hop); without the engine (`pnpm dev:ui`)
+  the page renders without live data.
+- **Broadcast helper for WS-K** (`LiveHub`, `apps/engine/src/live/hub.ts`; one per `SaleEngine`,
+  field `#live`): `accept(viewer)` → `{ client, server }`; `broadcast(type, payload, audience?)`
+  sends `{ type, ...payload }` to every socket whose `LiveViewer { userId, role: "seller" |
+  "buyer" | "visitor", connectedAt }` passes `audience`; `payload` may be a function of the
+  viewer (called once per distinct role + user; return undefined to skip that viewer);
+  `sendToUser(userId, type, payload)` uses the socket's `user:<id>` tag (all of that user's tabs);
+  `closeWhere(audience, code, reason)`; `count(audience?)`. Messaging can add its own `type`s
+  (e.g. `message`) on the same sockets: send to `viewer.role === "seller" || viewer.userId ===
+  buyerId`. Each message type must be projected for its audience like `liveItem` is.
+- **After each commit** `SaleEngine.#afterCommit` calls `broadcastCommit(hub, work)` before
+  re-arming the alarm; a broadcast failure is logged, never fails the committed command.
+- **Sale settings:** the engine now reads `offerVisibility` from `sales.terms`; the terms form
+  has a new `confirmClaims` field (default on; `LIVE-claim-confirm`).
+- **Not built (open):** buyer actions beyond placing (withdraw an offer / leave the backup queue,
+  answer a counter) have no UI or web endpoint yet; claim buttons are on the grid only, not on
+  `/s/[slug]/i/[itemId]`; open sockets are not closed when a private sale's password or
+  allowlist changes or its visibility changes (they are on the next reconnect); writes made
+  outside the engine (the web item editor, import batches) aren't broadcast: a client that sees
+  an unknown item ID refetches the page, others catch up on reconnect. The header's status badge
+  updates on reload; the grid's buttons and countdown flip live. `ItemCard.svelte` is no longer
+  used on the sale page (kept for WS-L's browse pages).
 
 ### Merge rules for parallel work
 - **Migrations:** WS-A owns the core tables, WS-C owns catalog tables, WS-F2 owns

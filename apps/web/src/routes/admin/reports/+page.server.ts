@@ -1,29 +1,31 @@
-import { REPORT_REASON_LABELS, REPORT_REASONS } from "@claimsale/core";
-import { fail } from "@sveltejs/kit";
+import { fail, type RequestEvent } from "@sveltejs/kit";
 import { requireAdmin } from "#lib/server/admin.ts";
 import { db } from "#lib/server/context.ts";
 import { field } from "#lib/server/forms.ts";
-import { closeReport, openReports } from "#lib/server/messaging.ts";
+import { closeReport, openReports } from "#lib/server/moderation.ts";
 import type { Actions, PageServerLoad } from "./$types";
 
-const reasonLabels: Readonly<Record<string, string>> = REPORT_REASON_LABELS;
-
-/** The admin queue for reports (PLAN §9; MSG-report). The layout already checked the role. */
-export const load: PageServerLoad = async () => {
-	const reports = await openReports(db());
-	return {
-		reports: reports.map((r) => ({ ...r, reasonLabel: reasonLabels[r.reason] ?? r.reason })),
-		reasons: REPORT_REASONS,
-	};
+/** Reports of users, sales, items and messages (ADMIN-report-queue). */
+export const load: PageServerLoad = async (event) => {
+	requireAdmin(event);
+	return { reports: await openReports(db()) };
 };
 
+async function close(event: RequestEvent, status: "resolved" | "dismissed") {
+	const admin = requireAdmin(event);
+	const data = await event.request.formData();
+	const result = await closeReport(
+		db(),
+		{ reportId: field(data, "reportId"), adminId: admin.id, status, note: field(data, "note") },
+		Date.now(),
+	);
+	if (!result.ok) return fail(400, { message: result.error.message });
+	return { message: status === "resolved" ? "Report resolved." : "Report dismissed." };
+}
+
 export const actions: Actions = {
-	close: async (event) => {
-		const admin = requireAdmin(event);
-		const data = await event.request.formData();
-		const status = field(data, "status") === "resolved" ? "resolved" : "dismissed";
-		const closed = await closeReport(db(), field(data, "id"), admin.id, status, Date.now());
-		if (!closed) return fail(409, { message: "That report was already closed" });
-		return { closed: status };
-	},
+	/** @spec ADMIN-report-queue */
+	resolve: (event) => close(event, "resolved"),
+	/** @spec ADMIN-report-queue */
+	dismiss: (event) => close(event, "dismissed"),
 };

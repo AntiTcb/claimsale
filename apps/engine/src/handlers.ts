@@ -1,5 +1,6 @@
 import { parseTraceparent } from "@claimsale/observability";
 import { Effect, Option, Schema, Tracer } from "effect";
+import { handleExportMessage, isExportJobMessage, type ExportDeps } from "./exports/index.ts";
 import { Mailer } from "./mailer.ts";
 import {
 	decodeNotificationMessage,
@@ -24,6 +25,8 @@ export interface QueueOptions {
 	readonly probeRecipient: string | undefined;
 	/** The photo verify job's bindings (WS-F2); without them `photo_verify` messages are retried. */
 	readonly photos?: VerifyDeps;
+	/** The export job's bindings (WS-J); without them `export_job` messages are retried. */
+	readonly exports?: ExportDeps;
 	/** The notifications' bindings (WS-K); without them notification messages are retried. */
 	readonly notifications?: NotifyDeps;
 }
@@ -84,6 +87,12 @@ export const handleQueue = (batch: MessageBatch, options: QueueOptions) =>
 			// Photo checks share this queue (WS-F2), so no new queue has to be provisioned.
 			if (isPhotoVerifyMessage(message.body)) {
 				if (options.photos) yield* handlePhotoMessage(message, message.body, options.photos);
+				else message.retry();
+				continue;
+			}
+			// So do seller exports (WS-J).
+			if (isExportJobMessage(message.body)) {
+				if (options.exports) yield* handleExportMessage(message, message.body, options.exports);
 				else message.retry();
 				continue;
 			}

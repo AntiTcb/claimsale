@@ -586,7 +586,7 @@ describe("queue routing and the mailers", () => {
 });
 
 describe("notifications migration (expand/contract)", () => {
-	const MIGRATION = "0009_";
+	const MIGRATION = "0011_";
 
 	it("only adds tables, indexes and nullable or defaulted notification columns", () => {
 		const migration = env.TEST_MIGRATIONS.find((m) => m.name.startsWith(MIGRATION));
@@ -600,7 +600,7 @@ describe("notifications migration (expand/contract)", () => {
 	});
 
 	it("applies on top of the previous schema, keeping existing notifications", async () => {
-		const stub = env.SALE_ENGINE.get(env.SALE_ENGINE.idFromName("migration-check-0009"));
+		const stub = env.SALE_ENGINE.get(env.SALE_ENGINE.idFromName("migration-check-0011"));
 		await runInDurableObject(stub, (_instance, state) => {
 			const sql = state.storage.sql;
 			for (const migration of env.TEST_MIGRATIONS.filter((m) => m.name < MIGRATION))
@@ -625,7 +625,6 @@ describe("notifications migration (expand/contract)", () => {
 					"conversations",
 					"messages",
 					"message_attachments",
-					"reports",
 					"notification_preferences",
 				]),
 			);

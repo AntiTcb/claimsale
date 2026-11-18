@@ -15,6 +15,7 @@ describe("sale settings from the terms JSON", () => {
 				autoRescindOverdue: false,
 				buyerRequirements: { emailVerified: true, minAccountAge: 0 },
 				shippingMenu: [],
+				offerVisibility: "blind",
 			});
 		}
 	});
@@ -29,6 +30,7 @@ describe("sale settings from the terms JSON", () => {
 			autoRescindOverdue: true,
 			requireVerifiedEmail: false,
 			minAccountAgeDays: 30,
+			offerVisibility: "visible",
 		});
 		expect(readSaleSettings(terms, null, "pro")).toMatchObject({
 			reviewEveryClaim: true,
@@ -37,13 +39,28 @@ describe("sale settings from the terms JSON", () => {
 			paymentDeadline: 24 * HOUR,
 			autoSendAtClose: true,
 			autoRescindOverdue: true,
-			buyerRequirements: { emailVerified: false, minAccountAge: 30 * DAY },
+			// D20 always applies: a stored requireVerifiedEmail (an older terms form) is ignored (D68).
+			buyerRequirements: { emailVerified: true, minAccountAge: 30 * DAY },
+			offerVisibility: "visible",
 		});
 		// A free seller always gets 24h to decide and 48h for payment.
 		expect(readSaleSettings(terms, null, "free")).toMatchObject({
 			decisionWindow: DEFAULT_DECISION_WINDOW,
 			paymentDeadline: 48 * HOUR,
 		});
+	});
+
+	it("caps a Pro window at 7 days unless the seller has an approved cap [SM-4.2-window-length]", () => {
+		const terms = JSON.stringify({ decisionWindowHours: 400 });
+		expect(readSaleSettings(terms, null, "pro").decisionWindow).toBe(7 * DAY);
+		expect(readSaleSettings(terms, null, "pro", 336).decisionWindow).toBe(336 * HOUR);
+		expect(readSaleSettings(terms, null, "pro", 500).decisionWindow).toBe(400 * HOUR);
+	});
+
+	it("always requires a verified email (D20) [SM-4.1-buyer-requirements]", () => {
+		expect(
+			readSaleSettings({ requireVerifiedEmail: false }, null, "pro").buyerRequirements.emailVerified,
+		).toBe(true);
 	});
 
 	it("keeps only well-formed shipping options", () => {

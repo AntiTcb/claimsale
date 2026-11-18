@@ -1,12 +1,11 @@
 import { createDb, type Db } from "@claimsale/db";
-import { messageAttachments, reports } from "@claimsale/db/messaging";
-import { sales } from "@claimsale/db/schema";
+import { messageAttachments } from "@claimsale/db/messaging";
+import { reports, sales } from "@claimsale/db/schema";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testD1 } from "../../../test/d1.ts";
 import { addUser, GPS_MARKER, jpegBytes, memoryStore } from "../../../test/fixtures.ts";
 import {
 	blockBuyer,
-	closeReport,
 	findAttachmentFor,
 	findBuyerConversation,
 	inbox,
@@ -15,13 +14,13 @@ import {
 	markRead,
 	messagesOf,
 	openConversation,
-	openReports,
 	postMessage,
 	readMessageForm,
 	reportMessage,
 	unblockBuyer,
 	type ConversationRow,
 } from "./messaging.ts";
+import { closeReport, openReports } from "./moderation.ts";
 
 let db: Db;
 const sale = { id: "sale-1", sellerId: "seller" };
@@ -228,14 +227,16 @@ describe("blocks and reports", () => {
 		});
 		const [queued] = await openReports(db);
 		expect(queued).toMatchObject({
+			targetKind: "message",
 			reason: "off_platform_payment",
 			details: "asked for gift cards",
-			reporterHandle: "buyer",
-			reportedHandle: "seller",
 			messageBody: "pay me with gift cards",
+			messageSenderId: "seller",
 		});
-		expect(await closeReport(db, queued!.id, "admin", "resolved", 9)).toBe(true);
-		expect(await closeReport(db, queued!.id, "admin", "dismissed", 9)).toBe(false);
+		const close = (status: "resolved" | "dismissed") =>
+			closeReport(db, { reportId: queued!.id, adminId: "admin", status, note: "" }, 9);
+		expect((await close("resolved")).ok).toBe(true);
+		expect((await close("dismissed")).ok).toBe(false);
 		expect(await openReports(db)).toEqual([]);
 		expect((await db.select().from(reports).get())?.status).toBe("resolved");
 		// Once closed, the same message can be reported again.

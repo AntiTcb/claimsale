@@ -7,6 +7,7 @@ import {
 	type Entry,
 	type Invoice,
 	type Item,
+	type ItemKind,
 	type Millis,
 	type Sale,
 	type SaleStatus,
@@ -81,7 +82,8 @@ export function saleQuery(db: D1Database, saleId: string, now: Millis) {
 		.prepare(
 			`SELECT s.id, s.seller_id, s.status, s.live_at, s.closes_at, s.title, s.terms, s.shipping,
 				(SELECT count(*) FROM items WHERE items.sale_id = s.id) AS item_count,
-				${PRO_SQL("s.seller_id", "seller", "?2")} AS seller_pro
+				${PRO_SQL("s.seller_id", "seller", "?2")} AS seller_pro,
+				(SELECT decision_window_max_hours FROM users WHERE users.id = s.seller_id) AS window_cap_hours
 			FROM sales s WHERE s.id = ?1`,
 		)
 		.bind(saleId, now);
@@ -101,7 +103,7 @@ export function toSaleRecord(row: SaleRow): SaleRecord {
 			sellerTier,
 			itemCount: row.item_count,
 		},
-		settings: readSaleSettings(row.terms, row.shipping, sellerTier),
+		settings: readSaleSettings(row.terms, row.shipping, sellerTier, row.window_cap_hours ?? null),
 	};
 }
 
@@ -132,12 +134,17 @@ export function entriesQuery(db: D1Database, saleId: string, itemIds: readonly s
 				.bind(ids(itemIds));
 }
 
+/**
+ * The buyer's standing in this sale. Blocked means blocked by this seller, or banned.
+ *
+ * @spec ADMIN-ban — a banned account's claims and offers are rejected like a blocked buyer's.
+ */
 export function buyerQuery(db: D1Database, buyerId: string, saleId: string, now: Millis) {
 	return db
 		.prepare(
 			`SELECT u.id, u.email_verified, u.created_at,
-				EXISTS (SELECT 1 FROM blocks b WHERE b.blocked_user_id = u.id
-					AND b.seller_id = (SELECT seller_id FROM sales WHERE id = ?2)) AS blocked,
+				(u.banned_at IS NOT NULL OR EXISTS (SELECT 1 FROM blocks b WHERE b.blocked_user_id = u.id
+					AND b.seller_id = (SELECT seller_id FROM sales WHERE id = ?2))) AS blocked,
 				${PRO_SQL("u.id", "buyer", "?3")} AS buyer_pro
 			FROM users u WHERE u.id = ?1`,
 		)
@@ -238,6 +245,63 @@ export async function loadInvoices(
 	);
 }
 
+/**
+ * The item kinds on one invoice's lines (TCG-tracked-graded-sealed: graded and sealed
+ * items always ship tracked). Item kinds never change once an item has entries.
+ */
+export async function loadInvoiceKinds(db: D1Database, invoiceId: string): Promise<ItemKind[]> {
+	const { results } = await db
+		.prepare(
+			`SELECT DISTINCT i.kind FROM invoice_lines l JOIN entries e ON e.id = l.entry_id
+				JOIN items i ON i.id = e.item_id WHERE l.invoice_id = ?1`,
+		)
+		.bind(invoiceId)
+		.all<{ kind: ItemKind }>();
+	return results.map((r) => r.kind);
+}
+
+/** A buyer's saved address, for the snapshot taken when they pay (SM-6-address-snapshot). */
+export interface AddressSnapshot {
+	readonly name: string;
+	readonly line1: string;
+	readonly line2: string | null;
+	readonly city: string;
+	readonly region: string;
+	readonly postalCode: string;
+	readonly country: string;
+}
+
+export async function loadAddress(
+	db: D1Database,
+	userId: string,
+	addressId: string,
+): Promise<AddressSnapshot | undefined> {
+	const row = await db
+		.prepare(
+			"SELECT name, line1, line2, city, region, postal_code, country FROM addresses WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL",
+		)
+		.bind(addressId, userId)
+		.first<{
+			name: string;
+			line1: string;
+			line2: string | null;
+			city: string;
+			region: string;
+			postal_code: string;
+			country: string;
+		}>();
+	if (!row) return undefined;
+	return {
+		name: row.name,
+		line1: row.line1,
+		line2: row.line2,
+		city: row.city,
+		region: row.region,
+		postalCode: row.postal_code,
+		country: row.country,
+	};
+}
+
 // ---------------------------------------------------------------------------
 // The unit of work
 
@@ -269,6 +333,8 @@ export class Work {
 	readonly extra: D1PreparedStatement[] = [];
 	readonly audits: AuditRecord[] = [];
 	readonly events: Array<Record<string, unknown>> = [];
+	/** Timers the extra rows create (a mutual-agreement rescind's answer deadline). */
+	readonly extraTimers: Timer[] = [];
 	saleChange: SaleChange | undefined;
 
 	constructor(
@@ -349,7 +415,7 @@ export class Work {
 	touchedTimers(): Timer[] {
 		const sale = this.saleChange?.next ?? this.sale.sale;
 		const items = [...this.items.values()].map((slot) => slot.after);
-		return pendingTimers(sale, items, [...this.invoiceChanges.values()]);
+		return [...pendingTimers(sale, items, [...this.invoiceChanges.values()]), ...this.extraTimers];
 	}
 
 	statements(): D1PreparedStatement[] {

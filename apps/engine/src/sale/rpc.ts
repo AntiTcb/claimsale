@@ -108,6 +108,34 @@ export type TakebackDecisionInput = typeof TakebackDecisionInput.Type;
 export const TakebackCancelInput = Schema.Struct({ saleId: Id, requestId: Id, buyerId: Id });
 export type TakebackCancelInput = typeof TakebackCancelInput.Type;
 
+/** The buyer contests a rescind's attribution, giving their side (§4.3.1). */
+export const ContestRescindInput = Schema.Struct({
+	saleId: Id,
+	rescindId: Id,
+	buyerId: Id,
+	text: Schema.String.check(Schema.isMaxLength(4000)),
+});
+export type ContestRescindInput = typeof ContestRescindInput.Type;
+
+/** The buyer agrees to or disputes a mutual-agreement rescind (§4.3.1). */
+export const MutualAnswerInput = Schema.Struct({
+	saleId: Id,
+	rescindId: Id,
+	buyerId: Id,
+	agree: Schema.Boolean,
+});
+export type MutualAnswerInput = typeof MutualAnswerInput.Type;
+
+/** An admin resolves a contested or held rescind; the engine checks the admin role. */
+export const ResolveRescindInput = Schema.Struct({
+	saleId: Id,
+	rescindId: Id,
+	adminId: Id,
+	fault: Schema.Literals(["buyer", "seller", "neutral"]),
+	note: Schema.optional(Schema.NullOr(Schema.String.check(Schema.isMaxLength(2000)))),
+});
+export type ResolveRescindInput = typeof ResolveRescindInput.Type;
+
 export const PublishInput = Schema.Struct({
 	saleId: Id,
 	sellerId: Id,
@@ -132,21 +160,51 @@ export const MarkPaidInput = Schema.Struct({
 	buyerId: Id,
 	shippingOptionId: Id,
 	paymentRef: Schema.NullOr(Schema.String.check(Schema.isMaxLength(200))),
+	/** One of the buyer's saved addresses; the invoice keeps a snapshot (SM-6-address-snapshot). */
+	addressId: Id,
 });
 export type MarkPaidInput = typeof MarkPaidInput.Type;
+
+const Tracking = Schema.Struct({
+	carrier: Schema.String.check(Schema.isMaxLength(40)),
+	number: Schema.String.check(Schema.isMaxLength(64)),
+});
 
 export const ShipInput = Schema.Struct({
 	saleId: Id,
 	invoiceId: Id,
 	sellerId: Id,
-	tracking: Schema.NullOr(
-		Schema.Struct({
-			carrier: Schema.String.check(Schema.isMaxLength(40)),
-			number: Schema.String.check(Schema.isMaxLength(64)),
-		}),
-	),
+	tracking: Schema.NullOr(Tracking),
 });
 export type ShipInput = typeof ShipInput.Type;
+
+/** A confirmed tracking replacement on a shipped invoice (IO-tracking-replace). */
+export const ReplaceTrackingInput = Schema.Struct({
+	saleId: Id,
+	invoiceId: Id,
+	sellerId: Id,
+	tracking: Tracking,
+});
+export type ReplaceTrackingInput = typeof ReplaceTrackingInput.Type;
+
+/** The most rows one tracking re-import call applies. */
+export const TRACKING_BATCH_MAX = 200;
+
+/** Matched tracking re-import rows for one sale (PLAN §3c.3). */
+export const ApplyTrackingInput = Schema.Struct({
+	saleId: Id,
+	sellerId: Id,
+	rows: Schema.Array(
+		Schema.Struct({
+			row: Schema.Int.check(Schema.isGreaterThan(0)),
+			invoiceId: Id,
+			carrier: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40)),
+			number: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+			replace: Schema.Boolean,
+		}),
+	).check(Schema.isMaxLength(TRACKING_BATCH_MAX)),
+});
+export type ApplyTrackingInput = typeof ApplyTrackingInput.Type;
 
 /** One batch of an item import (WS-G): core's batch body plus the sale and the seller. */
 export const ImportBatchInput = Schema.Struct({
