@@ -138,3 +138,51 @@ export function broadcastCommit(hub: LiveHub, work: Work): void {
 		),
 	}));
 }
+
+/**
+ * Items changed outside a sale command (the web item editor, an import batch): every viewer
+ * gets a fresh snapshot, so added items show up (the page refetches for their titles) and
+ * deleted ones go away. Returns false when the sale is gone.
+ *
+ * @spec LIVE-broadcast — writes made outside the engine reach open sockets too.
+ * @spec LIVE-no-leak — each viewer's snapshot goes through `liveItem` for that viewer.
+ */
+export async function broadcastRefresh(
+	hub: LiveHub,
+	db: D1Database,
+	saleId: string,
+	now: Millis,
+): Promise<boolean> {
+	if (hub.count() === 0) return true;
+	const loaded = await loadSaleAndItems(db, saleId, "all", now);
+	const sale = loaded.sale;
+	if (!sale) return false;
+	const slots = [...loaded.items.values()];
+	hub.broadcast("snapshot", (viewer) => {
+		if (!visibleTo(sale.sale.status, viewer.role)) return undefined;
+		const projected = projectionViewer(viewer);
+		return {
+			serverNow: now,
+			sale: saleView(sale.sale, now),
+			items: slots.map((slot) =>
+				liveItem(slot.item, slot.version, sale.sale.status, sale.settings.offerVisibility, projected),
+			),
+		};
+	});
+	return true;
+}
+
+/**
+ * A private sale's access changed (its password, invite list or visibility): every socket
+ * but the seller's is closed, and each browser reloads the page, where the web Worker checks
+ * access again before it reconnects.
+ *
+ * @spec LIVE-access — losing access to a private sale also ends its live updates.
+ */
+export function revokeViewers(hub: LiveHub): number {
+	return hub.closeWhere(
+		(viewer: LiveViewer) => viewer.role !== "seller",
+		LIVE_CLOSE_NOT_VISIBLE,
+		"Access to the sale changed",
+	);
+}

@@ -2,7 +2,7 @@ import { FREE_ITEM_CAP, photoCap } from "@claimsale/core";
 import { fail } from "@sveltejs/kit";
 import { MAX_PRICE_CENTS, priceInputValue, validateItem, type ItemInput } from "#lib/listing-input.ts";
 import { catalogProductIdFor, defaultMarketPercent, marketPricesFor } from "#lib/server/catalog.ts";
-import { db, imageStore } from "#lib/server/context.ts";
+import { db, imageStore, notifyRpc } from "#lib/server/context.ts";
 import { field } from "#lib/server/forms.ts";
 import { photosByItem } from "#lib/server/images.ts";
 import {
@@ -14,6 +14,8 @@ import {
 	setPrices,
 	updateItem,
 } from "#lib/server/items.ts";
+import { refreshLiveListings } from "#lib/server/notify-rpc.ts";
+import { runExit } from "#lib/server/runtime.ts";
 import { requireOwnSale, requireSeller } from "#lib/server/sell.ts";
 import type { Actions, PageServerLoad } from "./$types";
 
@@ -75,6 +77,17 @@ function readItem(data: FormData): ItemInput {
 	};
 }
 
+/**
+ * After an edit to a published sale's items: open live grids refresh and the listings are
+ * matched against want lists again. Drafts have no viewers and no want-list matches yet.
+ *
+ * @spec LIVE-broadcast — the item editor's writes reach open sockets.
+ */
+async function listingsChanged(sale: { id: string; status: string }, sellerId: string): Promise<void> {
+	if (sale.status === "draft") return;
+	await runExit("web.live.listings_changed", refreshLiveListings(notifyRpc(), sale.id, sellerId));
+}
+
 export const actions: Actions = {
 	/** @spec SM-2-free-item-cap */
 	add: async (event) => {
@@ -90,6 +103,7 @@ export const actions: Actions = {
 		const added = await addItem(db(), seller, sale.id, fields, Date.now());
 		if (!added.ok)
 			return fail(400, { action: "add" as const, values, errors: { form: added.error.message } });
+		await listingsChanged(sale, seller.id);
 		return {
 			action: "add" as const,
 			added: added.value.id,
@@ -118,6 +132,7 @@ export const actions: Actions = {
 				values,
 				errors: { form: updated.error.message },
 			});
+		await listingsChanged(sale, seller.id);
 		return { action: "update" as const, itemId, saved: true };
 	},
 
@@ -129,6 +144,7 @@ export const actions: Actions = {
 		if (!deleted.ok)
 			return fail(400, { action: "delete" as const, itemId, errors: { form: deleted.error.message } });
 		if (deleted.value.r2Keys.length > 0) await imageStore().delete(deleted.value.r2Keys);
+		await listingsChanged(sale, seller.id);
 		return { action: "delete" as const, itemId };
 	},
 
@@ -167,6 +183,7 @@ export const actions: Actions = {
 		const result = await setPrices(db(), seller.id, sale.id, changes, Date.now());
 		if (!result.ok)
 			return fail(400, { action: "bulkPrice" as const, errors: { form: result.error.message } });
+		await listingsChanged(sale, seller.id);
 		return { action: "bulkPrice" as const, updated: result.value.updated };
 	},
 };

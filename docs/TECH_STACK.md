@@ -380,9 +380,10 @@ Auth (S40), owner steps before staging can sign people in:
       redirect `https://staging.claimsale.net/api/auth/callback/discord`, then in `apps/web`:
       `wrangler secret put DISCORD_CLIENT_ID --env staging` and the same for
       `DISCORD_CLIENT_SECRET`. Without them the Discord button is hidden.
-- [ ] Until `notify.claimsale.net` is onboarded in Email Service, staging can only email addresses
-      verified in the Cloudflare account: verify each tester's address there, or they won't
-      receive verification, magic-link or reset email.
+- [x] `notify.claimsale.net` is onboarded in Email Service (2026-11-18, `cf email-sending
+      subdomains create`): DNS status `ready`, recipients `arbitrary`, quota 1,000 a day to start.
+      Staging and production can now email any address; staging stays behind Access, so only
+      people let in there can sign up and receive mail.
 
 Auth slice 2 (S41), owner steps before staging can verify phones and production can sign people up:
 - [ ] Twilio: create a Verify Service (SMS channel) and a restricted API key that can use Verify and
@@ -422,7 +423,7 @@ Observability spike (T28, S38), owner steps before it can be checked in Sentry:
       `"destinations": ["sentry-traces"]` / `["sentry-logs"]` to `observability.traces` /
       `observability.logs` for staging in both Workers. (Not added yet: a deploy that names
       a destination that doesn't exist fails.)
-- [ ] Optional, once `notify.claimsale.net` is onboarded in Email Service:
+- [ ] Optional (`notify.claimsale.net` is onboarded):
       `wrangler secret put TRACE_PROBE_TO --env staging` (in `apps/engine`) with a verified
       address, so the probe ends with a real email.
 - [ ] Open `https://staging.claimsale.net/debug/trace`, run both buttons, and check the

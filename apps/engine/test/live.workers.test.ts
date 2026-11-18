@@ -5,6 +5,7 @@ import {
 	type LiveMessage,
 	type LiveSnapshot,
 } from "@claimsale/core";
+import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { addUser, claim, DAY, engine, makeSale, offer, uid, value, type SaleSetup } from "./sale-fixtures.ts";
 
@@ -229,6 +230,69 @@ describe("the live socket", () => {
 	});
 });
 
+/** The snapshot the editor's change sends: one item left, at version 2. */
+const freshSnapshot = (s: Socket) =>
+	s.next("snapshot", (f) => f.items.length === 1 && f.items[0]!.version === 2);
+
+describe("writes made outside the engine", () => {
+	it("the item editor's changes reach every viewer as a fresh snapshot, projected for each [LIVE-broadcast] [LIVE-no-leak]", async () => {
+		const sale = await makeSale({ items: [{ priceCents: 4000 }, {}] });
+		const [ann, bob] = [await addUser(uid("ann")), await addUser(uid("bob"))];
+		value(await claim(sale, ann));
+		const annSocket = await connect(sale.saleId, ann);
+		const bobSocket = await connect(sale.saleId, bob);
+		const [kept, deleted] = sale.itemIds;
+
+		// What the web editor writes: a new price (with a version bump) and a deleted item.
+		await env.DB.prepare("UPDATE items SET price_cents = 4500, version = version + 1 WHERE id = ?1")
+			.bind(kept)
+			.run();
+		await env.DB.prepare("DELETE FROM items WHERE id = ?1").bind(deleted).run();
+		const stranger = await addUser(uid("stranger"));
+		expect(await engine.listingsChanged({ saleId: sale.saleId, sellerId: stranger })).toEqual({
+			ok: true,
+			value: false,
+		});
+		expect(await engine.listingsChanged({ saleId: sale.saleId, sellerId: sale.sellerId })).toEqual({
+			ok: true,
+			value: true,
+		});
+
+		const forAnn = await freshSnapshot(annSocket);
+		const forBob = await freshSnapshot(bobSocket);
+		expect(forAnn.items.map((i) => i.id)).toEqual([kept]);
+		expect(forAnn.items[0]!.mine).toHaveLength(1);
+		expect(forBob.items[0]!.mine).toEqual([]);
+	});
+
+	it("an import batch into a scheduled sale reaches open sockets as a fresh snapshot [LIVE-broadcast]", async () => {
+		const sale = await makeSale({
+			status: "scheduled",
+			liveAt: Date.now() + DAY,
+			closesAt: Date.now() + 3 * DAY,
+		});
+		const visitor = await connect(sale.saleId, null);
+		const before = (await visitor.next("snapshot")).items.length;
+		value(
+			await engine.applyImportBatch({
+				saleId: sale.saleId,
+				sellerId: sale.sellerId,
+				importId: crypto.randomUUID(),
+				format: "csv",
+				totalRows: 1,
+				rows: [
+					{
+						row: 2,
+						cells: { game: "pokemon", kind: "single", name: "Imported", condition: "NM", price: "3" },
+					},
+				],
+			}),
+		);
+		const fresh = await visitor.next("snapshot", (f) => f.items.length === before + 1);
+		expect(fresh.sale.status).toBe("scheduled");
+	});
+});
+
 describe("who may open the live socket", () => {
 	it("a draft is the seller's alone [LIVE-access] [SM-2-visibility]", async () => {
 		const sale = await makeSale({ status: "draft" });
@@ -252,6 +316,25 @@ describe("who may open the live socket", () => {
 		expect(await visitor.untilClosed()).toMatchObject({ code: LIVE_CLOSE_NOT_VISIBLE });
 		expect(await buyer.untilClosed()).toMatchObject({ code: LIVE_CLOSE_NOT_VISIBLE });
 		expect((await seller.next("sale")).sale.status).toBe("draft");
+		expect(seller.closed).toBeUndefined();
+	});
+
+	it("a private sale's access change closes every socket but the seller's, and only its seller can ask [LIVE-access]", async () => {
+		const sale = await makeSale();
+		const buyer = await connect(sale.saleId, await addUser(uid("buyer")));
+		const seller = await connect(sale.saleId, sale.sellerId);
+		const stranger = await addUser(uid("stranger"));
+		expect(await engine.revokeLiveViewers({ saleId: sale.saleId, sellerId: stranger })).toEqual({
+			ok: true,
+			value: false,
+		});
+		expect(buyer.closed).toBeUndefined();
+
+		expect(await engine.revokeLiveViewers({ saleId: sale.saleId, sellerId: sale.sellerId })).toEqual({
+			ok: true,
+			value: true,
+		});
+		expect(await buyer.untilClosed()).toMatchObject({ code: LIVE_CLOSE_NOT_VISIBLE });
 		expect(seller.closed).toBeUndefined();
 	});
 

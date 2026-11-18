@@ -809,24 +809,3 @@ export const ioJobRows = sqliteTable(
 	},
 	(t) => [primaryKey({ columns: [t.jobId, t.rowNumber] })],
 );
-
-/**
- * Applied rows of item imports (PLAN §3c.4): a re-sent batch with the same
- * `import_id` and row is answered from here and changes nothing (IO-import-idempotent).
- * Written only by the engine.
- */
-export const importRows = sqliteTable(
-	"import_rows",
-	{
-		importId: text("import_id").notNull(),
-		/** The row's line in the seller's spreadsheet (the header is row 1). */
-		row: integer("row").notNull(),
-		saleId: text("sale_id")
-			.notNull()
-			.references(() => sales.id, { onDelete: "cascade" }),
-		itemId: text("item_id").references(() => items.id, { onDelete: "set null" }),
-		outcome: text("outcome", { enum: ["created", "updated", "skipped"] }).notNull(),
-		createdAt: millis("created_at").notNull(),
-	},
-	(t) => [primaryKey({ columns: [t.importId, t.row] }), index("import_rows_sale").on(t.saleId)],
-);

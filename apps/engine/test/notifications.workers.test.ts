@@ -339,6 +339,42 @@ describe("followers and want lists", () => {
 		expect(await notificationsOf(picky)).toEqual([]);
 		expect(mail.map((m) => m.subject)).toEqual(["Want list match: “Card 0”"]);
 	});
+
+	it("[TCG-want-list-notify] a listing added or repriced after publishing is matched too, once", async () => {
+		const { deps, run } = setup();
+		const productId = await addCatalogProduct();
+		const sale = await makeSale({ status: "live", items: [{ priceCents: 5000 }] });
+		await setVisibility(sale.saleId, "public");
+		const collector = await addUser();
+		await addWant(collector, productId, { maxPriceCents: 3000 });
+		await run(handleSaleEvents(deps, "msg-l1", events(sale.saleId, [{ type: "sale_live" }])));
+		expect(await notificationsOf(collector)).toEqual([]);
+
+		// The seller links the listing to the card and drops the price in the editor.
+		await db
+			.prepare("UPDATE items SET catalog_product_id = ?1, condition = 'NM', price_cents = 2800 WHERE id = ?2")
+			.bind(String(productId), sale.itemIds[0])
+			.run();
+		const changed = events(sale.saleId, [{ type: "listings_changed" }]);
+		await run(handleSaleEvents(deps, "msg-l2", changed));
+		await run(handleSaleEvents(deps, "msg-l3", changed));
+		expect((await notificationsOf(collector)).map((r) => r.type)).toEqual(["want_list_match"]);
+	});
+
+	it("[TCG-want-list-notify] changed listings of a closed sale match nothing", async () => {
+		const { deps, run } = setup();
+		const productId = await addCatalogProduct();
+		const sale = await makeSale({ status: "closed", items: [{ priceCents: 1000 }] });
+		await setVisibility(sale.saleId, "public");
+		await db
+			.prepare("UPDATE items SET catalog_product_id = ?1, condition = 'NM' WHERE id = ?2")
+			.bind(String(productId), sale.itemIds[0])
+			.run();
+		const collector = await addUser();
+		await addWant(collector, productId, { maxPriceCents: 3000 });
+		await run(handleSaleEvents(deps, "msg-l4", events(sale.saleId, [{ type: "listings_changed" }])));
+		expect(await notificationsOf(collector)).toEqual([]);
+	});
 });
 
 let products = 0;

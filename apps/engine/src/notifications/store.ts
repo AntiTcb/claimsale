@@ -44,7 +44,7 @@ export const loadSaleContext = (
 		const [row, entries, items, invoices] = await Promise.all([
 			db
 				.prepare(
-					`SELECT s.id, s.slug, s.title, s.seller_id, s.visibility, s.live_at, u.display_name
+					`SELECT s.id, s.slug, s.title, s.seller_id, s.visibility, s.live_at, s.status, u.display_name
 					FROM sales s JOIN users u ON u.id = s.seller_id WHERE s.id = ?1`,
 				)
 				.bind(saleId)
@@ -55,6 +55,7 @@ export const loadSaleContext = (
 					seller_id: string;
 					visibility: string;
 					live_at: number | null;
+					status: string;
 					display_name: string;
 				}>(),
 			db
@@ -81,6 +82,7 @@ export const loadSaleContext = (
 				sellerId: row.seller_id,
 				visibility: row.visibility,
 				liveAt: row.live_at,
+				status: row.status,
 			},
 			sellerName: row.display_name,
 			entries: new Map(entries.results.map((e) => [e.id, { buyerId: e.user_id, kind: e.kind }])),

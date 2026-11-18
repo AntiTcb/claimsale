@@ -49,8 +49,10 @@ function attributeColumns(
 
 /**
  * The sale items export. It uses the import template's columns plus `item_id`,
- * status, winner handle and final price, so it can be re-imported unchanged
- * (IO-export-roundtrip). Market prices are never part of it (D64).
+ * status, winner handle and final price, so it can be re-imported unchanged.
+ * Market prices are never part of it (D64).
+ *
+ * @spec IO-export-roundtrip — re-importing an unchanged export plans no changes.
  */
 export function itemsExport(items: readonly ExportItem[]): Table {
 	const attributes = attributeColumns(items);

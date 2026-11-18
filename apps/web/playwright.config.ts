@@ -39,8 +39,10 @@ export default defineConfig({
 		: {
 				// Both Workers in one wrangler process: web is primary, engine is bound by name.
 				webServer: {
+					// No `cd`: under cmd.exe (pnpm's shell on Windows) a `cd` inside parentheses
+					// changes the directory for the rest of the line. -c finds the engine's migrations.
 					command:
-						`(cd ../engine && wrangler d1 migrations apply DB --local --persist-to ${persist}) && ` +
+						`wrangler d1 migrations apply DB --local -c ../engine/wrangler.jsonc --persist-to ${persist} && ` +
 						`vite build && wrangler dev -c wrangler.jsonc -c ../engine/wrangler.jsonc ` +
 						`--port 8787 --inspector-port 9231 --persist-to ${persist}`,
 					url: "http://localhost:8787/",

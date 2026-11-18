@@ -295,6 +295,20 @@ describe("LiveSaleGrid", () => {
 		await expect.element(page.getByTestId("item-counts")).toHaveTextContent("3 claims waiting · 0 offers");
 	});
 
+	it("[LIVE-broadcast] refetches once when a snapshot no longer has an item the page shows", async () => {
+		const refresh = vi.fn<() => Promise<void>>(async () => {});
+		const view = await render(LiveSaleGrid, props({ refresh }));
+		const s = await socket();
+		// The seller deleted Mewtwo in the editor: the engine's fresh snapshot lacks it.
+		s.emit({ type: "snapshot", ...snapshot({ items: [live({ id: "i1", version: 2 })] }) });
+		await expect.poll(() => refresh.mock.calls.length).toBe(1);
+		// The refetched page shows only Charizard; its snapshot and the next ones refetch no more.
+		await view.rerender({ items: [items[0]!], live: snapshot({ items: [live({ id: "i1", version: 2 })] }) });
+		s.emit({ type: "snapshot", ...snapshot({ items: [live({ id: "i1", version: 3 })] }) });
+		await expect.element(page.getByRole("button", { name: "Claim Charizard" })).toBeVisible();
+		expect(refresh).toHaveBeenCalledTimes(1);
+	});
+
 	it("filters by status, game and price", async () => {
 		await render(
 			LiveSaleGrid,

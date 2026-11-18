@@ -134,9 +134,9 @@ describe("item import batches in the engine (WS-G)", () => {
 			{ row_number: 3, outcome: "error" },
 			{ row_number: 4, outcome: "created" },
 		]);
-		// WS-E's table isn't written any more (a later contract migration drops it).
+		// WS-E's import_rows is gone (0012 dropped it); imports keep their rows in io_job_rows.
 		expect(
-			await db.prepare("SELECT count(*) AS n FROM import_rows WHERE sale_id = ?1").bind(sale.saleId).first(),
+			await db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name = 'import_rows'").first(),
 		).toEqual({ n: 0 });
 	});
 

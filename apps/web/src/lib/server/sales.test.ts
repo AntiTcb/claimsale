@@ -126,7 +126,7 @@ describe("sales repository", () => {
 			await setPrivateAccess(db, sale.id, { allowlist: ["buyer@example.test", "BUYER@example.test"] }, 2),
 		).toEqual({
 			ok: true,
-			value: true,
+			value: { revoked: false },
 		});
 		expect(await readAllowlist(db, sale.id)).toEqual(["buyer@example.test"]);
 		const found = await findSaleBySlug(db, sale.slug);
@@ -151,6 +151,24 @@ describe("sales repository", () => {
 		expect(await findSaleBySlug(db, sale.slug)).toMatchObject({ hasPassword: true, allowlistEnabled: false });
 		expect(await readAllowlist(db, sale.id)).toEqual([]);
 		expect(await findSaleBySlug(db, "nope")).toBeUndefined();
+	});
+
+	it("[LIVE-access] says when someone may have lost access to a private sale", async () => {
+		const sale = await draft(pro, { visibility: "private" });
+		const save = async (update: Parameters<typeof setPrivateAccess>[2]) => {
+			const saved = await setPrivateAccess(db, sale.id, update, 1);
+			return saved.ok ? saved.value.revoked : saved.error.code;
+		};
+		// Setting up access for the first time, adding addresses and resaving revoke nothing.
+		expect(await save({ passwordHash: "pbkdf2$1$a$b", allowlist: ["a@example.test"] })).toBe(false);
+		expect(await save({ allowlist: ["a@example.test", "b@example.test"] })).toBe(false);
+		expect(await save({ allowlist: ["b@example.test", "a@example.test"] })).toBe(false);
+		// Taking an address off, changing or removing the password, or turning the list off do.
+		expect(await save({ allowlist: ["a@example.test"] })).toBe(true);
+		expect(await save({ passwordHash: "pbkdf2$1$c$d", allowlist: ["a@example.test"] })).toBe(true);
+		expect(await save({ passwordHash: null, allowlist: ["a@example.test"] })).toBe(true);
+		expect(await save({ passwordHash: "pbkdf2$1$e$f", allowlist: ["a@example.test"] })).toBe(false);
+		expect(await save({ allowlist: null })).toBe(true);
 	});
 
 	it("[NOTIF-allowlist-invite] saving the invite list keeps who was already invited", async () => {

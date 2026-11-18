@@ -186,6 +186,8 @@ export interface SaleEventContext {
 		readonly sellerId: UserId;
 		readonly visibility: string;
 		readonly liveAt: Millis | null;
+		/** The sale's status now; `listings_changed` matches want lists only while it's open. */
+		readonly status?: string;
 	};
 	readonly entries: ReadonlyMap<string, { readonly buyerId: UserId; readonly kind: "claim" | "offer" }>;
 	readonly items: ReadonlyMap<string, { readonly title: string }>;
@@ -244,6 +246,7 @@ export function notificationsForSaleEvents(
 	const base = { saleId: sale.id, saleSlug: sale.slug, saleTitle: sale.title };
 	let followers: SaleEventFollowUps["followers"] = null;
 	let published = false;
+	let listingsChanged = false;
 	const types = new Set(events.map((e) => str(asRecord(e)["type"])));
 	// A seller's rescind commits winner_removed and rescind_recorded; the buyer hears it once, from
 	// rescind_recorded, which says whether they're asked to agree (SM-4.3.1-mutual).
@@ -348,15 +351,20 @@ export function notificationsForSaleEvents(
 			case "sale_live":
 				published = true;
 				break;
+			case "listings_changed":
+				listingsChanged = true;
+				break;
 			default:
 				break;
 		}
 	});
+	const open = sale.status === "scheduled" || sale.status === "live";
 	return {
 		drafts,
 		followUps: {
 			followers: sale.visibility === "public" ? followers : null,
-			matchWantLists: published && sale.visibility === "public",
+			// TCG-want-list-notify: at publish, and again when items are added or repriced later.
+			matchWantLists: (published || (listingsChanged && open)) && sale.visibility === "public",
 			sendInvites: published && sale.visibility === "private",
 		},
 	};

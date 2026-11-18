@@ -489,7 +489,7 @@ IDs stay in the table, marked ~~struck~~.
 | ~~`TCG-real-photo`~~ | *Retired: replaced by `IMG-required` (D63)* | — |
 | `TCG-attribute-schema` | An item's attributes validate against its game + kind schema (forms, imports and API alike) | PLAN 3 (TCG catalog) |
 | `TCG-catalog-match` | Import matching order: TCGplayer ID → set + number / set code → fuzzy name + set; ambiguous → seller chooses; unmatched → uncatalogued | PLAN 3c.1 |
-| `TCG-want-list-notify` | A listing in a public sale that matches a want-list entry (product, finish, condition ≥ min, price ≤ max) notifies its owner once | PLAN 3 (TCG catalog) |
+| `TCG-want-list-notify` | A listing in a public sale that matches a want-list entry (product, finish, condition ≥ min, price ≤ max) notifies its owner once, whether the listing was there at publishing or added or repriced while the sale is scheduled or live | PLAN 3 (TCG catalog) |
 | ~~`TCG-catalog-free`~~ | *Retired: Scryfall is no longer used (D60)* | — |
 | `TCG-autofill-only` | Catalog autofill sets only game / set / number / rarity / product type / name / TCGplayer ID; seller fields are never overwritten | PLAN 3 (TCG catalog) |
 | `TCG-no-code-cards` | Digital code cards can't be listed; altered art needs the flag; repacks need the label | PLAN 9, D62 |
@@ -522,8 +522,8 @@ IDs stay in the table, marked ~~struck~~.
 | `SM-6-shipping-menu` | The seller's shipping menu has 1–10 options, each with a label and a flat price of $0–$100 in cents and a tracked flag; option IDs stay stable across edits | 6, D15 |
 | `SM-6-address-snapshot` | "I've paid" needs one of the buyer's saved addresses; the invoice keeps a snapshot (and the shipping option's label), which later address-book edits don't change; the seller sees it only on that buyer's invoices | 6, PLAN 3 (Invoice) |
 | `SM-6-overdue-rescind` | On an overdue invoice the seller can, in one click, rescind every line for non-payment and pass each item to the next backup | 6, D13 |
-| `LIVE-broadcast` | The sale's live socket sends server time and a snapshot on every (re)connect, then one versioned diff per committed write; clients keep each item's highest version | 9, PLAN 5 (Realtime details) |
-| `LIVE-access` | A live socket opens only for a viewer who may see the sale (`SM-2-visibility`, private sales included) and only from the site's own pages; when a sale goes back to draft, every socket but the seller's is closed | 2, 9, D5 |
+| `LIVE-broadcast` | The sale's live socket sends server time and a snapshot on every (re)connect, then one versioned diff per committed write; writes made outside a command (the web item editor, import batches) send every viewer a fresh snapshot, and a page whose item is missing from a snapshot refetches; clients keep each item's highest version | 9, PLAN 5 (Realtime details) |
+| `LIVE-access` | A live socket opens only for a viewer who may see the sale (`SM-2-visibility`, private sales included) and only from the site's own pages; when a sale goes back to draft, or a published private sale's access changes (it becomes private, its password changes or is removed, its invite list is turned off or loses an address), every socket but the seller's is closed and the page checks access again | 2, 9, D5 |
 | `LIVE-no-leak` | What the live grid sends a viewer never names another buyer and never carries the hidden minimum or market prices; offer amounts follow `SM-3-offer-visibility` | 3, D26, D27, D64 |
 | `LIVE-position` | Buyers see their own position: winners as #1…#quantity (by when they won), open entries as backup #N, or #N in line while the seller decides, in rank order | PLAN 3 (Claim), 4.2 |
 | `LIVE-running-total` | During a sale, a buyer sees the running total of their wins in it (integer cents) | D53 |

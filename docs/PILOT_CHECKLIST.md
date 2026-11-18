@@ -5,9 +5,12 @@ check it. Items marked **owner** need the owner's accounts or decisions; the res
 done by anyone with staging access. Tick them in the PR that closes WS-L, or in a follow-up.
 
 ## 1. Domain and email (owner)
-- [ ] `claimsale.net` is registered in the AntiTcb Cloudflare account (PLAN §12).
-- [ ] `notify.claimsale.net` is onboarded in Email Service (TECH_STACK §11). Until then,
-      staging can only email verified destination addresses.
+- [x] `claimsale.net` is registered in the AntiTcb Cloudflare account (zone active since 2026-10-09) (PLAN §12).
+- [x] `notify.claimsale.net` is onboarded in Email Service (2026-11-18): sending subdomain
+      created with `cf email-sending subdomains create`, which added the bounce MX, SPF, DKIM and
+      DMARC (`p=reject`) records; DNS status `ready`. Check it any time with
+      `cf email-sending subdomains dns status <id> --zone claimsale.net` (the id is in
+      `cf email-sending subdomains list --zone claimsale.net`). Starting quota: 1,000 emails a day.
 - [ ] Check: sign up on staging with a fresh address; "Confirm your email" arrives, and a
       followed seller's new public sale sends the follower an email (WS-K).
 

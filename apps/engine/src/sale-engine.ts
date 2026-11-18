@@ -4,7 +4,14 @@ import { DurableObject } from "cloudflare:workers";
 import { Effect } from "effect";
 import type { EngineEnv } from "./env.ts";
 import { LiveHub } from "./live/hub.ts";
-import { broadcastCommit, connectLive, parseLivePath, VIEWER_HEADER } from "./live/sale-live.ts";
+import {
+	broadcastCommit,
+	broadcastRefresh,
+	connectLive,
+	parseLivePath,
+	revokeViewers,
+	VIEWER_HEADER,
+} from "./live/sale-live.ts";
 import { run, runForRpc, runtimeCapabilities, type RpcResult } from "./runtime.ts";
 import { KeyedLocks } from "./sale/locks.ts";
 import { loadTimers } from "./sale/timers.ts";
@@ -95,7 +102,10 @@ export class SaleEngine extends DurableObject<EngineEnv> {
 				// The entrypoint decoded `input` with the schema that belongs to `method`.
 				// oxlint-disable-next-line typescript/no-unsafe-type-assertion
 				const call = writer[method] as (input: unknown) => Promise<Outcome<unknown>>;
-				return call.call(writer, input);
+				const outcome = await call.call(writer, input);
+				// An import writes items outside the per-item commit, so its rows aren't in the diff.
+				if (outcome.ok && method === "applyImportBatch") await this.#listingsChanged(saleId);
+				return outcome;
 			}).pipe(
 				Effect.tap((outcome) =>
 					outcome.ok
@@ -105,6 +115,46 @@ export class SaleEngine extends DurableObject<EngineEnv> {
 			),
 			{ sale_id: saleId, command: method },
 		);
+	}
+
+	/**
+	 * The seller changed items outside a command (the web item editor): open sockets get a
+	 * fresh snapshot and a public sale's listings are matched against want lists again.
+	 */
+	async listingsChanged(saleId: string): Promise<RpcResult<boolean>> {
+		return runForRpc(
+			this.env,
+			"engine.sale.listings_changed",
+			Effect.promise(() => this.#listingsChanged(saleId)),
+			{
+				sale_id: saleId,
+			},
+		);
+	}
+
+	/** A private sale's access changed: every viewer but the seller is disconnected (LIVE-access). */
+	async revokeLiveViewers(saleId: string): Promise<RpcResult<number>> {
+		return runForRpc(
+			this.env,
+			"engine.sale.revoke_viewers",
+			Effect.sync(() => revokeViewers(this.#live)),
+			{
+				sale_id: saleId,
+			},
+		);
+	}
+
+	/**
+	 * Refreshes open sockets, then asks the notifications consumer to match the sale's listings
+	 * against want lists again (it decides whether the sale is public and open; want-list
+	 * notifications are keyed by want and item, so a listing already announced isn't again).
+	 *
+	 * @spec TCG-want-list-notify — items added or repriced after publishing are matched too.
+	 */
+	async #listingsChanged(saleId: string): Promise<boolean> {
+		const exists = await broadcastRefresh(this.#live, this.env.DB, saleId, this.clock());
+		if (exists) this.#publish(saleId, [{ type: "listings_changed" }]);
+		return exists;
 	}
 
 	/**

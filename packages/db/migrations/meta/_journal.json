@@ -85,6 +85,13 @@
       "when": 1794986543297,
       "tag": "0011_notifications_messaging",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1795024122585,
+      "tag": "0012_drop_import_rows",
+      "breakpoints": true
     }
   ]
 }
