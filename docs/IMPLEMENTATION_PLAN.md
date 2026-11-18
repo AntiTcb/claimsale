@@ -21,7 +21,7 @@
 | 7. Seller control room + admin disputes | Done: WS-I (#27), with D68 |
 | 8. Invoices after close + exports + tracking import | Done: WS-J (#26), with D67 |
 | 9. Notifications and messaging | Done: WS-K (#28), with D69 |
-| 10. Discovery + pilot | WS-L in progress |
+| 10. Discovery + pilot | WS-L1 discovery (#29) and WS-L2 share cards done; the pilot checklist (`docs/PILOT_CHECKLIST.md`) waits on owner steps |
 
 ### Left after wave 3
 Besides WS-L and the owner steps in §4, these were left out of their workstreams on purpose
@@ -219,6 +219,19 @@ Needs WS-A, WS-C; best after WS-H.
   card?", follow and report on sale pages, copy as text, landing page, sitemap) plus
   `docs/PILOT_CHECKLIST.md`; WS-L2 is the OG share cards (S13), kept apart because they add
   Satori and resvg-wasm to the web Worker's bundle.
+- **WS-L2 notes (2026-11-18):**
+  - The web Worker's upload went from 4.0 MB / 0.79 MB gzipped to 8.3 MB / 2.3 MB gzipped
+    (resvg's WebAssembly is 2.4 MB of it); the Workers Paid limit is 10 MB gzipped. The
+    WebAssembly loads on the first share image, not at Worker startup.
+  - Fonts are bundled (Noto Sans, Latin and Latin Extended, from `@fontsource/noto-sans`)
+    instead of the renderer's default CDN fonts. Text outside those ranges (Japanese card
+    names, for example) is left out of the image; adding a CJK font would cost several MB.
+  - Emoji are fetched from the renderer's emoji CDN (jsDelivr, twemoji) while rendering. If
+    that fails, the route serves the card without emoji, uncached.
+  - Cards carry no go-live time: sellers have no stored time zone, and the image is cached
+    for everyone. They show a status (Upcoming, Live now, Closed) instead.
+  - Item photos aren't on the card yet (only text). Adding them means reading the item's
+    approved photo from R2 into the render, and only for public and unlisted sales.
 
 ### After the pilot (PLAN Phase 2)
 Stripe Billing for Pro, merged invoices (D16), Discord webhooks, Q&A, web push, auto

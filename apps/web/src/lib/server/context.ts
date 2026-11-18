@@ -37,6 +37,11 @@ export function imageStore(): ImageStore {
 	return env.IMAGES;
 }
 
+/** The same bucket, for cached share images under `og/` (WS-L2, SHARE-cache-version). */
+export function shareImageStore(): R2Bucket {
+	return env.IMAGES;
+}
+
 /** The sale engine: the SaleEngine Durable Object over the ENGINE service binding (RPC). */
 export function engine(): Engine {
 	return rpcEngine(env.ENGINE);

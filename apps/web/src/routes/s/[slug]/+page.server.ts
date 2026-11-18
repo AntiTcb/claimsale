@@ -16,6 +16,7 @@ import {
 	verifySalePassword,
 } from "#lib/server/sale-access.ts";
 import { loadSaleForViewer, publicItem, saleBody, saleHeader } from "#lib/server/sale-view.ts";
+import { shareMeta } from "#lib/server/share-card.ts";
 import type { Actions, PageServerLoad } from "./$types";
 
 /**
@@ -26,6 +27,8 @@ import type { Actions, PageServerLoad } from "./$types";
  * @spec SM-2-visibility — locked private sales show only the title and seller.
  * @spec IMG-public-approved — buyers see approved photos only; the seller sees pending ones too.
  * @spec IMG-timestamp-required — the "Timestamped" badge and photo when the timestamp photo is approved.
+ * @spec SHARE-private-title-only — the `og:` tags describe what a signed-out visitor may
+ * see, whoever is viewing, so an unlocked private sale still shares as title and seller.
  */
 export const load: PageServerLoad = async (event) => {
 	const { sale, access, isSeller } = await loadSaleForViewer(event, event.params.slug);
@@ -50,6 +53,7 @@ export const load: PageServerLoad = async (event) => {
 			live: null,
 			signedIn: event.locals.user !== null,
 			following,
+			share: shareMeta(sale, [], event.url.origin),
 		};
 	}
 	const rows = await listItems(db(), sale.id);
@@ -77,6 +81,7 @@ export const load: PageServerLoad = async (event) => {
 		live,
 		signedIn: event.locals.user !== null,
 		following,
+		share: shareMeta(sale, rows, event.url.origin),
 	};
 };
 

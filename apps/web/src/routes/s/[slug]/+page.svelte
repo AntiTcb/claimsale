@@ -18,6 +18,20 @@
 <svelte:head>
 	<title>{header.title} · ClaimSale</title>
 	{#if !header.indexable}<meta name="robots" content="noindex, nofollow" />{/if}
+	{#if data.share}
+		<!-- WS-L2: the preview a link shows in Facebook and elsewhere (SHARE-private-title-only). -->
+		<meta property="og:type" content="website" />
+		<meta property="og:site_name" content="ClaimSale" />
+		<meta property="og:title" content={data.share.title} />
+		<meta property="og:description" content={data.share.description} />
+		<meta property="og:url" content={data.share.url} />
+		<meta property="og:image" content={data.share.image} />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta property="og:image:alt" content={`${data.share.title}: ${data.share.description}`} />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="description" content={data.share.description} />
+	{/if}
 </svelte:head>
 
 <section class="mx-auto max-w-6xl px-4 py-8">
