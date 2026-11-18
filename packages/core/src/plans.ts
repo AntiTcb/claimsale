@@ -45,11 +45,29 @@ export const MIN_RESCIND_EXPLANATION = 20;
  * @spec SM-4.2-window-length
  *
  * Free sellers always get 24h. A Pro seller's configured value is used when it
- * is a positive duration (D25 sets no bounds).
+ * is a positive duration, up to their cap: 7 days unless an admin approved a
+ * longer one for them (D68).
  */
-export function decisionWindow(sellerTier: Tier, configured?: Millis): Millis {
+export function decisionWindow(sellerTier: Tier, configured?: Millis, cap?: Millis | null): Millis {
 	if (sellerTier === "free" || configured === undefined || !(configured > 0)) return DEFAULT_DECISION_WINDOW;
-	return configured;
+	return Math.min(configured, decisionWindowCap(cap));
+}
+
+/** The longest decision window a Pro seller can set without an admin's approval (D68). */
+export const MAX_DECISION_WINDOW: Millis = 7 * DAY;
+
+/** The longest decision window an admin can approve for a seller (D68). */
+export const MAX_APPROVED_DECISION_WINDOW: Millis = 30 * DAY;
+
+/**
+ * A seller's decision-window cap: the admin-approved one when set (never above
+ * 30 days), otherwise 7 days.
+ *
+ * @spec SM-4.2-window-length
+ */
+export function decisionWindowCap(approved?: Millis | null): Millis {
+	if (approved === undefined || approved === null || !(approved > 0)) return MAX_DECISION_WINDOW;
+	return Math.min(approved, MAX_APPROVED_DECISION_WINDOW);
 }
 
 /**

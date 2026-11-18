@@ -80,6 +80,7 @@ one giant post where every item is a photo and every claim is a comment.
 | D65 | Photo rules confirmed: own-photo reuse only when relisting the same item; reject at distance ≤ 6, review at 7–12 (tuned before launch); an account is flagged after 3 rejected matches in 30 days. | 2026-10-09 |
 | D66 | **A timestamp photo is required for newer sellers** (fewer than 5 completed sales) on every sale they publish. It's optional for everyone else, and any sale with one gets a "Timestamped" badge. | 2026-10-09 |
 | D67 | **Invoice details confirmed.** "I've paid" always needs one of the buyer's saved addresses, local pickup included; the invoice keeps a snapshot of it (`SM-6-address-snapshot`). Invoice numbers are shown as `CS-<n>`, on invoices and in tracking imports and exports. | 2026-11-17 |
+| D68 | **Control room details confirmed.** A seller is flagged after **3 overturned buyer-fault rescinds in 30 days** (older ones stop counting). Contests are 10 to 2,000 characters. A Pro seller's decision window is capped at **7 days**; they can ask an admin to approve a longer cap, up to 30 days. Suspected-fraud rescinds go straight to admin review, with no buyer contest. Admins can see account emails. Sellers **can't turn off** the verified-email requirement (D20 always applies). | 2026-11-17 |
 
 The detailed behavior spec for claims, offers, take-backs and invoices lives in
 [`STATE_MACHINES.md`](./STATE_MACHINES.md).
@@ -820,7 +821,7 @@ end-to-end and load tests.
 
 ## 12. Open questions
 
-None. Everything is decided through D67. **Before the pilot sale** (not blocking development):
+None. Everything is decided through D68. **Before the pilot sale** (not blocking development):
 - Register `claimsale.net` in the AntiTcb account and onboard `notify.claimsale.net` in Email Service.
 - Search trademarks for "ClaimSale" and claim the matching social handles.
 - Check TCGCSV's terms and attribution requirements before building the catalog ingestion.

@@ -1,4 +1,4 @@
-import { ok, reject, type Actor, type Millis, type Rejection, type Result } from "./common.ts";
+import { DAY, ok, reject, type Actor, type Millis, type Rejection, type Result } from "./common.ts";
 import { CONTEST_WINDOW, MUTUAL_RESPONSE_WINDOW } from "./plans.ts";
 
 /**
@@ -174,4 +174,193 @@ export function answerMutual(
 	return answer === "agree"
 		? ok({ ...rescind, phase: "final" })
 		: ok({ ...rescind, phase: "contested", contestedAt: now });
+}
+
+// ---------------------------------------------------------------------------
+// Stored rescinds, contests and records (WS-I)
+
+export const RESCIND_REASON_CODES: readonly RescindReasonCode[] = [
+	"buyer_nonpayment",
+	"buyer_unresponsive",
+	"buyer_payment_reversed",
+	"buyer_requested_after_payment",
+	"buyer_terms_violation",
+	"seller_item_unavailable",
+	"seller_listing_error",
+	"mutual_agreement",
+	"suspected_fraud",
+];
+
+export function isRescindReasonCode(value: string): value is RescindReasonCode {
+	return Object.hasOwn(RESCIND_REASONS, value);
+}
+
+/** The faults an admin can resolve a rescind to. */
+export const RESOLVED_FAULTS = ["buyer", "seller", "neutral"] as const;
+export type ResolvedFault = (typeof RESOLVED_FAULTS)[number];
+
+export function isResolvedFault(value: string): value is ResolvedFault {
+	return (RESOLVED_FAULTS as readonly string[]).includes(value);
+}
+
+const PHASES: readonly RescindPhase[] = ["awaiting_buyer", "contested", "admin_review", "final"];
+const isPhase = (value: string): value is RescindPhase => (PHASES as readonly string[]).includes(value);
+
+/** A `rescinds` row, as stored (rows written before WS-I have no `phase`). */
+export interface StoredRescind {
+	readonly reasonCode: string;
+	readonly phase: string | null;
+	readonly refundOwed: boolean;
+	readonly createdAt: Millis;
+	readonly contestedAt: Millis | null;
+	readonly resolvedFault: string | null;
+	readonly resolvedAt: Millis | null;
+}
+
+/**
+ * A stored rescind as core's `Rescind`, or null if its reason code is unknown. Rows from
+ * before the `phase` column get it derived from the other columns.
+ */
+export function fromStored(row: StoredRescind): Rescind | null {
+	if (!isRescindReasonCode(row.reasonCode)) return null;
+	const { fault } = RESCIND_REASONS[row.reasonCode];
+	const resolvedFault =
+		row.resolvedFault !== null && isResolvedFault(row.resolvedFault) ? row.resolvedFault : null;
+	let phase: RescindPhase;
+	if (row.phase !== null && isPhase(row.phase)) phase = row.phase;
+	else if (row.resolvedAt !== null) phase = "final";
+	else if (row.contestedAt !== null) phase = "contested";
+	else if (row.reasonCode === "suspected_fraud") phase = "admin_review";
+	else if (row.reasonCode === "mutual_agreement") phase = "awaiting_buyer";
+	else phase = "final";
+	return {
+		reasonCode: row.reasonCode,
+		fault,
+		phase,
+		refundOwed: row.refundOwed,
+		createdAt: row.createdAt,
+		contestedAt: row.contestedAt,
+		resolvedFault,
+	};
+}
+
+/**
+ * When a mutual-agreement rescind stops waiting for the buyer (null if it isn't waiting).
+ *
+ * @spec SM-4.3.1-mutual — no answer within 72h counts as agreement.
+ */
+export function mutualAnswerDueAt(rescind: Rescind): Millis | null {
+	return rescind.phase === "awaiting_buyer" ? rescind.createdAt + MUTUAL_RESPONSE_WINDOW : null;
+}
+
+/**
+ * Until when the buyer can contest the attribution (null when they can't now).
+ *
+ * @spec SM-4.3.1-contest
+ */
+export function contestOpenUntil(rescind: Rescind, now: Millis): Millis | null {
+	const until = rescind.createdAt + CONTEST_WINDOW;
+	return rescind.phase === "final" && rescind.contestedAt === null && now <= until ? until : null;
+}
+
+export const MIN_CONTEST_TEXT = 10;
+export const MAX_CONTEST_TEXT = 2000;
+
+/**
+ * The buyer's side of a contest: required, 10 to 2000 characters after trimming.
+ *
+ * @spec SM-4.3.1-contest — the buyer contests "by giving their side".
+ */
+export function validateContestText(text: string): Result<string, Rejection<"contest_text_invalid">> {
+	const trimmed = text.trim();
+	if (trimmed.length < MIN_CONTEST_TEXT || trimmed.length > MAX_CONTEST_TEXT) {
+		return reject(
+			"contest_text_invalid",
+			`Tell the admin your side in ${MIN_CONTEST_TEXT} to ${MAX_CONTEST_TEXT} characters`,
+		);
+	}
+	return ok(trimmed);
+}
+
+/**
+ * A buyer-fault rescind that the buyer contested and the admin moved off the buyer.
+ *
+ * @spec SM-4.3.1-abuse-guard
+ */
+export function isOverturned(rescind: Rescind): boolean {
+	return (
+		rescind.phase === "final" &&
+		rescind.contestedAt !== null &&
+		rescind.fault === "buyer" &&
+		rescind.resolvedFault !== null &&
+		rescind.resolvedFault !== "buyer"
+	);
+}
+
+/** Overturned buyer-fault rescinds after which a seller is flagged for admin review. */
+export const OVERTURNED_RESCINDS_FLAG_AT = 3;
+
+/** Only rescinds overturned this recently count toward the flag (owner decision D68). */
+export const OVERTURNED_RESCINDS_WINDOW: Millis = 30 * DAY;
+
+/**
+ * The earliest resolution time that still counts toward the abuse-guard flag at `now`.
+ *
+ * @spec SM-4.3.1-abuse-guard — the count covers the last 30 days.
+ */
+export function overturnCountSince(now: Millis): Millis {
+	return now - OVERTURNED_RESCINDS_WINDOW;
+}
+
+/**
+ * Whether a seller with this many overturned buyer-fault rescinds goes to the admin queue.
+ *
+ * @spec SM-4.3.1-abuse-guard — repeatedly overturned buyer-fault rescinds flag the seller.
+ */
+export function flagsSeller(overturned: number): boolean {
+	return overturned >= OVERTURNED_RESCINDS_FLAG_AT;
+}
+
+/** What a seller sees about a claimant at a glance (PLAN §3b). */
+export interface BuyerReputation {
+	readonly completedPurchases: number;
+	readonly nonPay: number;
+	readonly paymentReversed: number;
+	/** Approved take-backs plus `buyer_requested_after_payment` rescinds. */
+	readonly takebacks: number;
+	readonly violations: number;
+	readonly proRescinds: number;
+	readonly memberSince: Millis;
+}
+
+export interface BuyerReputationInput {
+	/** Every seller rescind against the buyer, in any phase. */
+	readonly rescinds: readonly Rescind[];
+	readonly completedPurchases: number;
+	readonly approvedTakebacks: number;
+	readonly proRescinds: number;
+	readonly memberSince: Millis;
+}
+
+/**
+ * A buyer's record. Only final rescinds count, by their resolved fault: one that waits
+ * for the buyer, is contested or is under admin review counts for no one.
+ *
+ * @spec REP-buyer-record
+ */
+export function buyerRecord(input: BuyerReputationInput): BuyerReputation {
+	const marks = { non_pay: 0, payment_reversed: 0, takeback: 0, violation: 0 };
+	for (const rescind of input.rescinds) {
+		const mark = recordEffects(rescind).buyer;
+		if (mark !== null) marks[mark]++;
+	}
+	return {
+		completedPurchases: input.completedPurchases,
+		nonPay: marks.non_pay,
+		paymentReversed: marks.payment_reversed,
+		takebacks: input.approvedTakebacks + marks.takeback,
+		violations: marks.violation,
+		proRescinds: input.proRescinds,
+		memberSince: input.memberSince,
+	};
 }

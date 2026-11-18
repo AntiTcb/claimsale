@@ -1,6 +1,17 @@
 import {
 	addWin,
+	answerMutual as coreAnswerMutual,
 	award as awardEntry,
+	contest as coreContest,
+	flagsSeller,
+	fromStored,
+	isOverturned,
+	overturnCountSince,
+	mutualAnswerDueAt,
+	resolve as coreResolve,
+	validateContestText,
+	type Rescind,
+	type ResolvedFault,
 	buyerRescind as coreBuyerRescind,
 	can,
 	cancelTakeback as coreCancelTakeback,
@@ -69,7 +80,7 @@ import {
 import { readPublishPhotoState } from "../photos/store.ts";
 import { planImportBatch, type ImportBatchInput, type ImportBatchResult } from "./import.ts";
 import { itemKey, KeyedLocks, lockOrder, type LockKey } from "./locks.ts";
-import { toTakeback, type TakebackRow } from "./rows.ts";
+import { toStoredRescind, toTakeback, type RescindRow, type TakebackRow } from "./rows.ts";
 import {
 	loadAddress,
 	loadInvoiceKinds,
@@ -119,6 +130,23 @@ export interface SaleView {
 export interface InvoiceView extends Invoice {
 	readonly saleId: string;
 }
+
+/** A rescind after a contest, an answer or a resolution (§4.3.1). */
+export interface RescindView {
+	readonly id: string;
+	readonly phase: Rescind["phase"];
+	readonly fault: Rescind["fault"];
+	readonly resolvedFault: Rescind["resolvedFault"];
+	readonly contestedAt: Millis | null;
+}
+
+const rescindView = (id: string, rescind: Rescind): RescindView => ({
+	id,
+	phase: rescind.phase,
+	fault: rescind.fault,
+	resolvedFault: rescind.resolvedFault,
+	contestedAt: rescind.contestedAt,
+});
 
 /** One tracking re-import row's result (PLAN §3c.3). */
 export type TrackingRowResult =
@@ -573,14 +601,18 @@ export class SaleWriter {
 			new Map([[input.entryId, rescind.refundOwed]]),
 		);
 		if (!applied.ok) return applied;
+		const rescindId = newId();
+		// SM-4.3.1-mutual: the 72h answer deadline is one of the sale's timers.
+		const answerDue = mutualAnswerDueAt(rescind);
+		if (answerDue !== null) work.extraTimers.push({ kind: "mutual_answer_due", at: answerDue, rescindId });
 		work.extra.push(
 			this.db
 				.prepare(
-					`INSERT INTO rescinds (id, entry_id, seller_id, buyer_id, reason_code, explanation, attachment_key, fault, refund_owed, created_at)
-					VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`,
+					`INSERT INTO rescinds (id, entry_id, seller_id, buyer_id, reason_code, explanation, attachment_key, fault, refund_owed, created_at, phase)
+					VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)`,
 				)
 				.bind(
-					newId(),
+					rescindId,
 					input.entryId,
 					work.sale.sellerId,
 					entry.buyerId,
@@ -590,13 +622,29 @@ export class SaleWriter {
 					rescind.fault,
 					rescind.refundOwed ? 1 : 0,
 					now,
+					rescind.phase,
 				),
 		);
+		// The buyer is told the reason; a mutual agreement asks them to agree or dispute (WS-K).
+		work.event({
+			type: "rescind_recorded",
+			rescindId,
+			entryId: input.entryId,
+			buyerId: entry.buyerId,
+			itemId: item.id,
+			reasonCode: input.reasonCode,
+			phase: rescind.phase,
+		});
 		work.audit({
 			action: input.passToNext ? "rescinded_and_passed" : "rescinded",
 			actorId: auditActor,
 			itemId: item.id,
-			input: { entryId: input.entryId, reasonCode: input.reasonCode, refundOwed: rescind.refundOwed },
+			input: {
+				entryId: input.entryId,
+				rescindId,
+				reasonCode: input.reasonCode,
+				refundOwed: rescind.refundOwed,
+			},
 			events: result.value.events,
 		});
 		return ok({ work, value: this.#itemResult(work, item.id, input.entryId, result.value.events) });
@@ -806,6 +854,230 @@ export class SaleWriter {
 	}
 
 	// -------------------------------------------------------------------------
+	// Rescind contests, mutual-agreement answers and admin resolution (§4.3.1, WS-I)
+
+	async #rescindRow(rescindId: string) {
+		return this.db
+			.prepare(
+				`SELECT r.*, e.item_id FROM rescinds r JOIN entries e ON e.id = r.entry_id JOIN items i ON i.id = e.item_id
+				WHERE r.id = ?1 AND i.sale_id = ?2`,
+			)
+			.bind(rescindId, this.saleId)
+			.first<RescindRow & { item_id: string }>();
+	}
+
+	/**
+	 * Runs a rescind command under the lock of the rescind's item. `body` gets the stored
+	 * rescind as core's type and returns the row update to commit with its audit.
+	 */
+	async #rescindCommand<A>(
+		rescindId: string,
+		body: (
+			work: Work,
+			row: RescindRow & { item_id: string },
+			rescind: Rescind,
+			now: Millis,
+		) => Promise<Outcome<A>>,
+	): Promise<Outcome<A>> {
+		const located = await this.#rescindRow(rescindId);
+		if (!located) return notFound("rescind");
+		return this.#transact([itemKey(located.item_id)], async (_session, now) => {
+			const row = await this.#rescindRow(rescindId);
+			if (!row) return notFound("rescind");
+			const sale = await loadSale(this.db, this.saleId, now);
+			if (!sale) return notFound();
+			const rescind = fromStored(toStoredRescind(row));
+			if (!rescind) return notFound("rescind");
+			const work = new Work(this.db, sale, now);
+			const result = await body(work, row, rescind, now);
+			if (!result.ok) return result;
+			return ok({ work, value: result.value });
+		});
+	}
+
+	/** The rescind's phase columns after a transition; the WHERE re-checks the phase it was read in. */
+	#updateRescind(
+		row: RescindRow,
+		before: Rescind,
+		after: Rescind,
+		columns: Record<string, string | number | null>,
+	): D1PreparedStatement {
+		const names = Object.keys(columns);
+		const sets = ["phase = ?1", ...names.map((name, i) => `${name} = ?${i + 4}`)].join(", ");
+		return this.db
+			.prepare(`UPDATE rescinds SET ${sets} WHERE id = ?2 AND COALESCE(phase, ?3) = ?3`)
+			.bind(after.phase, row.id, before.phase, ...names.map((name) => columns[name] ?? null));
+	}
+
+	/**
+	 * The buyer contests the rescind's attribution with their side of the story.
+	 *
+	 * @spec SM-4.3.1-contest — within 7 days; it freezes the attribution until the admin resolves it.
+	 */
+	contestRescind(input: { rescindId: string; buyerId: string; text: string }): Promise<Outcome<RescindView>> {
+		return this.#rescindCommand(input.rescindId, async (work, row, rescind, now) => {
+			const text = validateContestText(input.text);
+			if (!text.ok) return text;
+			const contested = coreContest(
+				rescind,
+				{ kind: "buyer", id: input.buyerId, tier: "free" },
+				row.buyer_id,
+				now,
+			);
+			if (!contested.ok) return contested;
+			work.extra.push(
+				this.#updateRescind(row, rescind, contested.value, {
+					contested_at: now,
+					contest_text: text.value,
+				}),
+			);
+			const event = { type: "rescind_contested", rescindId: row.id, entryId: row.entry_id };
+			work.event({ ...event, itemId: row.item_id });
+			work.audit({
+				action: "rescind_contested",
+				actorId: input.buyerId,
+				itemId: row.item_id,
+				input: { rescindId: row.id },
+				events: [event],
+			});
+			return ok(rescindView(row.id, contested.value));
+		});
+	}
+
+	/**
+	 * The buyer agrees to or disputes a mutual-agreement rescind.
+	 *
+	 * @spec SM-4.3.1-mutual — agreeing makes it neutral; disputing sends it to the admin like a contest.
+	 */
+	answerMutualRescind(input: {
+		rescindId: string;
+		buyerId: string;
+		agree: boolean;
+	}): Promise<Outcome<RescindView>> {
+		return this.#rescindCommand(input.rescindId, async (work, row, rescind, now) => {
+			const answered = coreAnswerMutual(
+				rescind,
+				{ kind: "buyer", id: input.buyerId, tier: "free" },
+				row.buyer_id,
+				input.agree ? "agree" : "dispute",
+				now,
+			);
+			if (!answered.ok) return answered;
+			work.extra.push(
+				this.#updateRescind(row, rescind, answered.value, {
+					answered_at: now,
+					contested_at: answered.value.contestedAt,
+				}),
+			);
+			const type = input.agree ? "rescind_mutual_agreed" : "rescind_mutual_disputed";
+			const event = { type, rescindId: row.id, entryId: row.entry_id };
+			work.event({ ...event, itemId: row.item_id });
+			work.audit({
+				action: type,
+				actorId: input.buyerId,
+				itemId: row.item_id,
+				input: { rescindId: row.id },
+				events: [event],
+			});
+			return ok(rescindView(row.id, answered.value));
+		});
+	}
+
+	/**
+	 * The 72h answer deadline of a mutual agreement passed: it counts as agreed.
+	 *
+	 * @spec SM-4.3.1-mutual — no response in 72h counts as neutral.
+	 */
+	mutualAnswerTimeout(rescindId: string): Promise<Outcome<RescindView>> {
+		return this.#rescindCommand(rescindId, async (work, row, rescind, now) => {
+			const timedOut = coreAnswerMutual(rescind, SYSTEM, row.buyer_id, "timeout", now);
+			if (!timedOut.ok) return timedOut;
+			work.extra.push(this.#updateRescind(row, rescind, timedOut.value, { answered_at: now }));
+			const event = { type: "rescind_mutual_timed_out", rescindId: row.id, entryId: row.entry_id };
+			work.event({ ...event, itemId: row.item_id });
+			work.audit({
+				action: "rescind_mutual_timed_out",
+				actorId: "system",
+				itemId: row.item_id,
+				input: { rescindId: row.id },
+				events: [event],
+			});
+			return ok(rescindView(row.id, timedOut.value));
+		});
+	}
+
+	/**
+	 * An admin resolves a contested or held rescind, optionally re-attributing it. The
+	 * engine checks the admin role itself.
+	 *
+	 * @spec SM-4.3.1-contest — the admin can re-attribute a contested rescind.
+	 * @spec SM-4.3.1-fraud-review — a held suspected-fraud rescind counts once resolved.
+	 * @spec SM-4.3.1-abuse-guard — the third overturned buyer-fault rescind in 30 days flags the seller.
+	 */
+	resolveRescind(input: {
+		rescindId: string;
+		adminId: string;
+		fault: ResolvedFault;
+		note?: string | null;
+	}): Promise<Outcome<RescindView>> {
+		return this.#rescindCommand(input.rescindId, async (work, row, rescind, now) => {
+			const user = await this.db
+				.prepare("SELECT role FROM users WHERE id = ?1")
+				.bind(input.adminId)
+				.first<{ role: string }>();
+			if (user?.role !== "admin") return notAllowed();
+			const resolved = coreResolve(rescind, { kind: "admin", id: input.adminId }, input.fault);
+			if (!resolved.ok) return resolved;
+			work.extra.push(
+				this.#updateRescind(row, rescind, resolved.value, {
+					resolved_fault: input.fault,
+					resolved_by: input.adminId,
+					resolved_at: now,
+					resolution_note: input.note?.trim() || null,
+				}),
+			);
+			let flagged = false;
+			if (isOverturned(resolved.value)) {
+				const earlier = await this.db
+					.prepare(
+						`SELECT count(*) AS n FROM rescinds WHERE seller_id = ?1 AND id != ?2 AND fault = 'buyer'
+						AND contested_at IS NOT NULL AND resolved_fault IN ('seller', 'neutral') AND resolved_at >= ?3`,
+					)
+					.bind(row.seller_id, row.id, overturnCountSince(now))
+					.first<{ n: number }>();
+				const overturned = (earlier?.n ?? 0) + 1;
+				if (flagsSeller(overturned)) {
+					flagged = true;
+					// One open flag per reason (the partial unique index); a repeat is ignored.
+					work.extra.push(
+						this.db
+							.prepare(
+								`INSERT OR IGNORE INTO account_flags (id, user_id, reason, count, created_at)
+								VALUES (?1, ?2, 'overturned_rescinds', ?3, ?4)`,
+							)
+							.bind(newId(), row.seller_id, overturned, now),
+					);
+				}
+			}
+			const event = {
+				type: "rescind_resolved",
+				rescindId: row.id,
+				entryId: row.entry_id,
+				fault: input.fault,
+			};
+			work.event({ ...event, itemId: row.item_id });
+			work.audit({
+				action: "rescind_resolved",
+				actorId: input.adminId,
+				itemId: row.item_id,
+				input: { rescindId: row.id, fault: input.fault, sellerFlagged: flagged },
+				events: [event],
+			});
+			return ok(rescindView(row.id, resolved.value));
+		});
+	}
+
+	// -------------------------------------------------------------------------
 	// Sale lifecycle (§2)
 
 	async #activeSaleCount(sellerId: string): Promise<number> {
@@ -984,6 +1256,8 @@ export class SaleWriter {
 				);
 			case "invoice_due":
 				return this.markOverdue(timer.invoiceId);
+			case "mutual_answer_due":
+				return this.mutualAnswerTimeout(timer.rescindId);
 			case "invoice_autocomplete":
 				break;
 		}

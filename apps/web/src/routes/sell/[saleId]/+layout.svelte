@@ -12,6 +12,10 @@
 		...(data.sale.status === "draft" || data.sale.status === "scheduled"
 			? [{ href: `${base}/import`, label: "Import" }]
 			: []),
+		// The control room (WS-I) once claims can exist.
+		...(data.sale.status === "live" || data.sale.status === "closed" || data.sale.status === "archived"
+			? [{ href: `${base}/manage`, label: "Control room" }]
+			: []),
 		{ href: `${base}/shipping`, label: "Shipping" },
 		...(data.sale.status === "live" || data.sale.status === "closed" || data.sale.status === "archived"
 			? [{ href: `${base}/buyers`, label: "Buyers" }]

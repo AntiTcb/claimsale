@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DAY, HOUR } from "./common.ts";
-import { decisionWindow, paymentDeadline } from "./plans.ts";
+import { decisionWindow, decisionWindowCap, paymentDeadline } from "./plans.ts";
 import {
 	acceptsEntries,
 	archive,
@@ -146,6 +146,15 @@ describe("plan timings", () => {
 		expect(decisionWindow("pro")).toBe(24 * HOUR);
 		expect(decisionWindow("pro", 6 * HOUR)).toBe(6 * HOUR);
 		expect(decisionWindow("pro", 0)).toBe(24 * HOUR);
+	});
+
+	it("[SM-4.2-window-length] Pro windows are capped at 7 days unless an admin approved more, up to 30", () => {
+		expect(decisionWindow("pro", 10 * DAY)).toBe(7 * DAY);
+		expect(decisionWindow("pro", 10 * DAY, 14 * DAY)).toBe(10 * DAY);
+		expect(decisionWindow("pro", 20 * DAY, 14 * DAY)).toBe(14 * DAY);
+		expect(decisionWindowCap(null)).toBe(7 * DAY);
+		expect(decisionWindowCap(90 * DAY)).toBe(30 * DAY);
+		expect(decisionWindowCap(-1)).toBe(7 * DAY);
 	});
 
 	it("[SM-6-payment-deadline] 48h by default; only Pro sellers can choose 24h", () => {

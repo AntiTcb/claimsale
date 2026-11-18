@@ -21,9 +21,10 @@ import {
  * Fields read from `terms`:
  * - `reviewEveryClaim` (D34, default false), `allowBackupOffers` (D43, default true)
  * - `paymentDeadlineHours` 24 | 48 (D13; 24 only counts for Pro sellers)
- * - `decisionWindowHours` (D25; Pro only, any positive number)
+ * - `decisionWindowHours` (D25; Pro only, capped at 7 days or the seller's admin-approved cap, D68)
  * - `autoSendAtClose` (D49, default false), `autoRescindOverdue` (D13, default false)
- * - `requireVerifiedEmail` (D20, default true), `minAccountAgeDays` (D29, default 0)
+ * - `minAccountAgeDays` (D29, default 0). A verified email is always required (D20); terms
+ *   saved before D68 may still carry `requireVerifiedEmail`, which is ignored.
  * - `offerVisibility` "blind" | "visible" (D26, default blind): what the live grid shows (WS-H)
  */
 export interface SaleSettings {
@@ -61,19 +62,28 @@ export function readShippingMenu(raw: unknown): ShippingOption[] {
 	return shippingMenuFrom(parseJson(raw));
 }
 
-export function readSaleSettings(terms: unknown, shipping: unknown, sellerTier: Tier): SaleSettings {
+export function readSaleSettings(
+	terms: unknown,
+	shipping: unknown,
+	sellerTier: Tier,
+	windowCapHours: number | null = null,
+): SaleSettings {
 	const t = record(parseJson(terms));
 	const windowHours = positive(t["decisionWindowHours"]);
 	const minAgeDays = positive(t["minAccountAgeDays"]);
 	return {
 		reviewEveryClaim: t["reviewEveryClaim"] === true,
 		allowBackupOffers: t["allowBackupOffers"] !== false,
-		decisionWindow: decisionWindow(sellerTier, windowHours === undefined ? undefined : windowHours * HOUR),
+		decisionWindow: decisionWindow(
+			sellerTier,
+			windowHours === undefined ? undefined : windowHours * HOUR,
+			windowCapHours === null ? null : windowCapHours * HOUR,
+		),
 		paymentDeadline: paymentDeadline(sellerTier, t["paymentDeadlineHours"] === 24),
 		autoSendAtClose: t["autoSendAtClose"] === true,
 		autoRescindOverdue: t["autoRescindOverdue"] === true,
 		buyerRequirements: {
-			emailVerified: t["requireVerifiedEmail"] === false ? false : DEFAULT_BUYER_REQUIREMENTS.emailVerified,
+			emailVerified: DEFAULT_BUYER_REQUIREMENTS.emailVerified,
 			minAccountAge: minAgeDays === undefined ? DEFAULT_BUYER_REQUIREMENTS.minAccountAge : minAgeDays * DAY,
 		},
 		shippingMenu: readShippingMenu(shipping),

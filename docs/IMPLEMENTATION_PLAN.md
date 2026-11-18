@@ -246,7 +246,7 @@ Wave 4:                     WS-L → pilot sale
   the authenticated user's ID; the engine works out seller / buyer and tiers itself.
 - Sale settings the engine reads from `sales.terms` (beyond the web form's fields):
   `decisionWindowHours` (Pro), `autoSendAtClose`, `autoRescindOverdue`,
-  `requireVerifiedEmail`, `minAccountAgeDays`; the shipping menu from `sales.shipping`
+  `minAccountAgeDays` (a verified email is always required, D20/D68); the shipping menu from `sales.shipping`
   as `[{ id, label, priceCents, tracked }]`. WS-I / WS-J add the form fields.
 - `POST /api/sales/[saleId]/entries` takes a claim or offer as JSON (session + sale access
   checked in web). WS-H can use it or call `placeEntry` from a remote function.
@@ -281,6 +281,32 @@ Wave 4:                     WS-L → pilot sale
   pages and endpoints); the type-ahead uses the engine's `searchCatalog` RPC.
 - The hand-entry item form still takes free-form attributes (catalog autofill fills
   them); moving it onto core's per-game field lists is open.
+
+### Wave 3 integration notes (WS-I, control room and admin)
+- New engine RPCs: `contestRescind` (buyer), `answerMutualRescind` (buyer), `resolveRescind`
+  (admin; the engine checks `users.role`). The 72h mutual-agreement answer is a sale timer
+  (`mutual_answer_due`) in the alarm and the cron sweep. Committed events now include
+  `rescind_recorded`, `rescind_contested`, `rescind_mutual_agreed` / `_disputed` /
+  `_timed_out` and `rescind_resolved` for WS-K's notifications.
+- Migration `0010_control_room` (expand only): `rescinds.phase` / `answered_at` /
+  `resolution_note`, `users.banned_at` / `banned_reason` / `banned_by`, and `reports`.
+  Rows from before `phase` get it derived (core `fromStored`).
+- Bans: the engine treats a banned account as a blocked buyer; Better Auth refuses a new
+  session (`ACCOUNT_SUSPENDED`); banning deletes the account's sessions.
+- `POST /api/reports` takes `{ targetKind: user | sale | item | message, targetId, reason,
+  details? }` for WS-H's and WS-K's report buttons; messages aren't checked to exist yet.
+- `/me/rescinds` is the buyer's side of rescinds (reason, contest, agree / dispute); WS-K
+  should link it from the rescind notification.
+- The terms form now writes `decisionWindowHours` (Pro) and `minAccountAgeDays`; WS-J adds its
+  own fields to the same `SaleTerms`. Sellers can't turn off the verified-email requirement (D68).
+- D68 (owner, 2026-11-17):
+  - The abuse guard counts overturned rescinds resolved in the last 30 days.
+  - A Pro seller's decision window is capped at 7 days. The seller can ask for more on the
+    terms page; an admin approves or declines on `/admin/users`, up to 30 days, and can reset
+    it. The cap lives in `users.decision_window_max_hours`, which the engine reads with the sale
+    and applies when it reads the terms, so a revoked cap shortens existing sales' windows too.
+  - Contests stay 10 to 2,000 characters; suspected-fraud rescinds still go straight to the
+    admin without a contest; admins see account emails on `/admin/users`.
 
 ### Wave 3 integration notes (WS-J, invoices after close, exports, tracking import)
 - New engine RPCs: `rescindOverdueInvoice` (SM-6-overdue-rescind), `replaceInvoiceTracking`

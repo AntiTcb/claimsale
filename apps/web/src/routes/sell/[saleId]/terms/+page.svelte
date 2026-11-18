@@ -8,6 +8,8 @@
 	let { data, form }: PageProps = $props();
 	const t = $derived(data.terms);
 	const errors = $derived<Record<string, string>>(form && "errors" in form ? form.errors : {});
+	const windowError = $derived(form && "windowRequestError" in form ? form.windowRequestError : null);
+	const dateTime = (ms: number) => new Date(ms).toLocaleDateString(undefined, { dateStyle: "medium" });
 	const fieldClass =
 		"rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900";
 </script>
@@ -29,6 +31,7 @@
 	{/if}
 	<form
 		method="POST"
+		action={data.wizard ? "?/save&wizard=1" : "?/save"}
 		use:enhance={() =>
 			({ update }) =>
 				update({ reset: false })}
@@ -120,6 +123,54 @@
 			</label>
 		</div>
 
+		<div class="flex flex-col gap-1">
+			<label for="field-decisionWindowHours" class="text-sm font-medium"
+				>Decision window (hours){#if data.tier !== "pro"}<span class="font-normal"> · Pro</span>{/if}</label
+			>
+			<input
+				id="field-decisionWindowHours"
+				name="decisionWindowHours"
+				inputmode="numeric"
+				placeholder="24"
+				value={t.decisionWindowHours ?? ""}
+				disabled={data.tier !== "pro"}
+				aria-describedby="window-hint{errors['decisionWindowHours'] ? ' window-error' : ''}"
+				aria-invalid={errors["decisionWindowHours"] ? "true" : undefined}
+				class="w-32 {fieldClass}"
+			/>
+			<p id="window-hint" class="text-sm text-zinc-600 dark:text-zinc-400">
+				How long you have to pick between a full-price claim and offers before the earliest claim wins. Empty
+				is 24 hours{data.tier !== "pro"
+					? ", which is fixed for free sellers"
+					: `; your limit is ${data.window.capHours} hours`}.
+			</p>
+			{#if errors["decisionWindowHours"]}<p id="window-error" class="text-sm text-red-700 dark:text-red-400">
+					{errors["decisionWindowHours"]}
+				</p>{/if}
+		</div>
+
+		<fieldset class="flex flex-col gap-2">
+			<legend class="text-sm font-medium">Who can claim</legend>
+			<p class="text-sm text-zinc-600 dark:text-zinc-400">Buyers always need a verified email to claim.</p>
+			<label for="field-minAccountAgeDays" class="text-sm">Minimum account age (days)</label>
+			<input
+				id="field-minAccountAgeDays"
+				name="minAccountAgeDays"
+				inputmode="numeric"
+				placeholder="0"
+				value={t.minAccountAgeDays === 0 ? "" : t.minAccountAgeDays}
+				aria-describedby="age-hint{errors['minAccountAgeDays'] ? ' age-error' : ''}"
+				aria-invalid={errors["minAccountAgeDays"] ? "true" : undefined}
+				class="w-32 {fieldClass}"
+			/>
+			<p id="age-hint" class="text-sm text-zinc-600 dark:text-zinc-400">
+				Pro buyers skip both requirements. Empty allows new accounts.
+			</p>
+			{#if errors["minAccountAgeDays"]}<p id="age-error" class="text-sm text-red-700 dark:text-red-400">
+					{errors["minAccountAgeDays"]}
+				</p>{/if}
+		</fieldset>
+
 		<TextField label="Ships to" name="shipsTo" maxlength={200} value={t.shipsTo} error={errors["shipsTo"]} />
 
 		<div class="flex flex-col gap-1">
@@ -141,4 +192,47 @@
 			>{data.wizard ? "Continue to items" : "Save terms"}</button
 		>
 	</form>
+
+	{#if data.tier === "pro"}
+		<section
+			class="mt-8 rounded-md border border-zinc-300 p-4 dark:border-zinc-700"
+			aria-labelledby="window-request"
+		>
+			<h2 id="window-request" class="font-semibold">Need a longer decision window?</h2>
+			{#if form && "windowRequested" in form}
+				<p role="status" class="mt-2 text-sm text-green-800 dark:text-green-200">
+					Request sent. An admin will review it.
+				</p>
+			{/if}
+			{#if data.window.request}
+				<p class="mt-2 text-sm">
+					You asked for {data.window.request.hours} hours on {dateTime(data.window.request.requestedAt)}. An
+					admin hasn't answered yet; sending a new request replaces it.
+				</p>
+			{:else}
+				<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+					You can set up to {data.window.capHours} hours yourself. An admin can approve up to 720 hours (30 days).
+				</p>
+			{/if}
+			<form method="POST" action="?/requestWindow" use:enhance class="mt-3 flex flex-col gap-2">
+				<label class="flex flex-col text-sm"
+					>Hours you need <input
+						name="hours"
+						inputmode="numeric"
+						required
+						aria-invalid={windowError ? "true" : undefined}
+						class="w-32 {fieldClass}"
+					/></label
+				>
+				<label class="flex flex-col text-sm"
+					>Why <textarea name="reason" rows="2" required minlength="10" maxlength="500" class={fieldClass}
+					></textarea></label
+				>
+				{#if windowError}<p class="text-sm text-red-700 dark:text-red-400">{windowError}</p>{/if}
+				<button type="submit" class="self-start rounded-md border border-zinc-400 px-3 py-1"
+					>Ask an admin</button
+				>
+			</form>
+		</section>
+	{/if}
 </section>
