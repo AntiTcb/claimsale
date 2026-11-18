@@ -453,5 +453,5 @@ Waves 1–3 are merged (status in §1).
 ## 4. Owner steps that gate later waves
 - TCGCSV terms and attribution check (before WS-C ships to staging).
 - Twilio Verify account and Turnstile site keys into Infisical (WS-D on staging).
-- `claimsale.net` + `notify.claimsale.net` in Email Service (WS-K on staging).
+- ~~`claimsale.net` + `notify.claimsale.net` in Email Service~~ Done 2026-11-18 (PILOT_CHECKLIST §1).
 - The remaining TECH_STACK §11 checklist items (Sentry, Access).
