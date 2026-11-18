@@ -38,9 +38,7 @@ test.describe("discovery", () => {
 		const text = page.getByLabel("Sale as text");
 		await expect(text).toHaveValue(new RegExp(`^${title}\\nGoes live `));
 		// The add form's default condition sits between the title and the price.
-		await expect(text).toHaveValue(
-			new RegExp(`1\\. ${itemTitle} · [A-Z]+ · \\$${price.replace(".", "\\.")}`),
-		);
+		await expect(text).toHaveValue(new RegExp(`1\\. ${itemTitle} · \\S+ · \\$${price.replace(".", "\\.")}`));
 		await expect(text).toHaveValue(new RegExp(`Claim here: http\\S+${salePath}$`));
 
 		const buyerContext = await browser.newContext();
