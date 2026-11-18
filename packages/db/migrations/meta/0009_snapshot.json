@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "4e346ac0-bea4-4034-9af6-d585fee6618f",
+  "id": "21822f10-c1c8-4545-a638-3a17b59a5f52",
   "prevId": "4f3bfc8f-8534-4854-ad61-9eff8c5b0f85",
   "tables": {
     "addresses": {
@@ -1152,6 +1152,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "shipping_option_label": {
+          "name": "shipping_option_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "shipping_address": {
           "name": "shipping_address",
           "type": "text",
@@ -1440,6 +1447,13 @@
         },
         "format": {
           "name": "format",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "layout": {
+          "name": "layout",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -2296,127 +2310,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "reports": {
-      "name": "reports",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reporter_id": {
-          "name": "reporter_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "target_kind": {
-          "name": "target_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "target_id": {
-          "name": "target_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "details": {
-          "name": "details",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'open'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "resolved_at": {
-          "name": "resolved_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "resolved_by": {
-          "name": "resolved_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "resolution_note": {
-          "name": "resolution_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "reports_one_open": {
-          "name": "reports_one_open",
-          "columns": [
-            "reporter_id",
-            "target_kind",
-            "target_id"
-          ],
-          "isUnique": true,
-          "where": "\"reports\".\"status\" = 'open'"
-        },
-        "reports_status_created": {
-          "name": "reports_status_created",
-          "columns": [
-            "status",
-            "created_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "reports_reporter_id_users_id_fk": {
-          "name": "reports_reporter_id_users_id_fk",
-          "tableFrom": "reports",
-          "tableTo": "users",
-          "columnsFrom": [
-            "reporter_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "rescinds": {
       "name": "rescinds",
       "columns": {
@@ -2533,27 +2426,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "resolution_note": {
-          "name": "resolution_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "phase": {
-          "name": "phase",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "answered_at": {
-          "name": "answered_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -2583,14 +2455,6 @@
           "name": "rescinds_entry",
           "columns": [
             "entry_id"
-          ],
-          "isUnique": false
-        },
-        "rescinds_phase": {
-          "name": "rescinds_phase",
-          "columns": [
-            "phase",
-            "created_at"
           ],
           "isUnique": false
         }
@@ -3414,27 +3278,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'user'"
-        },
-        "banned_at": {
-          "name": "banned_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "banned_reason": {
-          "name": "banned_reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "banned_by": {
-          "name": "banned_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         },
         "created_at": {
           "name": "created_at",

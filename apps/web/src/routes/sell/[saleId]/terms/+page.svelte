@@ -114,6 +114,10 @@
 				<input type="checkbox" name="allowBackupOffers" checked={t.allowBackupOffers} /> Allow backup offers on
 				sold-out items
 			</label>
+			<label class="flex items-center gap-2">
+				<input type="checkbox" name="confirmClaims" checked={t.confirmClaims} /> Ask buyers to confirm each claim
+				(turn off when speed matters)
+			</label>
 		</div>
 
 		<div class="flex flex-col gap-1">

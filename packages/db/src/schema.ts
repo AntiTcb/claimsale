@@ -496,6 +496,8 @@ export const invoices = sqliteTable(
 		/** Recorded when the invoice becomes `paid` (SM-6-gmv). */
 		gmvCents: cents("gmv_cents"),
 		shippingOptionId: text("shipping_option_id"),
+		/** The chosen option's label at payment, so later menu edits don't rename it (WS-J). */
+		shippingOptionLabel: text("shipping_option_label"),
 		/** Snapshot of the buyer's address at payment. */
 		shippingAddress: json<Record<string, unknown>>("shipping_address"),
 		paymentRef: text("payment_ref"),
@@ -741,6 +743,8 @@ export const ioJobs = sqliteTable(
 		status: text("status", { enum: IO_JOB_STATUSES }).notNull(),
 		/** `csv` or `xlsx`. */
 		format: text("format"),
+		/** Shipping exports: `pirate_ship` or `generic` (WS-J). */
+		layout: text("layout"),
 		/** R2 keys of the uploaded file and the results file, when kept. */
 		fileKey: text("file_key"),
 		resultKey: text("result_key"),

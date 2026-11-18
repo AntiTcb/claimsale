@@ -16,6 +16,13 @@
 		...(data.sale.status === "live" || data.sale.status === "closed" || data.sale.status === "archived"
 			? [{ href: `${base}/manage`, label: "Control room" }]
 			: []),
+		{ href: `${base}/shipping`, label: "Shipping" },
+		...(data.sale.status === "live" || data.sale.status === "closed" || data.sale.status === "archived"
+			? [{ href: `${base}/buyers`, label: "Buyers" }]
+			: []),
+		...(data.sale.status === "closed" || data.sale.status === "archived"
+			? [{ href: `${base}/tracking-import`, label: "Tracking import" }]
+			: []),
 	]);
 </script>
 

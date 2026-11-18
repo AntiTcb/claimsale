@@ -1,3 +1,4 @@
+import type { InvoiceStatus } from "../invoice.ts";
 import { isBlankRow } from "./csv.ts";
 import { unescapeFormula } from "./cells.ts";
 import { normalizeHeader } from "./mapping.ts";
@@ -213,4 +214,79 @@ export function trackingRowsFromTable(table: readonly (readonly string[])[]): Tr
 		out.push({ row: index + 2, ...row });
 	});
 	return out;
+}
+
+// ---------------------------------------------------------------------------
+// Applying (the engine runs this per matched row, under the sale's invoices lock)
+
+/** What the invoice looks like to the tracking import. */
+export interface TrackingTarget {
+	readonly status: InvoiceStatus;
+	readonly tracking: { readonly carrier: string; readonly number: string } | null;
+}
+
+export type TrackingRejectCode = "not_paid" | "replace_unconfirmed" | "already_complete" | "cancelled";
+
+export type TrackingPlan =
+	/** `paid` → `shipped` with this tracking. */
+	| { readonly action: "ship" }
+	/** Shipped with another number, and the seller confirmed the replacement. */
+	| { readonly action: "replace"; readonly previous: string }
+	/** Shipped with the same number: nothing to do. */
+	| { readonly action: "unchanged" }
+	| { readonly action: "rejected"; readonly code: TrackingRejectCode; readonly message: string };
+
+const NOT_PAID: Partial<Record<InvoiceStatus, string>> = {
+	draft: "This invoice hasn't been sent yet",
+	sent: "The buyer hasn't paid yet",
+	overdue: "The buyer hasn't paid yet",
+	buyer_paid: "Confirm the payment before shipping",
+};
+
+/**
+ * What a tracking row does to its invoice.
+ *
+ * @spec IO-tracking-transition — only `paid` invoices move to `shipped`; every other
+ * status is rejected with the reason.
+ * @spec IO-tracking-replace — a different number on a shipped invoice needs the seller's
+ * "replace" confirmation (the engine logs it); the same number again is a no-op.
+ */
+export function planTracking(target: TrackingTarget, trackingNumber: string, replace: boolean): TrackingPlan {
+	switch (target.status) {
+		case "paid":
+			return { action: "ship" };
+		case "shipped": {
+			const previous = target.tracking?.number ?? "";
+			if (normalizeTrackingNumber(previous) === normalizeTrackingNumber(trackingNumber))
+				return { action: "unchanged" };
+			if (!replace) {
+				return {
+					action: "rejected",
+					code: "replace_unconfirmed",
+					message:
+						previous === ""
+							? "This order shipped without tracking. Confirm to add this number"
+							: `This order already has tracking ${previous}. Confirm to replace it`,
+				};
+			}
+			return { action: "replace", previous };
+		}
+		case "completed":
+			return { action: "rejected", code: "already_complete", message: "This order is already complete" };
+		case "cancelled":
+			return { action: "rejected", code: "cancelled", message: "This invoice was cancelled" };
+		default:
+			return {
+				action: "rejected",
+				code: "not_paid",
+				message: NOT_PAID[target.status] ?? "This invoice can't ship yet",
+			};
+	}
+}
+
+/** The carrier name to store for a row, or null when the seller has to choose one. */
+export function carrierName(result: CarrierResult): string | null {
+	if (result.status === "detected") return CARRIER_NAMES[result.carrier];
+	if (result.status === "given") return result.carrier === null ? result.name : CARRIER_NAMES[result.carrier];
+	return null;
 }

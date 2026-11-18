@@ -44,6 +44,21 @@ export async function addUser(
 	return id;
 }
 
+/** The ID of the saved address {@link addAddress} gives a user. */
+export const addressOf = (userId: string) => `addr_${userId}`;
+
+/** A saved address for a buyer, to pay invoices with (SM-6-address-snapshot). */
+export async function addAddress(userId: string, name = "Ash Ketchum") {
+	await db
+		.prepare(
+			`INSERT INTO addresses (id, user_id, name, line1, line2, city, region, postal_code, country, is_default, created_at, updated_at)
+			VALUES (?1, ?2, ?3, '1 Route 1', NULL, 'Pallet', 'CA', '94107', 'US', 1, 1, 1)`,
+		)
+		.bind(addressOf(userId), userId, name)
+		.run();
+	return addressOf(userId);
+}
+
 export interface SaleSetup {
 	readonly saleId: string;
 	readonly sellerId: string;

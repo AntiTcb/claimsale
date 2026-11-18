@@ -1,3 +1,4 @@
+import type { ItemKind } from "./attributes.ts";
 import {
 	assertCents,
 	ok,
@@ -71,6 +72,7 @@ export type InvoiceEvent =
 	| { readonly type: "payment_confirmed"; readonly gmvCents: Cents }
 	| { readonly type: "payment_not_received" }
 	| { readonly type: "invoice_shipped" }
+	| { readonly type: "tracking_replaced"; readonly previous: string }
 	| { readonly type: "invoice_completed"; readonly by: "buyer" | "auto" }
 	| { readonly type: "feedback_opened" }
 	| { readonly type: "line_removed"; readonly entryId: string }
@@ -96,6 +98,13 @@ export interface InvoiceTransition {
 type InvoiceResult = Result<InvoiceTransition, InvoiceRejection>;
 
 const done = (invoice: Invoice, events: InvoiceEvent[]): InvoiceResult => ok({ invoice, events });
+
+/**
+ * The invoice number buyers, exports and shipping tools see: `CS-` and the seller's
+ * running number (`invoices.invoice_number`). The tracking re-import matches it back.
+ */
+export const invoiceNumberLabel = (number: number | null, invoiceId: string): string =>
+	number === null ? invoiceId : `CS-${number}`;
 
 /** Lines that still count toward the total (refund-owed lines were taken back after payment). */
 export function subtotal(invoice: Invoice): Cents {
@@ -123,6 +132,36 @@ export function availableShipping(
 /** Whether shipping this invoice needs a tracking number (D15). */
 export function trackingRequired(invoice: Invoice): boolean {
 	return subtotal(invoice) > TRACKING_THRESHOLD[invoice.sellerTier];
+}
+
+/** @spec TCG-tracked-graded-sealed */
+export const requiresTrackedShipping = (kind: ItemKind): boolean => kind === "graded" || kind === "sealed";
+
+/**
+ * The shipping options a buyer can pick for an invoice, given the kinds of its items.
+ *
+ * @spec TCG-tracked-graded-sealed
+ *
+ * Graded singles and sealed product always ship tracked, whatever the seller's
+ * threshold; otherwise the usual threshold applies (SM-6-shipping-threshold).
+ */
+export function shippingOptionsFor(
+	menu: readonly ShippingOption[],
+	subtotalCents: Cents,
+	sellerTier: Tier,
+	kinds: readonly ItemKind[],
+): ShippingOption[] {
+	if (kinds.some(requiresTrackedShipping)) return menu.filter((option) => option.tracked);
+	return availableShipping(menu, subtotalCents, sellerTier);
+}
+
+/**
+ * Whether shipping the invoice needs a tracking number.
+ *
+ * @spec TCG-tracked-graded-sealed
+ */
+export function trackingRequiredFor(invoice: Invoice, kinds: readonly ItemKind[]): boolean {
+	return kinds.some(requiresTrackedShipping) || trackingRequired(invoice);
 }
 
 export function newInvoice(id: string, buyerId: UserId, sellerId: UserId, sellerTier: Tier): Invoice {
@@ -217,9 +256,11 @@ export function markOverdue(invoice: Invoice, autoRescind: boolean, now: Millis)
 
 /**
  * The buyer picks shipping and marks the invoice paid (late payment is allowed).
+ * `kinds` are the item kinds of the invoice's lines.
  *
  * @spec SM-6-paid-flow
  * @spec SM-6-shipping-threshold
+ * @spec TCG-tracked-graded-sealed — graded and sealed items only offer tracked options.
  */
 export function markBuyerPaid(
 	invoice: Invoice,
@@ -228,11 +269,12 @@ export function markBuyerPaid(
 	shippingOptionId: string,
 	paymentRef: string | null,
 	now: Millis,
+	kinds: readonly ItemKind[],
 ): InvoiceResult {
 	if (!isBuyer(invoice, actor)) return reject("not_allowed", "Only the buyer can mark this paid");
 	if (invoice.status !== "sent" && invoice.status !== "overdue")
 		return reject("invalid_status", "This invoice isn't awaiting payment");
-	const option = availableShipping(menu, subtotal(invoice), invoice.sellerTier).find(
+	const option = shippingOptionsFor(menu, subtotal(invoice), invoice.sellerTier, kinds).find(
 		(o) => o.id === shippingOptionId,
 	);
 	if (!option) return reject("unknown_shipping_option", "Pick one of the shipping options shown");
@@ -269,25 +311,56 @@ export function paymentNotReceived(invoice: Invoice, actor: Actor): InvoiceResul
 	return done({ ...invoice, status: "sent", paidAt: null }, [{ type: "payment_not_received" }]);
 }
 
+export interface Tracking {
+	readonly carrier: string;
+	readonly number: string;
+}
+
+const cleanTracking = (tracking: Tracking | null): Tracking | null => {
+	if (tracking === null) return null;
+	const carrier = tracking.carrier.trim();
+	const number = tracking.number.trim();
+	return carrier !== "" && number !== "" ? { carrier, number } : null;
+};
+
 /**
- * The seller ships.
+ * The seller ships. `kinds` are the item kinds of the invoice's lines.
  *
  * @spec SM-6-paid-flow — tracking is required above the seller's threshold (D15).
+ * @spec TCG-tracked-graded-sealed — and always for graded singles and sealed product.
  */
 export function ship(
 	invoice: Invoice,
 	actor: Actor,
-	tracking: { readonly carrier: string; readonly number: string } | null,
+	tracking: Tracking | null,
 	now: Millis,
+	kinds: readonly ItemKind[],
 ): InvoiceResult {
 	if (!isSeller(invoice, actor)) return reject("not_allowed", "Only the seller ships");
 	if (invoice.status !== "paid") return reject("invalid_status", "Confirm the payment first");
-	const hasTracking = tracking !== null && tracking.carrier.trim() !== "" && tracking.number.trim() !== "";
-	if (trackingRequired(invoice) && !hasTracking) {
+	const given = cleanTracking(tracking);
+	if (trackingRequiredFor(invoice, kinds) && given === null) {
 		return reject("tracking_required", "This order needs a tracking number");
 	}
-	return done({ ...invoice, status: "shipped", tracking: hasTracking ? tracking : null, shippedAt: now }, [
+	return done({ ...invoice, status: "shipped", tracking: given, shippedAt: now }, [
 		{ type: "invoice_shipped" },
+	]);
+}
+
+/**
+ * The seller corrects the tracking of a shipped order. The caller has the seller
+ * confirm the replacement first; the event keeps the old number for the audit log.
+ *
+ * @spec IO-tracking-replace
+ */
+export function replaceTracking(invoice: Invoice, actor: Actor, tracking: Tracking): InvoiceResult {
+	if (!isSeller(invoice, actor)) return reject("not_allowed", "Only the seller ships");
+	if (invoice.status !== "shipped")
+		return reject("invalid_status", "Only a shipped order's tracking can be replaced");
+	const given = cleanTracking(tracking);
+	if (given === null) return reject("tracking_required", "Enter the carrier and the tracking number");
+	return done({ ...invoice, tracking: given }, [
+		{ type: "tracking_replaced", previous: invoice.tracking?.number ?? "" },
 	]);
 }
 

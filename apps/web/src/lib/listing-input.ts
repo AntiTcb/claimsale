@@ -159,6 +159,8 @@ export interface SaleTerms {
 	readonly requireVerifiedEmail: boolean;
 	/** D29: the youngest account that may claim, in days; 0 allows any (Pro buyers bypass it). */
 	readonly minAccountAgeDays: number;
+	/** PLAN 3 (Claim): "Claims are binding. Claim for $40?" On by default; off for sales where speed matters. */
+	readonly confirmClaims: boolean;
 }
 
 export const DEFAULT_TERMS: SaleTerms = {
@@ -172,6 +174,7 @@ export const DEFAULT_TERMS: SaleTerms = {
 	decisionWindowHours: null,
 	requireVerifiedEmail: true,
 	minAccountAgeDays: 0,
+	confirmClaims: true,
 };
 
 /** The longest decision window a Pro seller can set: the longest a sale can run (D42). */
@@ -191,6 +194,7 @@ export interface TermsInput {
 	readonly requireVerifiedEmail?: boolean;
 	/** Empty for no minimum. */
 	readonly minAccountAgeDays?: string;
+	readonly confirmClaims: boolean;
 }
 
 type TermsField =
@@ -253,6 +257,7 @@ export function validateTerms(
 		decisionWindowHours: window,
 		requireVerifiedEmail: input.requireVerifiedEmail ?? true,
 		minAccountAgeDays: minAge ?? 0,
+		confirmClaims: input.confirmClaims,
 	});
 }
 
@@ -273,6 +278,7 @@ export function readTerms(stored: Record<string, unknown> | null | undefined): S
 		decisionWindowHours: positiveInt(t["decisionWindowHours"]),
 		requireVerifiedEmail: t["requireVerifiedEmail"] !== false,
 		minAccountAgeDays: positiveInt(t["minAccountAgeDays"]) ?? 0,
+		confirmClaims: t["confirmClaims"] !== false,
 	};
 }
 

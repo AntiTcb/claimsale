@@ -37,10 +37,12 @@ import {
 	ok,
 	paymentNotReceived as corePaymentNotReceived,
 	place as placeEntry,
+	planTracking,
 	publish as publishSale,
 	reject,
 	releaseForTakeback,
 	removeLine,
+	replaceTracking as coreReplaceTracking,
 	reorder as coreReorder,
 	requestTakeback as coreRequestTakeback,
 	respondToCounter as coreRespondToCounter,
@@ -62,6 +64,7 @@ import {
 	type Item,
 	type ItemContext,
 	type ItemEvent,
+	type ItemKind,
 	type ItemResult,
 	type ItemState,
 	type Millis,
@@ -71,12 +74,15 @@ import {
 	type SaleStatus,
 	type Tier,
 	type Timer,
+	type Tracking,
 } from "@claimsale/core";
 import { readPublishPhotoState } from "../photos/store.ts";
 import { planImportBatch, type ImportBatchInput, type ImportBatchResult } from "./import.ts";
 import { itemKey, KeyedLocks, lockOrder, type LockKey } from "./locks.ts";
 import { toStoredRescind, toTakeback, type RescindRow, type TakebackRow } from "./rows.ts";
 import {
+	loadAddress,
+	loadInvoiceKinds,
 	loadInvoices,
 	loadSale,
 	loadSaleAndItems,
@@ -140,6 +146,21 @@ const rescindView = (id: string, rescind: Rescind): RescindView => ({
 	resolvedFault: rescind.resolvedFault,
 	contestedAt: rescind.contestedAt,
 });
+
+/** One tracking re-import row's result (PLAN §3c.3). */
+export type TrackingRowResult =
+	| {
+			readonly row: number;
+			readonly invoiceId: string;
+			readonly outcome: "shipped" | "replaced" | "unchanged";
+	  }
+	| {
+			readonly row: number;
+			readonly invoiceId: string;
+			readonly outcome: "error";
+			readonly code: string;
+			readonly message: string;
+	  };
 
 /** Called after each successful commit: re-arm the alarm, publish the events. */
 export type AfterCommit = (work: Work) => Promise<void>;
@@ -1373,14 +1394,26 @@ export class SaleWriter {
 		});
 	}
 
-	/** @spec SM-6-shipping-threshold — the buyer picks one of the options their subtotal allows. */
+	/**
+	 * The buyer picks shipping and an address from their address book, and says "I've paid".
+	 *
+	 * @spec SM-6-shipping-threshold — the buyer picks one of the options their subtotal allows.
+	 * @spec TCG-tracked-graded-sealed — graded and sealed lines only offer tracked options.
+	 * @spec SM-6-address-snapshot — the address is copied onto the invoice; later edits to the
+	 * address book don't change it.
+	 */
 	markBuyerPaid(input: {
 		invoiceId: string;
 		buyerId: string;
 		shippingOptionId: string;
 		paymentRef: string | null;
+		addressId: string;
 	}): Promise<Outcome<InvoiceView>> {
 		return this.#invoiceCommand(input.invoiceId, false, async (_session, work, invoice, now) => {
+			if (invoice.buyerId !== input.buyerId) return notAllowed();
+			const address = await loadAddress(this.db, input.buyerId, input.addressId);
+			if (!address) return reject("address_not_found", "Choose one of your saved addresses");
+			const kinds = await loadInvoiceKinds(this.db, invoice.id);
 			const paid = this.#applyInvoice(
 				work,
 				coreMarkBuyerPaid(
@@ -1390,9 +1423,16 @@ export class SaleWriter {
 					input.shippingOptionId,
 					input.paymentRef?.trim() || null,
 					now,
+					kinds,
 				),
 			);
 			if (!paid.ok) return paid;
+			const option = work.sale.settings.shippingMenu.find((o) => o.id === input.shippingOptionId);
+			work.extra.push(
+				this.db
+					.prepare("UPDATE invoices SET shipping_address = ?1, shipping_option_label = ?2 WHERE id = ?3")
+					.bind(JSON.stringify(address), option?.label ?? null, invoice.id),
+			);
 			work.audit({
 				action: "invoice_buyer_paid",
 				actorId: input.buyerId,
@@ -1461,16 +1501,20 @@ export class SaleWriter {
 		});
 	}
 
-	/** @spec SM-6-paid-flow — tracking is required above the threshold. */
+	/**
+	 * @spec SM-6-paid-flow — tracking is required above the threshold.
+	 * @spec TCG-tracked-graded-sealed — and always for graded and sealed lines.
+	 */
 	ship(input: {
 		invoiceId: string;
 		sellerId: string;
-		tracking: { carrier: string; number: string } | null;
+		tracking: Tracking | null;
 	}): Promise<Outcome<InvoiceView>> {
 		return this.#invoiceCommand(input.invoiceId, false, async (_session, work, invoice, now) => {
+			const kinds = await loadInvoiceKinds(this.db, invoice.id);
 			const shipped = this.#applyInvoice(
 				work,
-				shipInvoice(invoice, actorFor(work.sale, input.sellerId), input.tracking, now),
+				shipInvoice(invoice, actorFor(work.sale, input.sellerId), input.tracking, now, kinds),
 			);
 			if (!shipped.ok) return shipped;
 			work.audit({
@@ -1481,6 +1525,125 @@ export class SaleWriter {
 				events: [],
 			});
 			return ok(this.#view(shipped.value));
+		});
+	}
+
+	/**
+	 * The seller corrects a shipped order's tracking, after confirming the replacement.
+	 *
+	 * @spec IO-tracking-replace — the replacement is audit-logged with the old number.
+	 */
+	replaceTracking(input: {
+		invoiceId: string;
+		sellerId: string;
+		tracking: Tracking;
+	}): Promise<Outcome<InvoiceView>> {
+		return this.#invoiceCommand(input.invoiceId, false, async (_session, work, invoice) => {
+			const result = coreReplaceTracking(invoice, actorFor(work.sale, input.sellerId), input.tracking);
+			const replaced = this.#applyInvoice(work, result);
+			if (!replaced.ok) return replaced;
+			work.audit({
+				action: "tracking_replaced",
+				actorId: input.sellerId,
+				itemId: null,
+				input: { invoiceId: invoice.id },
+				events: result.ok ? [...result.value.events] : [],
+			});
+			return ok(this.#view(replaced.value));
+		});
+	}
+
+	/**
+	 * A batch of tracking re-import rows (PLAN §3c.3), already matched to invoices in the
+	 * browser and on the web Worker. Each row goes through the normal `paid → shipped`
+	 * transition; one batch is one D1 write.
+	 *
+	 * @spec IO-tracking-transition — rows for invoices that aren't `paid` are rejected with the reason.
+	 * @spec IO-tracking-replace — a different number on a shipped invoice needs `replace`, and is logged.
+	 */
+	async applyTracking(input: {
+		sellerId: string;
+		rows: ReadonlyArray<{
+			row: number;
+			invoiceId: string;
+			carrier: string;
+			number: string;
+			replace: boolean;
+		}>;
+	}): Promise<Outcome<{ rows: TrackingRowResult[] }>> {
+		const kindsByInvoice = new Map<string, ItemKind[]>();
+		for (const row of input.rows) {
+			if (!kindsByInvoice.has(row.invoiceId))
+				kindsByInvoice.set(row.invoiceId, await loadInvoiceKinds(this.db, row.invoiceId));
+		}
+		return this.#transact(["invoices"], async (session, now) => {
+			const sale = await loadSale(this.db, this.saleId, now);
+			if (!sale || sale.sellerId !== input.sellerId) return notFound();
+			const work = new Work(this.db, sale, now);
+			await this.#withInvoices(session, work);
+			const actor = sellerActor(sale);
+			const results: TrackingRowResult[] = [];
+			const events: unknown[] = [];
+			const seen = new Set<string>();
+			for (const row of input.rows) {
+				const invoice = work.invoice(row.invoiceId);
+				const fail = (code: string, message: string) =>
+					results.push({ row: row.row, invoiceId: row.invoiceId, outcome: "error", code, message });
+				if (!invoice) {
+					fail("not_found", "No such invoice in this sale");
+					continue;
+				}
+				if (seen.has(invoice.id)) {
+					fail("duplicate", "Another row already has tracking for this invoice");
+					continue;
+				}
+				seen.add(invoice.id);
+				const tracking = { carrier: row.carrier, number: row.number };
+				const plan = planTracking(invoice, row.number, row.replace);
+				if (plan.action === "rejected") {
+					fail(plan.code, plan.message);
+					continue;
+				}
+				if (plan.action === "unchanged") {
+					results.push({ row: row.row, invoiceId: invoice.id, outcome: "unchanged" });
+					continue;
+				}
+				const result =
+					plan.action === "ship"
+						? shipInvoice(invoice, actor, tracking, now, kindsByInvoice.get(invoice.id) ?? [])
+						: coreReplaceTracking(invoice, actor, tracking);
+				const applied = this.#applyInvoice(work, result);
+				if (!applied.ok) {
+					fail(applied.error.code, applied.error.message);
+					continue;
+				}
+				if (plan.action === "replace") {
+					work.audit({
+						action: "tracking_replaced",
+						actorId: input.sellerId,
+						itemId: null,
+						input: { invoiceId: invoice.id, row: row.row },
+						events: [{ type: "tracking_replaced", previous: plan.previous }],
+					});
+				}
+				events.push({
+					type: plan.action === "ship" ? "invoice_shipped" : "tracking_replaced",
+					invoiceId: invoice.id,
+				});
+				results.push({
+					row: row.row,
+					invoiceId: invoice.id,
+					outcome: plan.action === "ship" ? "shipped" : "replaced",
+				});
+			}
+			work.audit({
+				action: "tracking_imported",
+				actorId: input.sellerId,
+				itemId: null,
+				input: { rows: input.rows.length },
+				events,
+			});
+			return ok({ work, value: { rows: results } });
 		});
 	}
 
@@ -1540,7 +1703,6 @@ export class SaleWriter {
 				markOverdue(invoice, work.sale.settings.autoRescindOverdue, now),
 			);
 			if (!overdue.ok) return overdue;
-			const request = work.sale.settings.autoRescindOverdue ? overdue.value.lines : [];
 			work.audit({
 				action: "invoice_overdue",
 				actorId: "system",
@@ -1548,31 +1710,79 @@ export class SaleWriter {
 				input: { invoiceId: invoice.id },
 				events: [],
 			});
-			for (const line of request) {
-				const itemId = [...work.items].find(([, slot]) =>
-					slot.after.entries.some((e) => e.id === line.entryId),
-				)?.[0];
-				const item = itemId === undefined ? undefined : work.item(itemId);
-				if (!item) continue;
-				const rescinded = await this.#rescind(
+			if (work.sale.settings.autoRescindOverdue) {
+				const rescinded = await this.#rescindForNonpayment(
 					session,
 					work,
-					item,
-					sellerActor(work.sale),
-					{
-						itemId: item.id,
-						entryId: line.entryId,
-						reasonCode: "buyer_nonpayment",
-						explanation: "Automatic rescind: the payment deadline passed.",
-						passToNext: true,
-						confirmed: true,
-					},
+					overdue.value,
 					"system",
+					"Automatic rescind: the payment deadline passed.",
 					now,
 				);
 				if (!rescinded.ok) return rescinded;
 			}
 			return ok(this.#view(work.invoice(invoiceId)!));
 		});
+	}
+
+	/**
+	 * "Rescind and pass to next" on an overdue invoice, in one click (D13): every line
+	 * is rescinded for non-payment and its item passes to the next backup.
+	 *
+	 * @spec SM-6-overdue-rescind
+	 */
+	rescindOverdue(input: { invoiceId: string; sellerId: string }): Promise<Outcome<InvoiceView>> {
+		return this.#invoiceCommand(input.invoiceId, true, async (session, work, invoice, now) => {
+			if (input.sellerId !== work.sale.sellerId) return notAllowed();
+			if (!permitted(sellerActor(work.sale), "rescind_and_pass")) return notAllowed();
+			if (invoice.status !== "overdue")
+				return reject("invalid_status", "Only an overdue invoice can be rescinded in one click");
+			const rescinded = await this.#rescindForNonpayment(
+				session,
+				work,
+				invoice,
+				input.sellerId,
+				"The payment deadline passed without payment.",
+				now,
+			);
+			if (!rescinded.ok) return rescinded;
+			return ok(this.#view(work.invoice(invoice.id)!));
+		});
+	}
+
+	/** Rescinds every line of an overdue invoice for non-payment, passing each item on. */
+	async #rescindForNonpayment(
+		session: LockSession,
+		work: Work,
+		invoice: Invoice,
+		auditActor: string,
+		explanation: string,
+		now: Millis,
+	): Promise<Outcome<true>> {
+		for (const line of invoice.lines) {
+			const itemId = [...work.items].find(([, slot]) =>
+				slot.after.entries.some((e) => e.id === line.entryId),
+			)?.[0];
+			const item = itemId === undefined ? undefined : work.item(itemId);
+			if (!item) continue;
+			const rescinded = await this.#rescind(
+				session,
+				work,
+				item,
+				sellerActor(work.sale),
+				{
+					itemId: item.id,
+					entryId: line.entryId,
+					reasonCode: "buyer_nonpayment",
+					explanation,
+					passToNext: true,
+					confirmed: true,
+				},
+				auditActor,
+				now,
+			);
+			if (!rescinded.ok) return rescinded;
+		}
+		return ok(true);
 	}
 }

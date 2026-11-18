@@ -14,6 +14,12 @@ import {
 	type MarketPriceView,
 } from "./catalog/index.ts";
 import type { EngineEnv } from "./env.ts";
+import {
+	expireExports,
+	requestExport,
+	type ExportRequestInput,
+	type ExportRequestOutcome,
+} from "./exports/index.ts";
 import { handleQueue, handleScheduled } from "./handlers.ts";
 import { health, type HealthReport } from "./health.ts";
 import { CloudflareMailer } from "./mailer.ts";
@@ -28,10 +34,19 @@ import {
 import { fromRpcResult, optionalSecret, run, runForRpc, type RpcResult } from "./runtime.ts";
 import { disabledProbe, isProbeEnabled, type TraceProbeInput, type TraceProbeResult } from "./trace-probe.ts";
 import type { InvoiceView, ItemCommandResult, Outcome, RescindView, SaleView } from "./sale-engine.ts";
+import type { TrackingRowResult } from "./sale/writer.ts";
 import { saleCommand } from "./sale/entrypoint.ts";
 import type { ImportBatchResult } from "./sale/import.ts";
 import * as rpc from "./sale/rpc.ts";
 import { sweepTimers } from "./sale/sweep.ts";
+import type { LiveSnapshot } from "@claimsale/core";
+import { loadLiveSnapshot, parseLivePath } from "./live/sale-live.ts";
+
+const LiveSnapshotInput = Schema.Struct({
+	saleId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+	viewerId: Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))),
+});
+export type LiveSnapshotInput = typeof LiveSnapshotInput.Type;
 
 export { SaleEngine } from "./sale-engine.ts";
 export type {
@@ -43,6 +58,8 @@ export type {
 	SweepReport,
 } from "./sale-engine.ts";
 export type { ImportBatchResult, ImportRowResult } from "./sale/import.ts";
+export type { TrackingRowResult } from "./sale/writer.ts";
+export type { ExportRequestInput, ExportRequestOutcome } from "./exports/index.ts";
 export type * as SaleRpc from "./sale/rpc.ts";
 export type { HealthReport } from "./health.ts";
 export type { EngineEnv } from "./env.ts";
@@ -63,8 +80,34 @@ export type {
  * service binding (TECH_STACK S3); it has no public routes.
  */
 export default class Engine extends WorkerEntrypoint<EngineEnv> {
-	override async fetch(): Promise<Response> {
-		return new Response("Not found", { status: 404 });
+	/**
+	 * Only the web Worker's service binding reaches this (no public route): the live
+	 * sale socket `/live/<saleId>` goes on to the sale's SaleEngine (WS-H).
+	 */
+	override async fetch(request: Request): Promise<Response> {
+		const saleId = parseLivePath(new URL(request.url).pathname);
+		if (saleId === undefined) return new Response("Not found", { status: 404 });
+		return this.env.SALE_ENGINE.get(this.env.SALE_ENGINE.idFromName(saleId)).fetch(request);
+	}
+
+	/**
+	 * Every item of a sale as one viewer may see it (the live grid's first render). The
+	 * web Worker passes the signed-in user (or null) after checking the sale's access;
+	 * null when the sale doesn't exist for them.
+	 */
+	async liveSnapshot(input: LiveSnapshotInput): Promise<RpcResult<LiveSnapshot | null>> {
+		return runForRpc(
+			this.env,
+			"engine.live.snapshot",
+			Schema.decodeUnknownEffect(LiveSnapshotInput)(input).pipe(
+				Effect.flatMap((decoded) =>
+					Effect.promise(
+						async () =>
+							(await loadLiveSnapshot(this.env.DB, decoded.saleId, decoded.viewerId, Date.now())) ?? null,
+					),
+				),
+			),
+		);
 	}
 
 	async health(): Promise<HealthReport> {
@@ -243,6 +286,28 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 		return saleCommand(this.env, rpc.BuyerInvoiceInput, "completeInvoice", input);
 	}
 
+	/** "Rescind and pass to next" on every line of an overdue invoice (D13, WS-J). */
+	async rescindOverdueInvoice(input: rpc.SellerInvoiceInput): Promise<RpcResult<Outcome<InvoiceView>>> {
+		return saleCommand(this.env, rpc.SellerInvoiceInput, "rescindOverdue", input);
+	}
+
+	/** The seller replaces a shipped order's tracking, after confirming (IO-tracking-replace). */
+	async replaceInvoiceTracking(input: rpc.ReplaceTrackingInput): Promise<RpcResult<Outcome<InvoiceView>>> {
+		return saleCommand(this.env, rpc.ReplaceTrackingInput, "replaceTracking", input);
+	}
+
+	/** Matched tracking re-import rows (≤ 200) for one sale (PLAN §3c.3, WS-J). */
+	async applyTracking(
+		input: rpc.ApplyTrackingInput,
+	): Promise<RpcResult<Outcome<{ rows: TrackingRowResult[] }>>> {
+		return saleCommand(this.env, rpc.ApplyTrackingInput, "applyTracking", input);
+	}
+
+	/** Queues an export of one of the seller's sales (PLAN §3c.2, WS-J). */
+	async requestExport(input: ExportRequestInput): Promise<RpcResult<ExportRequestOutcome>> {
+		return runForRpc(this.env, "engine.exports.request", requestExport(this.env, input));
+	}
+
 	/** One batch (≤ 100 rows) of an item import, idempotent per (`importId`, row) (WS-G). */
 	async applyImportBatch(input: rpc.ImportBatchInput): Promise<RpcResult<Outcome<ImportBatchResult>>> {
 		return saleCommand(this.env, rpc.ImportBatchInput, "applyImportBatch", input);
@@ -252,6 +317,7 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 		const options = {
 			probeRecipient: optionalSecret(this.env, "TRACE_PROBE_TO"),
 			photos: { db: this.env.DB, images: this.env.IMAGES, decode: workerDecoder() },
+			exports: { db: this.env.DB, bucket: this.env.IMAGES },
 		};
 		await run(
 			this.env,
@@ -271,5 +337,6 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 			handleScheduled(controller).pipe(Effect.andThen(sweepTimers(this.env))),
 		);
 		await run(this.env, "engine.cron.photos", requeueStalePhotos(this.env));
+		await run(this.env, "engine.cron.exports", expireExports({ db: this.env.DB, bucket: this.env.IMAGES }));
 	}
 }

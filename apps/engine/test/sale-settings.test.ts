@@ -15,6 +15,7 @@ describe("sale settings from the terms JSON", () => {
 				autoRescindOverdue: false,
 				buyerRequirements: { emailVerified: true, minAccountAge: 0 },
 				shippingMenu: [],
+				offerVisibility: "blind",
 			});
 		}
 	});
@@ -29,6 +30,7 @@ describe("sale settings from the terms JSON", () => {
 			autoRescindOverdue: true,
 			requireVerifiedEmail: false,
 			minAccountAgeDays: 30,
+			offerVisibility: "visible",
 		});
 		expect(readSaleSettings(terms, null, "pro")).toMatchObject({
 			reviewEveryClaim: true,
@@ -38,6 +40,7 @@ describe("sale settings from the terms JSON", () => {
 			autoSendAtClose: true,
 			autoRescindOverdue: true,
 			buyerRequirements: { emailVerified: false, minAccountAge: 30 * DAY },
+			offerVisibility: "visible",
 		});
 		// A free seller always gets 24h to decide and 48h for payment.
 		expect(readSaleSettings(terms, null, "free")).toMatchObject({

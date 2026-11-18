@@ -7,6 +7,7 @@ import {
 	type Entry,
 	type Invoice,
 	type Item,
+	type ItemKind,
 	type Millis,
 	type Sale,
 	type SaleStatus,
@@ -241,6 +242,63 @@ export async function loadInvoices(
 			},
 		]),
 	);
+}
+
+/**
+ * The item kinds on one invoice's lines (TCG-tracked-graded-sealed: graded and sealed
+ * items always ship tracked). Item kinds never change once an item has entries.
+ */
+export async function loadInvoiceKinds(db: D1Database, invoiceId: string): Promise<ItemKind[]> {
+	const { results } = await db
+		.prepare(
+			`SELECT DISTINCT i.kind FROM invoice_lines l JOIN entries e ON e.id = l.entry_id
+				JOIN items i ON i.id = e.item_id WHERE l.invoice_id = ?1`,
+		)
+		.bind(invoiceId)
+		.all<{ kind: ItemKind }>();
+	return results.map((r) => r.kind);
+}
+
+/** A buyer's saved address, for the snapshot taken when they pay (SM-6-address-snapshot). */
+export interface AddressSnapshot {
+	readonly name: string;
+	readonly line1: string;
+	readonly line2: string | null;
+	readonly city: string;
+	readonly region: string;
+	readonly postalCode: string;
+	readonly country: string;
+}
+
+export async function loadAddress(
+	db: D1Database,
+	userId: string,
+	addressId: string,
+): Promise<AddressSnapshot | undefined> {
+	const row = await db
+		.prepare(
+			"SELECT name, line1, line2, city, region, postal_code, country FROM addresses WHERE id = ?1 AND user_id = ?2 AND deleted_at IS NULL",
+		)
+		.bind(addressId, userId)
+		.first<{
+			name: string;
+			line1: string;
+			line2: string | null;
+			city: string;
+			region: string;
+			postal_code: string;
+			country: string;
+		}>();
+	if (!row) return undefined;
+	return {
+		name: row.name,
+		line1: row.line1,
+		line2: row.line2,
+		city: row.city,
+		region: row.region,
+		postalCode: row.postal_code,
+		country: row.country,
+	};
 }
 
 // ---------------------------------------------------------------------------

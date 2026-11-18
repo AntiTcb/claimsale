@@ -1,5 +1,6 @@
 <script lang="ts">
-	import ItemCard from "#lib/components/ItemCard.svelte";
+	import { invalidateAll } from "$app/navigation";
+	import LiveSaleGrid from "#lib/components/LiveSaleGrid.svelte";
 	import SaleStatusBadge from "#lib/components/SaleStatusBadge.svelte";
 	import TextField from "#lib/components/TextField.svelte";
 	import { PAYMENT_METHODS } from "#lib/listing-input.ts";
@@ -108,23 +109,20 @@
 				</p>{/if}
 		</details>
 
-		<h2 class="mt-8 text-lg font-semibold">{data.items.length} item{data.items.length === 1 ? "" : "s"}</h2>
-		<ul class="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
-			{#each data.items as item (item.id)}
-				<li>
-					<ItemCard
-						href="/s/{header.slug}/i/{item.id}"
-						title={item.title}
-						priceCents={item.priceCents}
-						quantity={item.quantity}
-						gameId={item.gameId}
-						kind={item.kind}
-						condition={item.condition}
-						photoUrl={item.photoUrl}
-						state={item.state}
-					/>
-				</li>
-			{/each}
-		</ul>
+		{#if data.saleId}
+			{#key data.saleId}
+				<LiveSaleGrid
+					saleId={data.saleId}
+					slug={header.slug}
+					status={header.status}
+					items={data.items}
+					live={data.live}
+					confirmClaims={data.body.terms.confirmClaims}
+					signedIn={data.signedIn}
+					isSeller={data.isSeller}
+					refresh={invalidateAll}
+				/>
+			{/key}
+		{/if}
 	{/if}
 </section>

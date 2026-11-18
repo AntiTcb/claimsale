@@ -30,6 +30,7 @@ export const actions: Actions = {
 				decisionWindowHours: field(data, "decisionWindowHours"),
 				requireVerifiedEmail: data.get("requireVerifiedEmail") === "on",
 				minAccountAgeDays: field(data, "minAccountAgeDays"),
+				confirmClaims: data.get("confirmClaims") === "on",
 			},
 			seller.tier === "pro",
 		);

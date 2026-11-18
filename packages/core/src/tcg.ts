@@ -1,6 +1,5 @@
 import type { AttributeValue, Attributes, ItemKind } from "./attributes.ts";
-import { err, ok, type Millis, type Rejection, type Result, type Tier } from "./common.ts";
-import { availableShipping, trackingRequired, type Invoice, type ShippingOption } from "./invoice.ts";
+import { err, ok, type Millis, type Rejection, type Result } from "./common.ts";
 import { MARKET_PERCENT_PRESETS, priceFromMarketPercent, type Cents } from "./money.ts";
 
 /**
@@ -95,38 +94,9 @@ export function listingLabels(kind: ItemKind, attributes: Attributes): string[] 
 	return labels;
 }
 
-// ---------------------------------------------------------------------------
-// Tracked shipping
-
-/** @spec TCG-tracked-graded-sealed */
-export const requiresTrackedShipping = (kind: ItemKind): boolean => kind === "graded" || kind === "sealed";
-
-/**
- * The shipping options a buyer can pick for an invoice, given the kinds of its items.
- *
- * @spec TCG-tracked-graded-sealed
- *
- * Graded singles and sealed product always ship tracked, whatever the seller's
- * threshold; otherwise the usual threshold applies (SM-6-shipping-threshold).
- */
-export function shippingOptionsFor(
-	menu: readonly ShippingOption[],
-	subtotalCents: Cents,
-	sellerTier: Tier,
-	kinds: readonly ItemKind[],
-): ShippingOption[] {
-	if (kinds.some(requiresTrackedShipping)) return menu.filter((option) => option.tracked);
-	return availableShipping(menu, subtotalCents, sellerTier);
-}
-
-/**
- * Whether shipping the invoice needs a tracking number.
- *
- * @spec TCG-tracked-graded-sealed
- */
-export function trackingRequiredFor(invoice: Invoice, kinds: readonly ItemKind[]): boolean {
-	return kinds.some(requiresTrackedShipping) || trackingRequired(invoice);
-}
+// Tracked shipping for graded and sealed items (TCG-tracked-graded-sealed) lives in
+// invoice.ts with the rest of the shipping rules: `requiresTrackedShipping`,
+// `shippingOptionsFor`, `trackingRequiredFor`.
 
 // ---------------------------------------------------------------------------
 // Catalog autofill (D60)

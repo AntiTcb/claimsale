@@ -3,6 +3,8 @@ import { dueTimers, nextAlarm, type Millis, type Timer } from "@claimsale/core";
 import { DurableObject } from "cloudflare:workers";
 import { Effect } from "effect";
 import type { EngineEnv } from "./env.ts";
+import { LiveHub } from "./live/hub.ts";
+import { broadcastCommit, connectLive, parseLivePath, VIEWER_HEADER } from "./live/sale-live.ts";
 import { run, runForRpc, runtimeCapabilities, type RpcResult } from "./runtime.ts";
 import { KeyedLocks } from "./sale/locks.ts";
 import { loadTimers } from "./sale/timers.ts";
@@ -27,19 +29,57 @@ export interface SweepReport {
 
 /**
  * One instance per sale, addressed by `idFromName(saleId)` (STATE_MACHINES §9). It
- * serializes the sale's writes (per-item locks), owns the sale's single alarm (§7)
- * and holds no state that D1 can't rebuild: only the sale ID it serves.
+ * serializes the sale's writes (per-item locks), owns the sale's single alarm (§7),
+ * holds the sale page's live sockets (WS-H) and holds no state that D1 can't rebuild:
+ * only the sale ID it serves.
  */
 export class SaleEngine extends DurableObject<EngineEnv> {
 	readonly #locks = new KeyedLocks();
+	readonly #live: LiveHub;
 	#saleId: string | undefined;
 	#writer: SaleWriter | undefined;
+
+	constructor(ctx: DurableObjectState, env: EngineEnv) {
+		super(ctx, env);
+		this.#live = new LiveHub(ctx);
+	}
 
 	/** The engine's clock: server-set milliseconds. Tests replace it through runInDurableObject. */
 	clock: () => Millis = () => Date.now();
 
 	async ping(): Promise<"pong"> {
 		return "pong";
+	}
+
+	/**
+	 * The sale page's live socket (`/live/<saleId>`, forwarded by the Engine entrypoint
+	 * from the web Worker, which checked the session and the sale's access).
+	 */
+	override async fetch(request: Request): Promise<Response> {
+		const saleId = parseLivePath(new URL(request.url).pathname);
+		if (saleId === undefined) return new Response("Not found", { status: 404 });
+		if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
+			return new Response("Expected a WebSocket upgrade", { status: 426 });
+		}
+		if (!(await this.#bindSale(saleId))) return new Response("Not found", { status: 404 });
+		const userId = request.headers.get(VIEWER_HEADER) || null;
+		return run(
+			this.env,
+			"engine.live.connect",
+			Effect.promise(() => connectLive(this.#live, this.env.DB, saleId, userId, this.clock())),
+			{ sale_id: saleId },
+		);
+	}
+
+	/** Browsers only send pings, which the runtime answers (LiveHub); anything else is ignored. */
+	override webSocketMessage(): void {}
+
+	override webSocketClose(ws: WebSocket, code: number, reason: string): void {
+		try {
+			ws.close(code, reason);
+		} catch {
+			// Already closed.
+		}
 	}
 
 	/**
@@ -125,13 +165,20 @@ export class SaleEngine extends DurableObject<EngineEnv> {
 		return this.#saleId;
 	}
 
-	async #writerFor(saleId: string): Promise<SaleWriter> {
+	/** Remembers the sale this instance serves; false if it serves another one. */
+	async #bindSale(saleId: string): Promise<boolean> {
 		const known = await this.#knownSaleId();
 		if (known === undefined) {
 			await this.ctx.storage.put("saleId", saleId);
 			this.#saleId = saleId;
-		} else if (known !== saleId) {
-			throw new Error(`this SaleEngine serves sale ${known}, not ${saleId}`);
+			return true;
+		}
+		return known === saleId;
+	}
+
+	async #writerFor(saleId: string): Promise<SaleWriter> {
+		if (!(await this.#bindSale(saleId))) {
+			throw new Error(`this SaleEngine serves sale ${this.#saleId}, not ${saleId}`);
 		}
 		this.#writer ??= new SaleWriter(
 			this.env.DB,
@@ -144,8 +191,24 @@ export class SaleEngine extends DurableObject<EngineEnv> {
 	}
 
 	async #afterCommit(saleId: string, work: Work): Promise<void> {
+		this.#broadcast(saleId, work);
 		await this.#armAtMost(nextAlarm(work.touchedTimers()));
 		if (work.events.length > 0) this.#publish(saleId, work.events);
+	}
+
+	/** Pushes the commit to the sale's live sockets. The write already succeeded, so a failure is only logged. */
+	#broadcast(saleId: string, work: Work): void {
+		try {
+			broadcastCommit(this.#live, work);
+		} catch (error) {
+			this.ctx.waitUntil(
+				run(
+					this.env,
+					"engine.live.broadcast",
+					Effect.logWarning("live broadcast failed", error).pipe(Effect.annotateLogs({ sale_id: saleId })),
+				),
+			);
+		}
 	}
 
 	/** Moves the alarm earlier when a write created an earlier timer. A spurious early alarm is harmless. */

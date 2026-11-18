@@ -66,6 +66,7 @@ describe("listing input", () => {
 			offerVisibility: "visible",
 			reviewEveryClaim: true,
 			allowBackupOffers: false,
+			confirmClaims: true,
 		};
 		expect(validateTerms(input, false)).toEqual({
 			ok: true,
@@ -108,6 +109,7 @@ describe("listing input", () => {
 		offerVisibility: "blind",
 		reviewEveryClaim: false,
 		allowBackupOffers: true,
+		confirmClaims: true,
 	};
 
 	it("[SM-4.2-window-length] only Pro sellers set the decision window, in whole hours", () => {
@@ -153,6 +155,23 @@ describe("listing input", () => {
 			requireVerifiedEmail: true,
 			minAccountAgeDays: 0,
 		});
+	});
+
+	it("asks buyers to confirm claims unless the seller turned it off [LIVE-claim-confirm]", () => {
+		expect(DEFAULT_TERMS.confirmClaims).toBe(true);
+		expect(readTerms({}).confirmClaims).toBe(true);
+		expect(readTerms({ confirmClaims: false }).confirmClaims).toBe(false);
+		const input = {
+			paymentMethods: ["venmo"],
+			paymentDeadlineHours: "48",
+			shipsTo: "",
+			rulesMd: "",
+			offerVisibility: "blind",
+			reviewEveryClaim: false,
+			allowBackupOffers: true,
+			confirmClaims: false,
+		};
+		expect(validateTerms(input, false)).toMatchObject({ ok: true, value: { confirmClaims: false } });
 	});
 
 	it("validates items, with free-form attributes until the per-game schemas land", () => {
