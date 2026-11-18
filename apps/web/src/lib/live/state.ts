@@ -170,3 +170,39 @@ export function parseDollars(text: string): number | undefined {
 	const cents = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
 	return cents > 0 ? cents : undefined;
 }
+
+/** What a buyer can do with their own entry from the grid or the item page. */
+export type EntryAction = "withdraw_offer" | "leave_queue" | "accept_counter" | "decline_counter";
+
+/**
+ * The actions the engine would accept for this entry now (the engine checks again):
+ * an open offer can be withdrawn; an open claim can leave the queue only as a backup,
+ * because a claim the seller is deciding on is binding; an unexpired counter can be
+ * accepted or declined.
+ *
+ * @spec SM-4.4-withdraw-offer
+ * @spec SM-4.4-leave-backup
+ * @spec SM-4.4-counter
+ */
+export function entryActions(entry: MyEntry | undefined, now: number): EntryAction[] {
+	if (!entry) return [];
+	if (entry.status === "countered") {
+		return entry.counterExpiresAt !== null && now < entry.counterExpiresAt
+			? ["accept_counter", "decline_counter"]
+			: [];
+	}
+	if (entry.status !== "open") return [];
+	if (entry.kind === "offer") return ["withdraw_offer"];
+	return entry.position.kind === "backup" ? ["leave_queue"] : [];
+}
+
+/** The button text for an action ("Accept $35.00"). */
+export function entryActionLabel(action: EntryAction, entry: MyEntry): string {
+	const labels: Record<EntryAction, string> = {
+		withdraw_offer: "Withdraw offer",
+		leave_queue: "Leave the backup queue",
+		accept_counter: `Accept ${formatCents(entry.counterCents ?? entry.amountCents)}`,
+		decline_counter: "Decline counter",
+	};
+	return labels[action];
+}

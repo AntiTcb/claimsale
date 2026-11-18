@@ -90,3 +90,79 @@ export async function placeEntry(
 		},
 	};
 }
+
+// ---------------------------------------------------------------------------
+// A buyer's own entry: withdraw an offer, leave the backup queue, answer a counter (§4.4)
+
+export type EntryActionsBinding = Pick<Env["ENGINE"], "withdrawEntry" | "respondToCounter">;
+
+export const ENTRY_ACTIONS = ["withdraw_offer", "leave_queue", "accept_counter", "decline_counter"] as const;
+export type EntryActionName = (typeof ENTRY_ACTIONS)[number];
+
+export interface EntryActionBody {
+	readonly itemId: string;
+	readonly action: EntryActionName;
+}
+
+const isAction = (value: unknown): value is EntryActionName =>
+	typeof value === "string" && (ENTRY_ACTIONS as readonly string[]).includes(value);
+
+/** Parses `{ itemId, action }`; undefined for anything else. */
+export function parseEntryAction(body: unknown): EntryActionBody | undefined {
+	if (body === null || typeof body !== "object") return undefined;
+	const { itemId, action }: Record<string, unknown> = Object.fromEntries(Object.entries(body));
+	if (typeof itemId !== "string" || itemId.length === 0 || itemId.length > 64) return undefined;
+	return isAction(action) ? { itemId, action } : undefined;
+}
+
+/**
+ * `POST /api/sales/[saleId]/entries/[entryId]`: the signed-in buyer acts on their own entry.
+ * Access is checked as for placing; the engine checks the entry is theirs and the action is
+ * allowed now (STATE_MACHINES §4.4), and its "no" comes back as `{ code, message }`.
+ *
+ * @spec SM-4.4-withdraw-offer
+ * @spec SM-4.4-leave-backup
+ * @spec SM-4.4-counter
+ */
+export async function entryAction(
+	deps: { readonly db: Db; readonly secret: string; readonly engine: EntryActionsBinding },
+	viewer: AccessViewer,
+	saleId: string,
+	entryId: string,
+	body: unknown,
+): Promise<EntryResponse> {
+	if (!viewer.user) return { status: 401, body: { code: "sign_in", message: "Sign in first" } };
+	const input = parseEntryAction(body);
+	if (!input || entryId.length === 0 || entryId.length > 64)
+		return { status: 400, body: { code: "invalid_input", message: "Send an item and an action" } };
+	const sale = await findSaleById(deps.db, saleId);
+	if (!sale || (await accessFor(deps.db, deps.secret, sale, viewer)) !== "ok") {
+		return { status: 404, body: { code: "not_found", message: "No such sale" } };
+	}
+	const command = { saleId, itemId: input.itemId, entryId, buyerId: viewer.user.id };
+	const result = (await (input.action === "withdraw_offer" || input.action === "leave_queue"
+		? deps.engine.withdrawEntry(command)
+		: deps.engine.respondToCounter({ ...command, accept: input.action === "accept_counter" }))) as RpcResult<
+		Outcome<ItemCommandResult>
+	>;
+	if (!result.ok) {
+		return { status: 503, body: { code: "engine_unavailable", message: "Try again in a moment" } };
+	}
+	const outcome = result.value;
+	if (!outcome.ok) {
+		return { status: STATUS_BY_CODE[outcome.error.code] ?? 409, body: { ...outcome.error } };
+	}
+	const { entry, item } = outcome.value;
+	return {
+		status: 200,
+		body: {
+			entry: entry && {
+				id: entry.id,
+				kind: entry.kind,
+				status: entry.status,
+				amountCents: entry.amountCents,
+			},
+			item: { id: item.id, state: item.state, version: item.version },
+		},
+	};
+}

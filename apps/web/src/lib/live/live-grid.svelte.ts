@@ -24,6 +24,8 @@ export interface LiveGridOptions {
 	readonly titles: Readonly<Record<string, string>>;
 	/** Called when the socket mentions an item the page doesn't have, or the sale went away. */
 	readonly onStale?: () => void;
+	/** Follow one item only (the item page): the socket's other items are ignored. */
+	readonly itemId?: string;
 }
 
 const PING_EVERY = 25_000;
@@ -107,20 +109,28 @@ export class LiveGrid {
 			case "snapshot": {
 				this.serverOffset = message.serverNow - Date.now();
 				this.#applySale(message.sale);
-				this.#applyItems(message.items);
+				const items = this.#followed(message.items);
+				this.#applyItems(items);
 				// A snapshot lists every item: one the page shows but the snapshot lacks was
 				// deleted (the seller's editor), so the page refetches (LIVE-broadcast).
-				const listed = new Set(message.items.map((i) => i.id));
-				if (Object.keys(this.#titles).some((id) => !listed.has(id))) this.#options.onStale?.();
+				const listed = new Set(items.map((i) => i.id));
+				// After the seller's edit, the page's own titles, prices and photos may be stale.
+				if (message.edited || Object.keys(this.#titles).some((id) => !listed.has(id)))
+					this.#options.onStale?.();
 				return;
 			}
 			case "sale":
 				this.#applySale(message.sale);
 				return;
 			case "items":
-				this.#applyItems(message.items);
+				this.#applyItems(this.#followed(message.items));
 				return;
 		}
+	}
+
+	#followed(items: readonly LiveItem[]): readonly LiveItem[] {
+		const only = this.#options.itemId;
+		return only === undefined ? items : items.filter((i) => i.id === only);
 	}
 
 	#applySale(sale: LiveSale): void {

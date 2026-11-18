@@ -202,8 +202,12 @@ export interface LiveSnapshot {
 export type LiveMessage =
 	/** First frame on every connect: the server's clock, for countdowns (PLAN §5). */
 	| { readonly type: "hello"; readonly protocol: typeof LIVE_PROTOCOL; readonly serverNow: Millis }
-	/** Every item as this viewer may see it; sent on every (re)connect. */
-	| ({ readonly type: "snapshot" } & LiveSnapshot)
+	/**
+	 * Every item as this viewer may see it; sent on every (re)connect, and with
+	 * `edited: true` after the seller changed items outside a command (the item editor, an
+	 * import), when the page's titles, prices and photos may be stale too.
+	 */
+	| ({ readonly type: "snapshot"; readonly edited?: true } & LiveSnapshot)
 	/** The sale changed status (go-live, close, unpublish). */
 	| { readonly type: "sale"; readonly sale: LiveSale }
 	/** Items one commit changed, as this viewer may see them. */

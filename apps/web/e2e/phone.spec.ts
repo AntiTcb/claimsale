@@ -6,6 +6,7 @@ import {
 	outboxAvailable,
 	signUp,
 	smsCaptureAvailable,
+	waitForRouter,
 	waitForWelcome,
 } from "./auth-helpers.ts";
 import { expect, test } from "./fixtures.ts";
@@ -37,6 +38,7 @@ test.describe("phone verification and seller requirements", () => {
 		await page.goto(await linkFromEmail(request, who.email, "Confirm your email"));
 
 		await page.goto("/me/settings#phone");
+		await waitForRouter(page);
 		await page.getByLabel("Mobile number").fill(phone.typed);
 		await page.getByRole("button", { name: "Text me a code" }).click();
 		await expect(page.getByText(`We texted a 6-digit code to +1 ••• ${phone.last4}.`)).toBeVisible();

@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import type { Browser, Page } from "@playwright/test";
 import { linkFromEmail, newIdentity, signUp, waitForWelcome } from "./auth-helpers.ts";
 import { expect, test } from "./fixtures.ts";
@@ -105,6 +106,45 @@ test.describe("the live grid", () => {
 		await expect(visitor.getByTestId("my-position")).toHaveCount(0);
 		await expect(visitor.getByRole("link", { name: "Sign in to claim" })).toBeVisible();
 		await visitor.context().close();
+		await ann.context().close();
+		await bob.context().close();
+	});
+
+	test("buyers claim from the item page, and a backup leaves the queue there @critical", async ({
+		page,
+		browser,
+	}) => {
+		test.slow();
+		const salePath = await liveSale(page);
+		await page.goto(salePath);
+		await expect(page.getByTestId("connection")).toHaveText("Live");
+		const [ann, bob] = await Promise.all([buyerOn(browser, salePath), buyerOn(browser, salePath)]);
+
+		// Ann opens the card's page and claims it there.
+		await ann.getByRole("link", { name: ITEM }).first().click();
+		await expect(ann.getByRole("heading", { level: 1, name: ITEM })).toBeVisible();
+		// "Live" is rendered by the browser once the page is interactive (a click before that
+		// lands on the server's HTML and does nothing).
+		await expect(ann.getByTestId("connection")).toHaveText("Live");
+		await ann.getByRole("button", { name: `Claim ${ITEM}` }).click();
+		await ann.getByRole("button", { name: "Claim for $40.00" }).click();
+		await expect(ann.getByTestId("my-position")).toHaveText("You're #1");
+
+		// Bob claims behind her on the item page, then changes his mind (SM-4.4-leave-backup).
+		await bob.goto(`${salePath}/i/${new URL(ann.url()).pathname.split("/").at(-1)}`);
+		await expect(bob.getByTestId("connection")).toHaveText("Live");
+		await bob.getByRole("button", { name: `Claim as backup ${ITEM}` }).click();
+		await bob.getByRole("button", { name: "Claim for $40.00" }).click();
+		await expect(bob.getByTestId("my-position")).toHaveText("Backup #1");
+		const axe = await new AxeBuilder({ page: bob }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
+		expect(axe.violations.map((v) => v.id)).toEqual([]);
+		await bob.getByRole("button", { name: `Leave the backup queue for ${ITEM}` }).click();
+		await expect(bob.getByTestId("my-position")).toHaveText("Left the queue");
+		await expect(bob.getByRole("button", { name: `Leave the backup queue for ${ITEM}` })).toHaveCount(0);
+
+		// The seller's sale page saw both, live: sold out, nobody waiting.
+		await expect(page.getByTestId("item-state")).toHaveText("Sold out");
+		await expect(page.getByTestId("item-counts")).toHaveCount(0);
 		await ann.context().close();
 		await bob.context().close();
 	});

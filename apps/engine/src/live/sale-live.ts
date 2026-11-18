@@ -162,6 +162,7 @@ export async function broadcastRefresh(
 		if (!visibleTo(sale.sale.status, viewer.role)) return undefined;
 		const projected = projectionViewer(viewer);
 		return {
+			edited: true,
 			serverNow: now,
 			sale: saleView(sale.sale, now),
 			items: slots.map((slot) =>

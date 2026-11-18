@@ -21,16 +21,14 @@
 | 7. Seller control room + admin disputes | Done: WS-I (#27), with D68 |
 | 8. Invoices after close + exports + tracking import | Done: WS-J (#26), with D67 |
 | 9. Notifications and messaging | Done: WS-K (#28), with D69 |
-| 10. Discovery + pilot | WS-L1 discovery (#29) and WS-L2 share cards (#30) done; WS-M pre-pilot hardening in progress; the pilot checklist (`docs/PILOT_CHECKLIST.md`) waits on owner steps |
+| 10. Discovery + pilot | WS-L1 discovery (#29) and WS-L2 share cards (#30) done; WS-M pre-pilot hardening (M1 #31, M2); the pilot checklist (`docs/PILOT_CHECKLIST.md`) waits on owner steps |
 
 ### Left after wave 3
 Besides the owner steps in §4 and `docs/PILOT_CHECKLIST.md`, these were left out of their
 workstreams on purpose (details in each workstream's notes in §3). WS-M (below) takes the
 ones that matter before the pilot.
-- **Live grid (WS-H):** buyer actions beyond placing (withdraw an offer, leave the backup
-  queue, answer a counter) have no UI or endpoint; claim buttons are on the grid only, not
-  the item page. → WS-M2. (Broadcasting editor and import writes and closing sockets when
-  a private sale's access changes: done in WS-M1.)
+- **Live grid (WS-H):** done in WS-M (buyer actions and item-page claims in M2;
+  broadcasting editor and import writes and closing sockets on an access change in M1).
 - **Invoices (WS-J):** seller adjustments and discounts, per-item or "free over $X"
   shipping, the XLSX and JSON account exports, and the feedback table and form. After the pilot.
 - **Done in WS-M1:** want-list matching for items added or repriced after publishing;
@@ -251,9 +249,17 @@ After WS-L. Two PRs, like WS-L.
   - Tooling: the E2E web server command works under cmd.exe; preview deploys wait for
     five good answers before the smoke test; the rate-limit test sends its claims at once.
   - Email: `notify.claimsale.net` onboarded in Email Service (PILOT_CHECKLIST §1).
-- **M2:** buyer actions on the grid and the item page: withdraw an offer, leave the backup
-  queue, answer a counter (accept or decline), claim and offer from `/s/[slug]/i/[itemId]`.
-  The engine RPCs (`withdrawEntry`, `respondToCounter`) exist; M2 adds web endpoints and UI.
+- **M2:** buyer actions on the grid and the item page.
+  - `POST /api/sales/[saleId]/entries/[entryId]` with `{ itemId, action }` (`withdraw_offer`,
+    `leave_queue`, `accept_counter`, `decline_counter`) calls the engine's `withdrawEntry` /
+    `respondToCounter` after the same sign-in and access checks as placing.
+  - `EntryControls.svelte` holds the buyer's part of an item (position, claim and offer,
+    and the entry's actions from `entryActions` in `lib/live/state.ts`: an open offer can
+    be withdrawn, an open claim only as a backup, an unexpired counter answered). The grid
+    card and the new `LiveItemPanel.svelte` on `/s/[slug]/i/[itemId]` both use it; the panel
+    follows one item on the sale's socket (`LiveGrid`'s `itemId` option).
+  - Fix to M1: the editor's snapshot is marked `edited`, and the page refetches, so new
+    titles, prices and photos show without a reload.
 
 ### After the pilot (PLAN Phase 2)
 Stripe Billing for Pro, merged invoices (D16), Discord webhooks, Q&A, web push, auto

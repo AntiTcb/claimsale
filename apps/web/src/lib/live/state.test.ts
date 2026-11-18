@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
 	announcements,
 	currentEntry,
+	entryActionLabel,
+	entryActions,
 	matchesFilter,
 	mergeItems,
 	mergeSale,
@@ -185,5 +187,45 @@ describe("filters", () => {
 		expect(parseDollars(" $35.5 ")).toBe(3550);
 		expect(parseDollars("1,234.05")).toBe(123_405);
 		for (const bad of ["", "0", "abc", "1.234", "-5", "9999999"]) expect(parseDollars(bad)).toBeUndefined();
+	});
+});
+
+describe("what a buyer can do with their own entry", () => {
+	const now = 1_000;
+
+	it("[SM-4.4-withdraw-offer] an open offer can be withdrawn, waiting or backup", () => {
+		for (const position of [
+			{ kind: "waiting", rank: 1 },
+			{ kind: "backup", rank: 2 },
+		] as const) {
+			expect(entryActions(entry({ kind: "offer", position }), now)).toEqual(["withdraw_offer"]);
+		}
+	});
+
+	it("[SM-4.4-leave-backup] a claim leaves the queue only as a backup; one being decided is binding", () => {
+		expect(entryActions(entry({ position: { kind: "backup", rank: 2 } }), now)).toEqual(["leave_queue"]);
+		expect(entryActions(entry({ position: { kind: "waiting", rank: 1 } }), now)).toEqual([]);
+	});
+
+	it("[SM-4.4-counter] an unexpired counter can be accepted or declined", () => {
+		const countered = entry({
+			kind: "offer",
+			status: "countered",
+			counterCents: 3500,
+			counterExpiresAt: now + 1,
+			position: { kind: "countered" },
+		});
+		expect(entryActions(countered, now)).toEqual(["accept_counter", "decline_counter"]);
+		expect(entryActions(countered, now + 1)).toEqual([]);
+		expect(entryActionLabel("accept_counter", countered)).toBe("Accept $35.00");
+		expect(entryActionLabel("decline_counter", countered)).toBe("Decline counter");
+	});
+
+	it("offers nothing for won, ended or missing entries", () => {
+		expect(entryActions(undefined, now)).toEqual([]);
+		expect(entryActions(entry({ status: "won", position: { kind: "won", rank: 1 } }), now)).toEqual([]);
+		expect(entryActions(entry({ status: "withdrawn", position: { kind: "ended" } }), now)).toEqual([]);
+		expect(entryActionLabel("withdraw_offer", entry())).toBe("Withdraw offer");
+		expect(entryActionLabel("leave_queue", entry())).toBe("Leave the backup queue");
 	});
 });

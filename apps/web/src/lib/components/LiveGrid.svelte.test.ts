@@ -4,6 +4,7 @@ import { render } from "vitest-browser-svelte";
 import { page, userEvent } from "vitest/browser";
 import EntryDialog from "./EntryDialog.svelte";
 import LiveItemCard from "./LiveItemCard.svelte";
+import LiveItemPanel from "./LiveItemPanel.svelte";
 import LiveSaleGrid from "./LiveSaleGrid.svelte";
 
 /** A stand-in for the browser's WebSocket: the test plays the engine. */
@@ -309,6 +310,80 @@ describe("LiveSaleGrid", () => {
 		expect(refresh).toHaveBeenCalledTimes(1);
 	});
 
+	it("[SM-4.4-withdraw-offer] [SM-4.4-leave-backup] offers the buyer's own entry its actions and posts them", async () => {
+		fetchMock.mockImplementation(async () => new Response(JSON.stringify({ entry: {} }), { status: 200 }));
+		const offer = mine({ id: "o1", kind: "offer", status: "open", position: { kind: "waiting", rank: 1 } });
+		const backup = mine({ id: "c2", status: "open", position: { kind: "backup", rank: 2 } });
+		await render(
+			LiveSaleGrid,
+			props({
+				live: snapshot({
+					items: [live({ id: "i1", mine: [offer] }), live({ id: "i2", freeUnits: 0, mine: [backup] })],
+				}),
+			}),
+		);
+		await socket();
+		await page.getByRole("button", { name: "Withdraw offer for Charizard" }).click();
+		await page.getByRole("button", { name: "Leave the backup queue for Mewtwo" }).click();
+		await expect.poll(() => fetchMock.mock.calls.length).toBe(2);
+		const sent = fetchMock.mock.calls.map(([url, init]) => [
+			url,
+			typeof init?.body === "string" ? (JSON.parse(init.body) as unknown) : null,
+		]);
+		expect(sent).toEqual([
+			["/api/sales/sale1/entries/o1", { itemId: "i1", action: "withdraw_offer" }],
+			["/api/sales/sale1/entries/c2", { itemId: "i2", action: "leave_queue" }],
+		]);
+	});
+
+	it("[SM-4.4-counter] answers a counter, and a claim the seller is deciding on has no way out", async () => {
+		fetchMock.mockImplementation(
+			async () =>
+				new Response(JSON.stringify({ code: "counter_expired", message: "The counter has expired" }), {
+					status: 409,
+				}),
+		);
+		const countered = mine({
+			id: "o1",
+			kind: "offer",
+			status: "countered",
+			counterCents: 3500,
+			counterExpiresAt: Date.now() + 3_600_000,
+			position: { kind: "countered" },
+		});
+		const deciding = mine({ id: "c1", status: "open", position: { kind: "waiting", rank: 1 } });
+		await render(
+			LiveSaleGrid,
+			props({
+				live: snapshot({
+					items: [live({ id: "i1", mine: [countered] }), live({ id: "i2", mine: [deciding] })],
+				}),
+			}),
+		);
+		await socket();
+		await expect.element(page.getByRole("button", { name: "Decline counter for Charizard" })).toBeVisible();
+		await page.getByRole("button", { name: "Accept $35.00 for Charizard" }).click();
+		await expect.poll(() => fetchMock.mock.calls.length).toBe(1);
+		const [url, init] = fetchMock.mock.calls[0]!;
+		expect([url, typeof init?.body === "string" && JSON.parse(init.body)]).toEqual([
+			"/api/sales/sale1/entries/o1",
+			{ itemId: "i1", action: "accept_counter" },
+		]);
+		await expect.element(page.getByTestId("live-announcement")).toHaveTextContent("The counter has expired");
+		expect(page.getByRole("button", { name: /Leave the backup queue for Mewtwo/ }).elements()).toHaveLength(
+			0,
+		);
+	});
+
+	it("[LIVE-broadcast] refetches after the seller's edit, but not on a reconnect's snapshot", async () => {
+		const refresh = vi.fn<() => Promise<void>>(async () => {});
+		await render(LiveSaleGrid, props({ refresh }));
+		const s = await socket();
+		s.emit({ type: "snapshot", ...snapshot() });
+		s.emit({ type: "snapshot", edited: true, ...snapshot() });
+		await expect.poll(() => refresh.mock.calls.length).toBe(1);
+	});
+
 	it("filters by status, game and price", async () => {
 		await render(
 			LiveSaleGrid,
@@ -344,5 +419,75 @@ describe("LiveSaleGrid", () => {
 		await screen.unmount();
 		await render(LiveSaleGrid, props({ isSeller: true }));
 		await expect.element(page.getByRole("button", { name: /Claim/ })).not.toBeInTheDocument();
+	});
+});
+
+describe("LiveItemPanel", () => {
+	const item = {
+		id: "i1",
+		title: "Charizard",
+		priceCents: 4000,
+		state: "available" as const,
+		offersEnabled: true,
+	};
+	const props = (overrides: Record<string, unknown> = {}) => ({
+		saleId: "sale1",
+		item,
+		status: "live" as const,
+		live: snapshot(),
+		confirmClaims: true,
+		signedIn: true,
+		isSeller: false,
+		signInHref: "/login?next=/s/sale/i/i1",
+		refresh: vi.fn<() => Promise<void>>(async () => {}),
+		...overrides,
+	});
+	let fetchMock: Mock<typeof fetch>;
+
+	beforeEach(() => {
+		FakeSocket.instances = [];
+		vi.stubGlobal("WebSocket", FakeSocket);
+		fetchMock = vi.fn<typeof fetch>(async () => new Response("{}", { status: 201 }));
+		vi.stubGlobal("fetch", fetchMock);
+	});
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("[LIVE-claim-confirm] claims from the item page and follows only this item", async () => {
+		const refresh = vi.fn<() => Promise<void>>(async () => {});
+		await render(LiveItemPanel, props({ refresh }));
+		await expect.poll(() => FakeSocket.instances.length).toBe(1);
+		await expect.element(page.getByTestId("connection")).toHaveTextContent("Live");
+		const s = FakeSocket.instances[0]!;
+		await page.getByRole("button", { name: "Claim Charizard" }).click();
+		await page.getByRole("button", { name: "Claim for $40.00" }).click();
+		await expect.poll(() => fetchMock.mock.calls.length).toBe(1);
+		const [url, init] = fetchMock.mock.calls[0]!;
+		expect([url, typeof init?.body === "string" && JSON.parse(init.body)]).toEqual([
+			"/api/sales/sale1/entries",
+			{ itemId: "i1", kind: "claim" },
+		]);
+		// The socket sends every item of the sale; the others aren't "new" to this page.
+		s.emit({
+			type: "items",
+			items: [live({ id: "i9", version: 4 }), live({ id: "i1", version: 2, claimCount: 2 })],
+		});
+		await expect.element(page.getByTestId("item-counts")).toHaveTextContent("2 claims waiting · 0 offers");
+		s.emit({
+			type: "snapshot",
+			...snapshot({ items: [live({ id: "i1", version: 3 }), live({ id: "i9" })] }),
+		});
+		expect(refresh).not.toHaveBeenCalled();
+	});
+
+	it("shows visitors a sign-in link and the seller nothing to press", async () => {
+		const visitor = await render(LiveItemPanel, props({ signedIn: false }));
+		await expect
+			.element(page.getByRole("link", { name: "Sign in to claim" }))
+			.toHaveAttribute("href", "/login?next=/s/sale/i/i1");
+		await visitor.unmount();
+		await render(LiveItemPanel, props({ isSeller: true }));
+		expect(page.getByRole("button", { name: /Claim/ }).elements()).toHaveLength(0);
 	});
 });

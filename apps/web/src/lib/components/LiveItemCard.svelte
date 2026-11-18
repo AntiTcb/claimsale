@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { formatCents, type ItemState, type LiveItem } from "@claimsale/core";
+	import { formatCents, type ItemState, type LiveItem, type MyEntry } from "@claimsale/core";
 	import { describeItem } from "#lib/listing-input.ts";
-	import { currentEntry, positionLabel } from "#lib/live/state.ts";
+	import type { EntryAction } from "#lib/live/state.ts";
+	import EntryControls from "./EntryControls.svelte";
 
 	/**
 	 * One item in the live grid (/s/[slug], WS-H): the item, its public counts, the offer
-	 * amounts the sale shows, the viewer's own position, and the claim and offer buttons.
+	 * amounts the sale shows, and the buyer's controls (EntryControls).
 	 */
 	interface Props {
 		href: string;
@@ -29,8 +30,11 @@
 		signInHref?: string;
 		/** A claim or offer on this item is on its way. */
 		busy?: boolean;
+		/** The server's clock, for a counter's expiry. */
+		now?: number;
 		onclaim?: () => void;
 		onoffer?: () => void;
+		onaction?: (action: EntryAction, entry: MyEntry) => void;
 	}
 
 	let {
@@ -48,8 +52,10 @@
 		mode,
 		signInHref = "/login",
 		busy = false,
+		now = Date.now(),
 		onclaim,
 		onoffer,
+		onaction,
 	}: Props = $props();
 
 	const STATE_LABELS: Record<ItemState, string | null> = {
@@ -61,9 +67,6 @@
 	};
 
 	const shown = $derived(live?.state ?? state);
-	const mine = $derived(currentEntry(live));
-	const pending = $derived(mine?.status === "open" || mine?.status === "countered");
-	const closedForEntries = $derived(shown === "withdrawn" || shown === "unsold");
 	const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 </script>
 
@@ -112,51 +115,18 @@
 				{/each}
 			</ul>
 		{/if}
-		{#if mine}
-			<p
-				class="self-start rounded-full px-2 py-0.5 text-sm font-semibold {mine.position.kind === 'won'
-					? 'bg-green-100 text-green-900 dark:bg-green-950 dark:text-green-100'
-					: mine.position.kind === 'ended'
-						? 'bg-zinc-100 text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200'
-						: 'bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-100'}"
-				data-testid="my-position"
-			>
-				{positionLabel(mine)}
-			</p>
-		{/if}
-
-		{#if mode === "enter" && !closedForEntries}
-			<div class="mt-2 flex flex-wrap gap-2">
-				<button
-					type="button"
-					class="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
-					disabled={busy || pending}
-					onclick={() => onclaim?.()}
-				>
-					{busy ? "Claiming…" : shown === "sold_out" ? "Claim as backup" : "Claim"}<span class="sr-only"
-						>{` ${title}`}</span
-					>
-				</button>
-				{#if offersEnabled}
-					<button
-						type="button"
-						class="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium disabled:opacity-60 dark:border-zinc-700"
-						disabled={busy || pending}
-						onclick={() => onoffer?.()}
-					>
-						Make an offer<span class="sr-only">{` on ${title}`}</span>
-					</button>
-				{/if}
-			</div>
-		{:else if mode === "soon"}
-			<button
-				type="button"
-				disabled
-				class="mt-2 self-start rounded-md bg-zinc-200 px-3 py-1.5 text-sm text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
-				>Claims open soon<span class="sr-only">{` for ${title}`}</span></button
-			>
-		{:else if mode === "sign_in" && !closedForEntries}
-			<a href={signInHref} class="mt-2 self-start text-sm font-medium underline">Sign in to claim</a>
-		{/if}
+		<EntryControls
+			{title}
+			state={shown}
+			{offersEnabled}
+			{live}
+			{mode}
+			{signInHref}
+			{busy}
+			{now}
+			{onclaim}
+			{onoffer}
+			{onaction}
+		/>
 	</div>
 </article>
