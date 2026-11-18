@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Browser, Page } from "@playwright/test";
-import { linkFromEmail, newIdentity, signUp, waitForRouter, waitForWelcome } from "./auth-helpers.ts";
+import { linkFromEmail, newIdentity, signUp, waitForWelcome } from "./auth-helpers.ts";
 import { expect, test } from "./fixtures.ts";
 import { photo, signedUpSeller, startSale, timestampAndChecks } from "./sell-helpers.ts";
 
@@ -123,14 +123,16 @@ test.describe("the live grid", () => {
 		// Ann opens the card's page and claims it there.
 		await ann.getByRole("link", { name: ITEM }).first().click();
 		await expect(ann.getByRole("heading", { level: 1, name: ITEM })).toBeVisible();
-		await waitForRouter(ann);
+		// "Live" is rendered by the browser once the page is interactive (a click before that
+		// lands on the server's HTML and does nothing).
+		await expect(ann.getByTestId("connection")).toHaveText("Live");
 		await ann.getByRole("button", { name: `Claim ${ITEM}` }).click();
 		await ann.getByRole("button", { name: "Claim for $40.00" }).click();
 		await expect(ann.getByTestId("my-position")).toHaveText("You're #1");
 
 		// Bob claims behind her on the item page, then changes his mind (SM-4.4-leave-backup).
 		await bob.goto(`${salePath}/i/${new URL(ann.url()).pathname.split("/").at(-1)}`);
-		await waitForRouter(bob);
+		await expect(bob.getByTestId("connection")).toHaveText("Live");
 		await bob.getByRole("button", { name: `Claim as backup ${ITEM}` }).click();
 		await bob.getByRole("button", { name: "Claim for $40.00" }).click();
 		await expect(bob.getByTestId("my-position")).toHaveText("Backup #1");

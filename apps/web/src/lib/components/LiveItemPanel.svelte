@@ -109,6 +109,17 @@
 </script>
 
 <div class="mt-4 flex flex-col gap-1" data-testid="item-live">
+	<p class="text-sm text-zinc-600 dark:text-zinc-400" data-testid="connection">
+		{#if !live}
+			Live updates are unavailable; reload for the latest.
+		{:else if grid.connection === "live"}
+			Live
+		{:else if grid.connection === "offline"}
+			Reconnecting…
+		{:else if grid.connection === "connecting"}
+			Connecting…
+		{/if}
+	</p>
 	{#if itemLive && itemLive.claimCount + itemLive.offerCount > 0}
 		<p class="text-sm text-zinc-700 dark:text-zinc-300" data-testid="item-counts">
 			{plural(itemLive.claimCount, "claim")} waiting · {plural(itemLive.offerCount, "offer")}

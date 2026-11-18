@@ -458,6 +458,7 @@ describe("LiveItemPanel", () => {
 		const refresh = vi.fn<() => Promise<void>>(async () => {});
 		await render(LiveItemPanel, props({ refresh }));
 		await expect.poll(() => FakeSocket.instances.length).toBe(1);
+		await expect.element(page.getByTestId("connection")).toHaveTextContent("Live");
 		const s = FakeSocket.instances[0]!;
 		await page.getByRole("button", { name: "Claim Charizard" }).click();
 		await page.getByRole("button", { name: "Claim for $40.00" }).click();

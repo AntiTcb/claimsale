@@ -56,7 +56,8 @@ export async function signUp(page: Page, who: Identity, age: "18+" | "13-17" = "
 }
 
 /**
- * Waits until SvelteKit's client router has started on the current page. On start it
+ * Waits until SvelteKit's client router has started on the current page and the page is
+ * interactive (the root layout's `data-hydrated` marker). On start it
  * calls `history.replaceState` to create the page's history entry (key
  * `sveltekit:metadata`). WebKit reports that replaceState as a navigation, so a
  * `page.goto()` issued before it is "interrupted by another navigation" to the current
@@ -67,6 +68,10 @@ export async function waitForRouter(page: Page): Promise<void> {
 		const state: unknown = history.state;
 		return typeof state === "object" && state !== null && "sveltekit:metadata" in state;
 	});
+	// The router can start before the page's components are interactive; under load a click
+	// in between lands on the server's HTML and does nothing. The root layout marks <html>
+	// once everything has mounted.
+	await page.locator("html[data-hydrated]").waitFor({ state: "attached" });
 }
 
 /**
