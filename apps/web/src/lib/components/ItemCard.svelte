@@ -2,7 +2,7 @@
 	import { formatCents } from "@claimsale/core";
 	import { describeItem } from "#lib/listing-input.ts";
 
-	/** One item in a sale's read-only grid (/s/[slug]). Claim buttons come with the live grid (WS-H). */
+	/** One item card: browse, game pages, search and "who has this card?" (WS-L). */
 	interface Props {
 		href: string;
 		title: string;
@@ -14,9 +14,22 @@
 		photoUrl: string | null;
 		/** Cached derived state (STATE_MACHINES §3). */
 		state: "available" | "deciding" | "sold_out" | "withdrawn" | "unsold";
+		/** Where it's listed, on pages that mix sales: "Weekend YGO · @misty". */
+		listedIn?: string | null;
 	}
 
-	let { href, title, priceCents, quantity, gameId, kind, condition, photoUrl, state }: Props = $props();
+	let {
+		href,
+		title,
+		priceCents,
+		quantity,
+		gameId,
+		kind,
+		condition,
+		photoUrl,
+		state,
+		listedIn = null,
+	}: Props = $props();
 
 	const STATE_LABELS: Record<Props["state"], string | null> = {
 		available: null,
@@ -53,6 +66,9 @@
 				{#if quantity > 1}<span class="text-sm text-zinc-600 dark:text-zinc-400">{quantity} available</span
 					>{/if}
 			</p>
+			{#if listedIn}
+				<p class="truncate text-sm text-zinc-600 dark:text-zinc-400">{listedIn}</p>
+			{/if}
 			{#if STATE_LABELS[state]}
 				<p class="text-sm font-medium">{STATE_LABELS[state]}</p>
 			{/if}

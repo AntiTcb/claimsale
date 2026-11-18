@@ -19,6 +19,7 @@
 		<a href="/" class="font-bold tracking-tight">ClaimSale</a>
 		{#if user}
 			<div class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+				<a href="/browse" class="hover:underline">Browse</a>
 				{#if user.handle}
 					<a href="/u/{user.handle}" class="max-w-40 truncate hover:underline">@{user.handle}</a>
 				{/if}
@@ -33,6 +34,7 @@
 			</div>
 		{:else}
 			<div class="flex items-center gap-4 text-sm">
+				<a href="/browse" class="hover:underline">Browse</a>
 				<a href="/login" class="hover:underline">Sign in</a>
 				<a
 					href="/signup"

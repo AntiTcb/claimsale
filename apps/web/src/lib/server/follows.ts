@@ -49,3 +49,14 @@ export async function follow(
 export async function unfollow(db: Db, followerId: string, sellerId: string): Promise<void> {
 	await db.delete(follows).where(and(eq(follows.followerId, followerId), eq(follows.sellerId, sellerId)));
 }
+
+/** The sellers a user follows (the landing page's "sellers you follow"). */
+export async function followedSellerIds(db: Db, followerId: string, limit = 200): Promise<string[]> {
+	const rows = await db
+		.select({ sellerId: follows.sellerId })
+		.from(follows)
+		.where(eq(follows.followerId, followerId))
+		.limit(limit)
+		.all();
+	return rows.map((r) => r.sellerId);
+}

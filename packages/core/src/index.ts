@@ -22,3 +22,4 @@ export * from "./notifications.ts";
 export * from "./messaging.ts";
 export * from "./shipping.ts";
 export * from "./live.ts";
+export * from "./discovery.ts";

@@ -538,4 +538,7 @@ IDs stay in the table, marked ~~struck~~.
 | `MSG-block` | A seller can block a user: the blocked user can't message the seller (or claim, `SM-4.1-buyer-requirements`); the seller can unblock | PLAN 3 (Messaging), PLAN 9 |
 | `MSG-report` | Any participant can report a message (one open report per message per reporter); reports go to the admin queue | PLAN 3 (Messaging), PLAN 9 |
 | `MSG-email-unread` | A new message notifies the other side in-app at once and by email only if still unread 10 minutes later; bodies are never emailed or logged | PLAN 3 (Messaging) |
+| `DISC-public-only` | Browse, game pages, search and "who has this card?" show only public sales that are scheduled or live, and only their items that aren't withdrawn; drafts, unlisted, private, closed and deleted sales never appear. Results carry only buyer-facing fields (no hidden minimum, SKU or market price) | D28, D56, PLAN 6 (Phase 1) |
+| `DISC-who-has` | "Who has this card?" lists every listing of one catalog product across discoverable sales (`DISC-public-only`), items still available first, then cheapest first | PLAN 3 (TCG catalog) |
+| `DISC-copy-text` | The seller's "copy as text" export lists the sale's items in sale order with price, condition and quantity, marks sold-out ones, leaves withdrawn ones out, and ends with the sale link; it includes only buyer-facing fields | PLAN 6 (Phase 1) |
 

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { enhance } from "$app/forms";
+	import ReportButton from "#lib/components/ReportButton.svelte";
+	import SaleCard from "#lib/components/SaleCard.svelte";
 	import type { PageProps } from "./$types";
 
 	let { data, form }: PageProps = $props();
@@ -73,5 +75,23 @@
 	{:else if form && "message" in form}
 		<p role="alert" class="mt-2 text-sm text-red-700 dark:text-red-400">{form.message}</p>
 	{/if}
-	<p class="mt-8 text-zinc-600 dark:text-zinc-300">Sales and feedback will show here.</p>
+	<h2 class="mt-8 text-lg font-semibold">Public sales</h2>
+	{#if data.sales.length === 0}
+		<p class="mt-2 text-zinc-600 dark:text-zinc-300">No public sale is live or scheduled right now.</p>
+	{:else}
+		<ul class="mt-3 flex flex-col gap-3">
+			{#each data.sales as sale (sale.id)}<li><SaleCard {...sale} /></li>{/each}
+		</ul>
+	{/if}
+	{#if !data.follow.self}
+		<div class="mt-8">
+			<ReportButton
+				kind="user"
+				what="@{data.profile.handle}"
+				signedIn={data.signedIn}
+				next="/u/{data.profile.handle}"
+				result={form && ("reported" in form || "reportError" in form) ? form : null}
+			/>
+		</div>
+	{/if}
 </section>

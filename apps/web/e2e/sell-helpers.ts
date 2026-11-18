@@ -129,3 +129,39 @@ export async function startSale(page: Page, title: string): Promise<void> {
 	// Fast entry is enhanced by JavaScript; without it Enter is a plain POST (which also works).
 	await page.waitForLoadState("networkidle");
 }
+
+/**
+ * Schedules a public sale two days out with one photographed item, and returns its path.
+ * `game` is the add form's Game option (its visible name).
+ */
+export async function publicSaleWithItem(
+	page: Page,
+	title: string,
+	item: { title: string; price: string; game?: string } = { title: "Charizard Base Set 4/102", price: "250" },
+): Promise<string> {
+	await page.goto("/sell");
+	await waitForRouter(page);
+	await page.getByRole("link", { name: "New sale" }).click();
+	await page.getByLabel("Title").fill(title);
+	await page.getByRole("radio", { name: /^Public/ }).check();
+	await page.getByRole("button", { name: "Continue to terms" }).click();
+	await expect(page.getByRole("heading", { name: "Terms" })).toBeVisible();
+	await page.waitForLoadState("networkidle");
+	await page.getByRole("button", { name: "Continue to items" }).click();
+	await expect(page.getByRole("heading", { name: "Items" })).toBeVisible();
+	await page.waitForLoadState("networkidle");
+	const form = page.getByRole("form", { name: "Add an item" });
+	if (item.game) await form.getByLabel("Game").selectOption({ label: item.game });
+	await form.getByLabel("Title").fill(item.title);
+	await form.getByLabel("Price ($)").fill(item.price);
+	await form.getByLabel("Price ($)").press("Enter");
+	await expect(page.getByTestId("item-row")).toHaveCount(1);
+	await page.getByLabel(`Add photos for ${item.title}`).setInputFiles(await photo(page, "#cc5522"));
+	await expect(page.getByRole("img", { name: `Photo 1 of ${item.title}` })).toBeVisible();
+	await page.getByRole("link", { name: "Next: schedule the sale" }).click();
+	await timestampAndChecks(page);
+	await page.getByLabel("Goes live at (your time)").fill(await localDateTime(page, 2));
+	await page.getByRole("button", { name: "Schedule sale" }).click();
+	await expect(page.getByText(/^Scheduled\. Goes live/)).toBeVisible();
+	return (await page.getByRole("link", { name: "View sale page" }).getAttribute("href"))!;
+}

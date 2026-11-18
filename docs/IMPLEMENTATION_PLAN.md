@@ -1,6 +1,7 @@
 # Implementation Plan — what's left to the pilot sale
 
-> Written 2026-11-15 from PLAN §13 and the code on `dev` (`c0f5363`). PLAN.md stays the
+> Written 2026-11-15 from PLAN §13 and the code on `dev` (`c0f5363`); status refreshed
+> 2026-11-18 after wave 3 (`f8f8428`). PLAN.md stays the
 > source of product decisions (D#), and STATE_MACHINES §10 holds the rule IDs. This file
 > only covers **order, chunking and done criteria** for the rest of the build. Update it
 > when a workstream merges.
@@ -11,16 +12,33 @@
 | --- | --- |
 | 0. Foundations (monorepo, CI, previews, staging/prod) | Done |
 | 1. Observability spike (T28, S38) | Done; Sentry check waits on owner steps (TECH_STACK §11) |
-| 2. Domain core (`packages/core`, SM-2…SM-8 pure) | Done; `SM-9-*` come with the engine |
-| 3. Auth | First slice done (S40). Left: phone OTP, Turnstile, seller requirements at publish |
-| 4. Sales and items | Not started (schema has only auth tables) |
-| 4b. TCG catalog + photo authenticity | Not started |
-| 5. Engine (SaleEngine DO write path) | WS-E: write path, RPC, alarms, cron sweep, rate limit (k6 run pending) |
-| 6. Live grid | WS-H: live socket on the SaleEngine, claim/offer UI, filters, running total |
-| 7. Seller control room + admin disputes | Not started |
-| 8. Invoices after close + exports + tracking import | WS-J: invoice pages, shipping menu, CSV exports, tracking re-import |
-| 9. Notifications and messaging | Email outbox + Email Service binding exist; no Queue consumer logic |
-| 10. Discovery + pilot | Not started |
+| 2. Domain core (`packages/core`, SM-2…SM-8 pure) | Done |
+| 3. Auth | Done: Better Auth (#8), phone OTP, Turnstile, seller requirements (WS-D, #14) |
+| 4. Sales and items | Done: WS-A (#13), WS-B (#15), item import WS-G (#24) |
+| 4b. TCG catalog + photo authenticity | Done: WS-C (#16), WS-F1 (#17), WS-F2 (#23) |
+| 5. Engine (SaleEngine DO write path) | Done: WS-E (#22); the k6 load test hasn't been run on staging |
+| 6. Live grid | Done: WS-H (#25); open items in its notes below |
+| 7. Seller control room + admin disputes | Done: WS-I (#27), with D68 |
+| 8. Invoices after close + exports + tracking import | Done: WS-J (#26), with D67 |
+| 9. Notifications and messaging | Done: WS-K (#28), with D69 |
+| 10. Discovery + pilot | WS-L in progress |
+
+### Left after wave 3
+Besides WS-L and the owner steps in §4, these were left out of their workstreams on purpose
+(details in each workstream's notes in §3):
+- **Live grid (WS-H):** buyer actions beyond placing (withdraw an offer, leave the backup
+  queue, answer a counter) have no UI or endpoint; claim buttons are on the grid only, not
+  the item page; writes made outside the engine (item editor, import batches) aren't
+  broadcast; open sockets aren't closed when a private sale's access changes.
+- **Invoices (WS-J):** seller adjustments and discounts, per-item or "free over $X"
+  shipping, the XLSX and JSON account exports, and the feedback table and form.
+- **Notifications (WS-K):** items added to an already-published sale aren't matched
+  against want lists.
+- **Rules without code yet:** `IO-export-roundtrip` and `IMG-hash-robust` (STATE_MACHINES
+  §10) have no `@spec` tag or `[RULE-ID]` test.
+- **Contract migration:** drop `import_rows` once no deployed code writes it (WS-G notes).
+- **Open questions:** WS-E's nonpayment attribution and the WS-F1 hash questions above.
+- **Not run yet:** the WS-E k6 load test on staging (p95 < 300 ms).
 
 ## 2. Workstreams
 
@@ -197,6 +215,10 @@ Needs WS-A, WS-C; best after WS-H.
   this card?", follows, OG share cards (Satori), "copy as text" export, landing page.
 - Pilot checklist: domain + Email Service onboarding, ToS / prohibited items page, load
   test on staging, Sentry dashboards, backup/restore drill with D1 Time Travel.
+- **Split (2026-11-18):** WS-L1 is discovery (browse, `/g/[game]`, search, "who has this
+  card?", follow and report on sale pages, copy as text, landing page, sitemap) plus
+  `docs/PILOT_CHECKLIST.md`; WS-L2 is the OG share cards (S13), kept apart because they add
+  Satori and resvg-wasm to the web Worker's bundle.
 
 ### After the pilot (PLAN Phase 2)
 Stripe Billing for Pro, merged invoices (D16), Discord webhooks, Q&A, web push, auto
@@ -210,6 +232,8 @@ Wave 2 (after WS-A):        WS-E   WS-F2  WS-G (also needs B, C)
 Wave 3 (after WS-E):        WS-H   WS-I   WS-J   WS-K
 Wave 4:                     WS-L → pilot sale
 ```
+
+Waves 1–3 are merged (status in §1).
 
 ### Wave 1 integration notes
 - WS-A's publish check accepts any photo that isn't rejected; WS-F2 tightens it to
@@ -255,8 +279,8 @@ Wave 4:                     WS-L → pilot sale
 - Import batches: see the WS-G notes below (WS-G replaced this first version).
 - The publish photo check stays in web (`itemsWithoutPhotos`, `#lib/server/engine.ts`);
   WS-F2 tightens it there.
-- Not built yet: rescind contests / mutual-agreement answers and their 72h timer (WS-I),
-  a test-only clock endpoint for E2E time travel, WebSocket broadcast (WS-H).
+- Not built yet: a test-only clock endpoint for E2E time travel. (Rescind contests and the
+  72h mutual-agreement timer came with WS-I, the WebSocket broadcast with WS-H.)
 - Locally on Windows, Playwright's `webServer` command fails (cmd.exe has no subshell for
   `(cd ../engine && …)`); start the stack by hand and Playwright reuses it.
 
@@ -320,7 +344,8 @@ Wave 4:                     WS-L → pilot sale
 - Bans: the engine treats a banned account as a blocked buyer; Better Auth refuses a new
   session (`ACCOUNT_SUSPENDED`); banning deletes the account's sessions.
 - `POST /api/reports` takes `{ targetKind: user | sale | item | message, targetId, reason,
-  details? }` for WS-H's and WS-K's report buttons; messages aren't checked to exist yet.
+  details? }` for WS-H's and WS-K's report buttons; WS-K added the check that a reported
+  message exists.
 - `/me/rescinds` is the buyer's side of rescinds (reason, contest, agree / dispute); WS-K
   should link it from the rescind notification.
 - The terms form now writes `decisionWindowHours` (Pro) and `minAccountAgeDays`; WS-J adds its
