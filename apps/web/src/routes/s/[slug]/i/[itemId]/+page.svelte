@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { formatCents } from "@claimsale/core";
+	import { invalidateAll } from "$app/navigation";
+	import LiveItemPanel from "#lib/components/LiveItemPanel.svelte";
 	import { describeItem } from "#lib/listing-input.ts";
 	import type { PageProps } from "./$types";
 
@@ -47,6 +49,17 @@
 			<p class="mt-4 text-3xl font-semibold">{formatCents(item.priceCents)}</p>
 			{#if item.quantity > 1}<p class="text-sm">{item.quantity} available</p>{/if}
 			{#if STATE_LABELS[item.state]}<p class="mt-2 font-medium">{STATE_LABELS[item.state]}</p>{/if}
+			<LiveItemPanel
+				saleId={data.saleId}
+				{item}
+				status={data.header.status}
+				live={data.live}
+				confirmClaims={data.body.terms.confirmClaims}
+				signedIn={data.signedIn}
+				isSeller={data.isSeller}
+				signInHref="/login?next=/s/{data.header.slug}/i/{item.id}"
+				refresh={invalidateAll}
+			/>
 			{#if data.header.status === "scheduled" && data.body.liveAt}
 				<p class="mt-4 rounded-md bg-sky-50 p-3 text-sky-950 dark:bg-sky-950 dark:text-sky-100" role="status">
 					Claims open {new Date(data.body.liveAt).toLocaleString(undefined, {

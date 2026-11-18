@@ -3,7 +3,14 @@ import { sales } from "@claimsale/db/schema";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testD1 } from "../../../test/d1.ts";
 import { addUser } from "../../../test/fixtures.ts";
-import { parsePlaceEntry, placeEntry, type EntriesBinding } from "./entries.ts";
+import {
+	entryAction,
+	parseEntryAction,
+	parsePlaceEntry,
+	placeEntry,
+	type EntriesBinding,
+	type EntryActionsBinding,
+} from "./entries.ts";
 import { createDraft, setPrivateAccess } from "./sales.ts";
 
 const SECRET = "test-secret-at-least-32-characters-long";
@@ -143,6 +150,116 @@ describe("claims and offers from the web", () => {
 				(await placeEntry({ db, secret: SECRET, engine }, viewer, saleId, { itemId: "i1", kind: "claim" }))
 					.status,
 			).toBe(status);
+		}
+	});
+});
+
+function fakeActionEngine(answer: unknown) {
+	const calls: Array<[string, unknown]> = [];
+	const engine = {
+		withdrawEntry: async (input: unknown) => {
+			calls.push(["withdrawEntry", input]);
+			return answer;
+		},
+		respondToCounter: async (input: unknown) => {
+			calls.push(["respondToCounter", input]);
+			return answer;
+		},
+	} as unknown as EntryActionsBinding;
+	return { engine, calls };
+}
+
+const withdrawn = {
+	ok: true,
+	value: {
+		ok: true,
+		value: {
+			entry: { id: "e1", kind: "offer", status: "withdrawn", amountCents: 500, buyerId: "buyer" },
+			item: { id: "i1", state: "available", freeUnits: 1, decisionDeadline: null, version: 3 },
+			events: [],
+		},
+	},
+};
+
+describe("a buyer's own entry from the web", () => {
+	const viewer = { user: buyer, unlockCookie: undefined };
+
+	it("parses an item and a known action, and nothing else", () => {
+		expect(parseEntryAction({ itemId: "i1", action: "leave_queue" })).toEqual({
+			itemId: "i1",
+			action: "leave_queue",
+		});
+		for (const body of [
+			null,
+			"x",
+			{ itemId: "i1" },
+			{ itemId: "", action: "withdraw_offer" },
+			{ itemId: "i1", action: "rescind" },
+		])
+			expect(parseEntryAction(body)).toBeUndefined();
+	});
+
+	it("[SM-4.4-withdraw-offer] [SM-4.4-leave-backup] [SM-4.4-counter] sends each action to the right engine command", async () => {
+		const saleId = await liveSale();
+		const { engine, calls } = fakeActionEngine(withdrawn);
+		const deps = { db, secret: SECRET, engine };
+		const act = (action: string) => entryAction(deps, viewer, saleId, "e1", { itemId: "i1", action });
+		expect(await act("withdraw_offer")).toEqual({
+			status: 200,
+			body: {
+				entry: { id: "e1", kind: "offer", status: "withdrawn", amountCents: 500 },
+				item: { id: "i1", state: "available", version: 3 },
+			},
+		});
+		await act("leave_queue");
+		await act("accept_counter");
+		await act("decline_counter");
+		const command = { saleId, itemId: "i1", entryId: "e1", buyerId: "buyer" };
+		expect(calls).toEqual([
+			["withdrawEntry", command],
+			["withdrawEntry", command],
+			["respondToCounter", { ...command, accept: true }],
+			["respondToCounter", { ...command, accept: false }],
+		]);
+	});
+
+	it("needs a signed-in buyer, a valid body and a sale they can open, before asking the engine", async () => {
+		const saleId = await liveSale("private");
+		await setPrivateAccess(db, saleId, { passwordHash: "pbkdf2$1$x$y", allowlist: null }, now);
+		const { engine, calls } = fakeActionEngine(withdrawn);
+		const deps = { db, secret: SECRET, engine };
+		const body = { itemId: "i1", action: "withdraw_offer" };
+		expect(
+			(await entryAction(deps, { user: null, unlockCookie: undefined }, saleId, "e1", body)).status,
+		).toBe(401);
+		expect((await entryAction(deps, viewer, saleId, "e1", { itemId: "i1" })).status).toBe(400);
+		expect((await entryAction(deps, viewer, saleId, "", body)).status).toBe(400);
+		expect((await entryAction(deps, viewer, saleId, "e1", body)).status).toBe(404);
+		expect(calls).toEqual([]);
+	});
+
+	it("passes the engine's no along with a status", async () => {
+		const saleId = await liveSale();
+		const cases: Array<[unknown, number, string | undefined]> = [
+			[
+				{ ok: true, value: { ok: false, error: { code: "claim_is_binding", message: "binding" } } },
+				409,
+				"claim_is_binding",
+			],
+			[
+				{ ok: true, value: { ok: false, error: { code: "not_allowed", message: "not yours" } } },
+				403,
+				"not_allowed",
+			],
+			[{ ok: false, error: { name: "Error", message: "boom" } }, 503, "engine_unavailable"],
+		];
+		for (const [answer, status, code] of cases) {
+			const { engine } = fakeActionEngine(answer);
+			const response = await entryAction({ db, secret: SECRET, engine }, viewer, saleId, "e1", {
+				itemId: "i1",
+				action: "leave_queue",
+			});
+			expect([response.status, response.body["code"]]).toEqual([status, code]);
 		}
 	});
 });

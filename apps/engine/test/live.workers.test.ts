@@ -261,6 +261,8 @@ describe("writes made outside the engine", () => {
 		const forAnn = await freshSnapshot(annSocket);
 		const forBob = await freshSnapshot(bobSocket);
 		expect(forAnn.items.map((i) => i.id)).toEqual([kept]);
+		// Marked as an edit, so pages refetch the titles, prices and photos they render.
+		expect(forAnn.edited).toBe(true);
 		expect(forAnn.items[0]!.mine).toHaveLength(1);
 		expect(forBob.items[0]!.mine).toEqual([]);
 	});

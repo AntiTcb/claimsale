@@ -1,10 +1,12 @@
 <script lang="ts">
-	import { formatCents, type LiveSnapshot, type SaleStatus } from "@claimsale/core";
+	import { formatCents, type LiveSnapshot, type MyEntry, type SaleStatus } from "@claimsale/core";
 	import { untrack } from "svelte";
 	import EntryDialog from "./EntryDialog.svelte";
 	import LiveFilters from "./LiveFilters.svelte";
 	import LiveItemCard from "./LiveItemCard.svelte";
+	import { entryActionRequest, placeEntryRequest, type RequestResult } from "#lib/live/entry-requests.ts";
 	import { LiveGrid } from "#lib/live/live-grid.svelte.ts";
+	import type { EntryAction } from "#lib/live/state.ts";
 	import { matchesFilter, NO_FILTER, type GridFilter, type GridItem } from "#lib/live/state.ts";
 
 	/**
@@ -107,28 +109,25 @@
 		request = { kind, itemId: item.id, title: item.title, priceCents: item.priceCents };
 	}
 
-	async function place(itemId: string, kind: "claim" | "offer", amountCents?: number) {
+	/** Runs one request for an item; the socket brings the result ("You're #1"), else a refetch. */
+	async function send(itemId: string, run: () => Promise<RequestResult>) {
 		busy = { ...busy, [itemId]: true };
 		try {
-			const response = await fetch(`/api/sales/${encodeURIComponent(saleId)}/entries`, {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ itemId, kind, ...(amountCents === undefined ? {} : { amountCents }) }),
-			});
-			const body = (await response.json().catch(() => ({}))) as { message?: string };
-			if (response.status === 201) {
-				// The socket brings the result ("You're #1", "backup #2"); without it, refetch.
-				if (grid.connection !== "live") await refresh();
-			} else if (response.status === 401) {
-				grid.announce("Sign in to claim.");
-			} else {
-				grid.announce(body.message ?? "That didn't go through. Try again.");
-			}
-		} catch {
-			grid.announce("You're offline. Try again in a moment.");
+			const result = await run();
+			if (!result.ok) grid.announce(result.message);
+			else if (grid.connection !== "live") await refresh();
 		} finally {
 			busy = { ...busy, [itemId]: false };
 		}
+	}
+
+	function place(itemId: string, kind: "claim" | "offer", amountCents?: number) {
+		return send(itemId, () => placeEntryRequest(saleId, itemId, kind, amountCents));
+	}
+
+	/** The buyer's own entry: withdraw an offer, leave the backup queue, answer a counter (§4.4). */
+	function act(itemId: string, action: EntryAction, entry: MyEntry) {
+		return send(itemId, () => entryActionRequest(saleId, itemId, entry.id, action));
 	}
 </script>
 
@@ -186,8 +185,10 @@
 					{mode}
 					signInHref="/login?next=/s/{slug}"
 					busy={busy[item.id] ?? false}
+					{now}
 					onclaim={() => ask("claim", item)}
 					onoffer={() => ask("offer", item)}
+					onaction={(action, entry) => void act(item.id, action, entry)}
 				/>
 			</li>
 		{/each}
