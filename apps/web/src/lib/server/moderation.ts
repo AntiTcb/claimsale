@@ -8,7 +8,7 @@ import {
 	type RescindReasonCode,
 	type Result,
 } from "@claimsale/core";
-import { and, asc, eq, inArray, isNull, or, sql, type Db } from "@claimsale/db";
+import { and, asc, eq, inList, isNull, or, sql, type Db } from "@claimsale/db";
 import { messages } from "@claimsale/db/messaging";
 import { accountFlags } from "@claimsale/db/photos";
 import {
@@ -473,7 +473,7 @@ export async function rescindQueue(db: Db, limit = 100): Promise<DisputedRescind
 					await db
 						.select({ id: users.id, handle: users.handle })
 						.from(users)
-						.where(inArray(users.id, [...people]))
+						.where(inList(users.id, [...people]))
 						.all()
 				).map((u) => [u.id, u.handle]),
 	);

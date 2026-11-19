@@ -110,9 +110,12 @@ per-buyer rate limit) and an Access service token.
         held hundreds of open connections (`wsarecv: forcibly closed by the remote host`). The
         37 s maximum is the same.
       - **To judge the target end to end:** run from a well-connected machine, or from several.
-- [ ] Found by this run (not WS-N): the sale page fails with a 500 for a sale of about 100 or more
-      items. `photosByItem` and other queries bind one parameter per ID, and D1 allows 100 per
-      statement. Pro sales have no item cap.
+- [x] Found by this run (not WS-N): the sale page failed with a 500 for a sale of about 100 or
+      more items, because `photosByItem` and other queries bound one parameter per ID and D1
+      allows 100 per statement. Pro sales have no item cap. Fixed: lists that grow with the data
+      go through `inList` / `notInList` (`@claimsale/db`, one JSON parameter). The web unit
+      tests' D1 now refuses more than 100 parameters, as D1 does, and `large-sale.test.ts` covers
+      a 120-item sale.
 
 ## 4. Observability (owner for the Sentry account)
 - [ ] TECH_STACK §11 Sentry items done: project DSN in Infisical, the `sentry-traces` and

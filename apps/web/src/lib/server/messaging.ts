@@ -13,7 +13,7 @@ import {
 	type Rejection,
 	type Result,
 } from "@claimsale/core";
-import { and, asc, desc, eq, gt, inArray, or, sql, type Db } from "@claimsale/db";
+import { and, asc, desc, eq, gt, inList, or, sql, type Db } from "@claimsale/db";
 import { conversations, messageAttachments, messages } from "@claimsale/db/messaging";
 import { blocks, sales, users } from "@claimsale/db/schema";
 import { uuidv7 } from "uuidv7";
@@ -152,7 +152,7 @@ async function namesOf(db: Db, ids: readonly string[]) {
 	const rows = await db
 		.select({ id: users.id, displayName: users.displayName, handle: users.handle })
 		.from(users)
-		.where(inArray(users.id, [...new Set(ids)]))
+		.where(inList(users.id, [...new Set(ids)]))
 		.all();
 	return new Map(rows.map((r) => [r.id, { displayName: r.displayName, handle: r.handle }]));
 }
@@ -249,7 +249,7 @@ export async function messagesOf(
 					.select()
 					.from(messageAttachments)
 					.where(
-						inArray(
+						inList(
 							messageAttachments.messageId,
 							rows.map((r) => r.id),
 						),

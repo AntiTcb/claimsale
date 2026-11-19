@@ -15,7 +15,7 @@ import {
 	type Tier,
 	type Tracking,
 } from "@claimsale/core";
-import { and, asc, desc, eq, inArray, ne, type Db } from "@claimsale/db";
+import { and, asc, desc, eq, inList, ne, type Db } from "@claimsale/db";
 import { entries, invoiceLines, invoices, items, sales, sellerProfiles, users } from "@claimsale/db/schema";
 import type { Outcome, RpcResult, TrackingRowResult } from "@claimsale/engine";
 import { readTerms } from "#lib/listing-input.ts";
@@ -99,7 +99,7 @@ async function linesOf(db: Db, invoiceIds: readonly string[]) {
 		.from(invoiceLines)
 		.innerJoin(entries, eq(entries.id, invoiceLines.entryId))
 		.innerJoin(items, eq(items.id, entries.itemId))
-		.where(inArray(invoiceLines.invoiceId, [...invoiceIds]))
+		.where(inList(invoiceLines.invoiceId, [...invoiceIds]))
 		.orderBy(asc(invoiceLines.createdAt), asc(invoiceLines.id))
 		.all();
 }

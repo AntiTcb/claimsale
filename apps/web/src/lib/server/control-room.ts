@@ -10,7 +10,7 @@ import {
 	type Rescind,
 	type Result,
 } from "@claimsale/core";
-import { and, asc, eq, inArray, ne, sql, type Db } from "@claimsale/db";
+import { and, asc, eq, inArray, inList, ne, sql, type Db } from "@claimsale/db";
 import {
 	entries,
 	invoiceLines,
@@ -107,27 +107,27 @@ export async function buyerSummaries(
 				createdAt: users.createdAt,
 			})
 			.from(users)
-			.where(inArray(users.id, ids))
+			.where(inList(users.id, ids))
 			.all(),
 		db
 			.select({ id: invoices.buyerId, n: sql<number>`count(*)` })
 			.from(invoices)
-			.where(and(inArray(invoices.buyerId, ids), eq(invoices.status, "completed")))
+			.where(and(inList(invoices.buyerId, ids), eq(invoices.status, "completed")))
 			.groupBy(invoices.buyerId)
 			.all(),
 		db
 			.select({ id: takebackRequests.buyerId, n: sql<number>`count(*)` })
 			.from(takebackRequests)
-			.where(and(inArray(takebackRequests.buyerId, ids), eq(takebackRequests.status, "approved")))
+			.where(and(inList(takebackRequests.buyerId, ids), eq(takebackRequests.status, "approved")))
 			.groupBy(takebackRequests.buyerId)
 			.all(),
 		db
 			.select({ id: entries.userId, n: sql<number>`count(*)` })
 			.from(entries)
-			.where(and(inArray(entries.userId, ids), eq(entries.endedReason, "buyer_rescind")))
+			.where(and(inList(entries.userId, ids), eq(entries.endedReason, "buyer_rescind")))
 			.groupBy(entries.userId)
 			.all(),
-		db.select().from(rescinds).where(inArray(rescinds.buyerId, ids)).all(),
+		db.select().from(rescinds).where(inList(rescinds.buyerId, ids)).all(),
 	]);
 	const out: Record<string, BuyerSummary> = {};
 	for (const person of people) {
@@ -171,7 +171,7 @@ export async function loadControlRoom(db: Db, saleId: string): Promise<ControlRo
 		db
 			.select()
 			.from(entries)
-			.where(and(inArray(entries.itemId, itemIds), inArray(entries.status, [...ACTIVE])))
+			.where(and(inList(entries.itemId, itemIds), inArray(entries.status, [...ACTIVE])))
 			.all(),
 		db
 			.select({ entryId: invoiceLines.entryId, status: invoices.status })
@@ -190,14 +190,14 @@ export async function loadControlRoom(db: Db, saleId: string): Promise<ControlRo
 			})
 			.from(takebackRequests)
 			.innerJoin(entries, eq(entries.id, takebackRequests.entryId))
-			.where(and(inArray(entries.itemId, itemIds), eq(takebackRequests.status, "pending")))
+			.where(and(inList(entries.itemId, itemIds), eq(takebackRequests.status, "pending")))
 			.orderBy(asc(takebackRequests.createdAt))
 			.all(),
 		db
 			.select({ rescind: rescinds, itemId: entries.itemId })
 			.from(rescinds)
 			.innerJoin(entries, eq(entries.id, rescinds.entryId))
-			.where(inArray(entries.itemId, itemIds))
+			.where(inList(entries.itemId, itemIds))
 			.orderBy(asc(rescinds.createdAt), asc(rescinds.id))
 			.all(),
 	]);

@@ -11,7 +11,7 @@ import {
 	type SaleStatus,
 	type Tier,
 } from "@claimsale/core";
-import { and, asc, eq, inArray, ne, sql, type Db } from "@claimsale/db";
+import { and, asc, eq, inArray, inList, ne, sql, type Db } from "@claimsale/db";
 import { imageHashes } from "@claimsale/db/photos";
 import { itemImages, items, sales } from "@claimsale/db/schema";
 import { uuidv7 } from "uuidv7";
@@ -102,7 +102,7 @@ export async function photosByItem(
 		})
 		.from(itemImages)
 		.leftJoin(imageHashes, eq(imageHashes.imageId, itemImages.id))
-		.where(and(inArray(itemImages.itemId, [...itemIds]), statusFilter(view)))
+		.where(and(inList(itemImages.itemId, itemIds), statusFilter(view)))
 		.orderBy(asc(itemImages.sortOrder), asc(itemImages.id))
 		.all();
 	for (const { reason, ...row } of rows) {
