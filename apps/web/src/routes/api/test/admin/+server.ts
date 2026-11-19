@@ -1,6 +1,7 @@
 import { users } from "@claimsale/db/schema";
 import { error, json } from "@sveltejs/kit";
 import { eq } from "@claimsale/db";
+import { dropSessionCache } from "#lib/server/auth.ts";
 import { db, outboxEnabled } from "#lib/server/context.ts";
 import type { RequestHandler } from "./$types";
 
@@ -9,7 +10,7 @@ import type { RequestHandler } from "./$types";
  * Only where test endpoints are on (captured mail, never shared data); 404 on staging,
  * its Previews and production, where the role is set with SQL (#lib/server/admin.ts).
  */
-export const POST: RequestHandler = async ({ url }) => {
+export const POST: RequestHandler = async ({ url, cookies }) => {
 	if (!outboxEnabled()) error(404, "Not found");
 	const email = (url.searchParams.get("email") ?? "").toLowerCase();
 	if (!email.endsWith("@example.test")) error(400, "Pass ?email=<an @example.test address>");
@@ -19,5 +20,7 @@ export const POST: RequestHandler = async ({ url }) => {
 		.where(eq(users.email, email))
 		.returning()
 		.all();
+	// The caller is usually that account: its cached session still says "user".
+	dropSessionCache(url.origin, cookies);
 	return json({ updated: rows.length }, { headers: { "cache-control": "no-store" } });
 };

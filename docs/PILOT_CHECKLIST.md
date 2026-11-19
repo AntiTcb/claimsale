@@ -26,8 +26,32 @@ done by anyone with staging access. Tick them in the PR that closes WS-L, or in 
 path, with a p95 target under 300 ms (WS-E, STATE_MACHINES §9). Its header has the setup:
 a live staging sale, a sessions file of signed-in buyers (at least 150, because of the
 per-buyer rate limit) and an Access service token.
-- [ ] Run it once against staging; record the p95, the error rate and the date here.
-- [ ] Delete the sessions file afterwards (it holds live sessions).
+- [x] Run it once against staging; record the p95, the error rate and the date here.
+      **2026-11-18: failed the target.** 200 seeded buyers, one live unlisted sale of 60
+      single-quantity items, 30 s per rate, measured from a client about 50 ms from the edge:
+
+      | Rate | Handled (201/409) | Median | p95 | p99 |
+      |---|---|---|---|---|
+      | 25/s | 100% | 257 ms | 407 ms | 717 ms |
+      | 50/s | 53% | 625 ms | 1.12 s | 1.33 s |
+      | 100/s | 50% | 864 ms | 2.14 s | 2.79 s |
+      | 200/s | 50% (only ~100/s sent; 2,130 dropped) | 5.3 s | 23.5 s | 32.7 s |
+
+      Every failure was D1 overload. The engine logged `D1 DB is overloaded. Too many resources
+      consumed within a 10 second window` (496 times at 200/s), and the web Worker's 500s were
+      the same overload, in Better Auth's session lookup. The 503s were `engine_unavailable`.
+      Each query is fast (about 0.2 ms on average), but D1 peaked at about 400 statements a
+      second. That is roughly 8–10 per claim: Better Auth's session lookup, the sale lookup, the
+      engine's read batch and write batch, the sale's invoices on every win, and the notification
+      consumer. Reads per claim also grow with the sale's size: the item and sale queries scan
+      every item, and each win reloads every invoice of the sale. That was about 80 rows per
+      claim on this 60-item sale. Every win also takes the sale-wide invoices lock across two D1
+      round trips, which serializes go-live wins. That is the condition in STATE_MACHINES §9 /
+      PLAN for the fallback: DO-local SQLite with an outbox to D1. That is follow-up work before
+      the pilot.
+- [x] Delete the sessions file afterwards (it holds live sessions). Deleted, and the seeded
+      users, sessions, sale, entries, draft invoices and notifications were removed from
+      staging D1 (bookmark before seeding: `00000153-00000000-00005127-d560ec0cfe7382e14f880573567230f5`).
 
 ## 4. Observability (owner for the Sentry account)
 - [ ] TECH_STACK §11 Sentry items done: project DSN in Infisical, the `sentry-traces` and
@@ -56,7 +80,10 @@ pnpm --filter @claimsale/engine exec wrangler d1 time-travel restore claimsale-s
       surprising here.
 - [ ] Note for production: a restore rewinds every table, including sessions, claims and
       invoices written after the bookmark. Durable Object alarms and storage are not rewound,
-      so close or pause live sales before restoring production.
+      so close or pause live sales before restoring production. Since WS-N each sale's claims
+      live in its SaleEngine (D1 is the copy): after a restore, press **Reload open sales from
+      D1** on `/admin`, or the engines will write their newer rows back over the restored
+      ones (TECH_STACK S43). Include that step in the staging drill.
 
 ## 6. Smoke test before the pilot sale
 - [ ] On staging: sign up a seller and a buyer, verify email and phone, schedule a public sale

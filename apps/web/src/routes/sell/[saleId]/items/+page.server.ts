@@ -79,12 +79,13 @@ function readItem(data: FormData): ItemInput {
 
 /**
  * After an edit to a published sale's items: open live grids refresh and the listings are
- * matched against want lists again. Drafts have no viewers and no want-list matches yet.
+ * matched against want lists again. Drafts too: the sale's engine keeps its own copy of the
+ * items (WS-N), and the seller's draft page reads it (want lists only match published sales).
  *
  * @spec LIVE-broadcast — the item editor's writes reach open sockets.
+ * @spec SM-9-local-store — the engine copies the edited items in from D1.
  */
 async function listingsChanged(sale: { id: string; status: string }, sellerId: string): Promise<void> {
-	if (sale.status === "draft") return;
 	await runExit("web.live.listings_changed", refreshLiveListings(notifyRpc(), sale.id, sellerId));
 }
 
@@ -156,6 +157,7 @@ export const actions: Actions = {
 			.filter(Boolean);
 		const result = await reorderItems(db(), seller.id, sale.id, order, Date.now());
 		if (!result.ok) return fail(400, { action: "reorder" as const, errors: { form: result.error.message } });
+		await listingsChanged(sale, seller.id);
 		return { action: "reorder" as const, saved: true };
 	},
 

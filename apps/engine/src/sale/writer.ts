@@ -81,12 +81,10 @@ import { readPublishPhotoState } from "../photos/store.ts";
 import { planImportBatch, type ImportBatchInput, type ImportBatchResult } from "./import.ts";
 import { itemKey, KeyedLocks, lockOrder, type LockKey } from "./locks.ts";
 import { toStoredRescind, toTakeback, type RescindRow, type TakebackRow } from "./rows.ts";
+import { D1SaleStorage, type SaleStorage } from "./storage.ts";
 import {
 	loadAddress,
 	loadInvoiceKinds,
-	loadInvoices,
-	loadSale,
-	loadSaleAndItems,
 	loadTier,
 	newId,
 	Work,
@@ -252,12 +250,29 @@ export interface PublishInput {
 
 export class SaleWriter {
 	constructor(
-		readonly db: D1Database,
+		readonly storage: SaleStorage,
 		readonly saleId: string,
 		readonly locks: KeyedLocks,
 		readonly clock: () => Millis,
 		readonly afterCommit: AfterCommit,
 	) {}
+
+	/** Writes that go to D1 whatever the adapter (imports). */
+	get #d1Storage(): SaleStorage {
+		return this.storage.mode === "d1"
+			? this.storage
+			: new D1SaleStorage(this.storage.d1, () => this.saleId, { publish: () => undefined });
+	}
+
+	/** The sale's own tables (the object's SQLite, or D1). */
+	get db(): D1Database {
+		return this.storage.local;
+	}
+
+	/** Cross-sale tables: users, plans, addresses, other sales, photos. */
+	get d1(): D1Database {
+		return this.storage.d1;
+	}
 
 	// -------------------------------------------------------------------------
 	// Plumbing
@@ -288,15 +303,15 @@ export class SaleWriter {
 	async #withInvoices(session: LockSession, work: Work): Promise<void> {
 		if (work.invoices) return;
 		await session.take(["invoices"]);
-		work.invoices = await loadInvoices(this.db, this.saleId, work.sale.sellerTier);
+		work.invoices = await this.storage.loadInvoices(this.saleId, work.sale.sellerTier);
 	}
 
 	async #loadItem(itemId: string, now: Millis, buyer?: { id: string }) {
-		const loaded = await loadSaleAndItems(this.db, this.saleId, [itemId], now, buyer);
+		const loaded = await this.storage.loadSaleAndItems(this.saleId, [itemId], now, buyer);
 		if (!loaded.sale) return { missing: notFound() } as const;
 		const item = loaded.items.get(itemId);
 		if (!item) return { missing: notFound("item") } as const;
-		const work = new Work(this.db, loaded.sale, now);
+		const work = new Work(this.storage, loaded.sale, now);
 		work.addItems(loaded.items);
 		return { sale: loaded.sale, work, item: item.item, buyer: loaded.buyer } as const;
 	}
@@ -660,7 +675,7 @@ export class SaleWriter {
 			const loaded = await this.#loadItem(input.itemId, now);
 			if ("missing" in loaded) return loaded.missing;
 			const { sale, work, item } = loaded;
-			const tier = await loadTier(this.db, input.buyerId, "buyer", now);
+			const tier = await loadTier(this.d1, input.buyerId, "buyer", now);
 			const actor = actorFor(sale, input.buyerId, tier);
 			if (actor.kind !== "buyer") return notAllowed();
 			if (!permitted(actor, "rescind_own_win"))
@@ -695,7 +710,8 @@ export class SaleWriter {
 	async #proRescindsThisMonth(buyerId: string, now: Millis): Promise<number> {
 		const date = new Date(now);
 		const monthStart = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
-		const row = await this.db
+		// Across sales: D1's copy (a moment behind this sale's newest writes at most).
+		const row = await this.d1
 			.prepare(
 				"SELECT count(*) AS n FROM entries WHERE user_id = ?1 AND ended_reason = 'buyer_rescind' AND ended_at >= ?2",
 			)
@@ -829,11 +845,11 @@ export class SaleWriter {
 		return this.#transact([itemKey(located.item_id)], async (_session, now) => {
 			const row = await this.#takebackRow(input.requestId);
 			if (!row) return notFound("take-back request");
-			const sale = await loadSale(this.db, this.saleId, now);
+			const sale = await this.storage.loadSale(this.saleId, now);
 			if (!sale) return notFound();
 			const cancelled = coreCancelTakeback(toTakeback(row), actorFor(sale, input.buyerId), now);
 			if (!cancelled.ok) return cancelled;
-			const work = new Work(this.db, sale, now);
+			const work = new Work(this.storage, sale, now);
 			work.extra.push(
 				this.db
 					.prepare(
@@ -884,11 +900,11 @@ export class SaleWriter {
 		return this.#transact([itemKey(located.item_id)], async (_session, now) => {
 			const row = await this.#rescindRow(rescindId);
 			if (!row) return notFound("rescind");
-			const sale = await loadSale(this.db, this.saleId, now);
+			const sale = await this.storage.loadSale(this.saleId, now);
 			if (!sale) return notFound();
 			const rescind = fromStored(toStoredRescind(row));
 			if (!rescind) return notFound("rescind");
-			const work = new Work(this.db, sale, now);
+			const work = new Work(this.storage, sale, now);
 			const result = await body(work, row, rescind, now);
 			if (!result.ok) return result;
 			return ok({ work, value: result.value });
@@ -1021,7 +1037,7 @@ export class SaleWriter {
 		note?: string | null;
 	}): Promise<Outcome<RescindView>> {
 		return this.#rescindCommand(input.rescindId, async (work, row, rescind, now) => {
-			const user = await this.db
+			const user = await this.d1
 				.prepare("SELECT role FROM users WHERE id = ?1")
 				.bind(input.adminId)
 				.first<{ role: string }>();
@@ -1038,7 +1054,7 @@ export class SaleWriter {
 			);
 			let flagged = false;
 			if (isOverturned(resolved.value)) {
-				const earlier = await this.db
+				const earlier = await this.d1
 					.prepare(
 						`SELECT count(*) AS n FROM rescinds WHERE seller_id = ?1 AND id != ?2 AND fault = 'buyer'
 						AND contested_at IS NOT NULL AND resolved_fault IN ('seller', 'neutral') AND resolved_at >= ?3`,
@@ -1049,14 +1065,11 @@ export class SaleWriter {
 				if (flagsSeller(overturned)) {
 					flagged = true;
 					// One open flag per reason (the partial unique index); a repeat is ignored.
-					work.extra.push(
-						this.db
-							.prepare(
-								`INSERT OR IGNORE INTO account_flags (id, user_id, reason, count, created_at)
-								VALUES (?1, ?2, 'overturned_rescinds', ?3, ?4)`,
-							)
-							.bind(newId(), row.seller_id, overturned, now),
-					);
+					work.remote.push({
+						sql: `INSERT OR IGNORE INTO account_flags (id, user_id, reason, count, created_at)
+							VALUES (?1, ?2, 'overturned_rescinds', ?3, ?4)`,
+						params: [newId(), row.seller_id, overturned, now],
+					});
 				}
 			}
 			const event = {
@@ -1081,7 +1094,7 @@ export class SaleWriter {
 	// Sale lifecycle (§2)
 
 	async #activeSaleCount(sellerId: string): Promise<number> {
-		const row = await this.db
+		const row = await this.d1
 			.prepare(
 				"SELECT count(*) AS n FROM sales WHERE seller_id = ?1 AND id != ?2 AND status IN ('scheduled', 'live')",
 			)
@@ -1100,9 +1113,11 @@ export class SaleWriter {
 	 * @spec IMG-dup-review — a photo held for review blocks publishing.
 	 * @spec IMG-timestamp-required — newer sellers need an approved timestamp photo.
 	 */
-	publish(input: PublishInput): Promise<Outcome<SaleView>> {
+	async publish(input: PublishInput): Promise<Outcome<SaleView>> {
+		// Items the seller edited while it was a draft (copied into the engine's store).
+		await this.storage.refreshItems(this.saleId);
 		return this.#transact(["sale"], async (_session, now) => {
-			const sale = await loadSale(this.db, this.saleId, now);
+			const sale = await this.storage.loadSale(this.saleId, now, { fresh: true });
 			if (!sale || sale.sellerId !== input.sellerId) return notFound();
 			const result = publishSale(
 				sale.sale,
@@ -1114,9 +1129,9 @@ export class SaleWriter {
 				now,
 			);
 			if (!result.ok) return result;
-			const photos = checkPublishPhotos(await readPublishPhotoState(this.db, this.saleId, sale.sellerId));
+			const photos = checkPublishPhotos(await readPublishPhotoState(this.d1, this.saleId, sale.sellerId));
 			if (!photos.ok) return photos;
-			const work = new Work(this.db, sale, now);
+			const work = new Work(this.storage, sale, now);
 			const next = result.value.sale;
 			work.saleChange = {
 				expected: "draft",
@@ -1137,11 +1152,11 @@ export class SaleWriter {
 
 	unpublish(input: { sellerId: string }): Promise<Outcome<SaleView>> {
 		return this.#transact(["sale"], async (_session, now) => {
-			const sale = await loadSale(this.db, this.saleId, now);
+			const sale = await this.storage.loadSale(this.saleId, now, { fresh: true });
 			if (!sale || sale.sellerId !== input.sellerId) return notFound();
 			const result = unpublishSale(sale.sale);
 			if (!result.ok) return result;
-			const work = new Work(this.db, sale, now);
+			const work = new Work(this.storage, sale, now);
 			const next = result.value.sale;
 			work.saleChange = { expected: "scheduled", next };
 			for (const event of result.value.events) work.event({ ...event });
@@ -1160,13 +1175,14 @@ export class SaleWriter {
 	 *
 	 * @spec SM-2-go-live-alarm
 	 */
-	goLive(): Promise<Outcome<SaleView>> {
+	async goLive(): Promise<Outcome<SaleView>> {
+		await this.storage.refreshItems(this.saleId);
 		return this.#transact(["sale"], async (_session, now) => {
-			const sale = await loadSale(this.db, this.saleId, now);
+			const sale = await this.storage.loadSale(this.saleId, now, { fresh: true });
 			if (!sale) return notFound();
 			const result = goLiveSale(sale.sale, now);
 			if (!result.ok) return result;
-			const work = new Work(this.db, sale, now);
+			const work = new Work(this.storage, sale, now);
 			const next = result.value.sale;
 			work.saleChange = { expected: "scheduled", next };
 			for (const event of result.value.events) work.event({ ...event });
@@ -1182,13 +1198,14 @@ export class SaleWriter {
 	 * @spec SM-6-send-after-close — with auto-send on, every draft invoice goes out now.
 	 */
 	async close(input: { by: "seller"; sellerId: string } | { by: "alarm" }): Promise<Outcome<SaleView>> {
+		this.storage.forget({ sale: true });
 		const { results } = await this.db
 			.prepare("SELECT id FROM items WHERE sale_id = ?1")
 			.bind(this.saleId)
 			.all<{ id: string }>();
 		const itemIds = results.map((r) => r.id);
 		return this.#transact(["sale", ...itemIds.map(itemKey)], async (session, now) => {
-			const loaded = await loadSaleAndItems(this.db, this.saleId, "all", now);
+			const loaded = await this.storage.loadSaleAndItems(this.saleId, "all", now);
 			const sale = loaded.sale;
 			if (!sale) return notFound();
 			if (input.by === "seller" && input.sellerId !== sale.sellerId) return notFound();
@@ -1197,7 +1214,7 @@ export class SaleWriter {
 			}
 			const result = closeSale(sale.sale, now, input.by);
 			if (!result.ok) return result;
-			const work = new Work(this.db, sale, now);
+			const work = new Work(this.storage, sale, now);
 			work.addItems(loaded.items);
 			const next = result.value.sale;
 			work.saleChange = { expected: "live", next };
@@ -1308,10 +1325,10 @@ export class SaleWriter {
 		const itemIds = withItems ? await this.#invoiceItemIds(invoiceId) : [];
 		return this.#transact([...itemIds.map(itemKey), "invoices"], async (session, now) => {
 			const loaded = withItems
-				? await loadSaleAndItems(this.db, this.saleId, itemIds, now)
-				: { sale: await loadSale(this.db, this.saleId, now), items: new Map() };
+				? await this.storage.loadSaleAndItems(this.saleId, itemIds, now)
+				: { sale: await this.storage.loadSale(this.saleId, now), items: new Map() };
 			if (!loaded.sale) return notFound();
-			const work = new Work(this.db, loaded.sale, now);
+			const work = new Work(this.storage, loaded.sale, now);
 			work.addItems(loaded.items);
 			await this.#withInvoices(session, work);
 			const invoice = work.invoice(invoiceId);
@@ -1383,9 +1400,9 @@ export class SaleWriter {
 	/** "Send all": every draft with lines (D49). */
 	async sendAllInvoices(input: { sellerId: string }): Promise<Outcome<{ sent: number }>> {
 		return this.#transact(["invoices"], async (session, now) => {
-			const sale = await loadSale(this.db, this.saleId, now);
+			const sale = await this.storage.loadSale(this.saleId, now);
 			if (!sale || sale.sellerId !== input.sellerId) return notFound();
-			const work = new Work(this.db, sale, now);
+			const work = new Work(this.storage, sale, now);
 			await this.#withInvoices(session, work);
 			const sent = this.#sendDrafts(work, sellerActor(sale), sale.sale.status, now);
 			if (!sent.ok) return sent;
@@ -1412,7 +1429,7 @@ export class SaleWriter {
 	}): Promise<Outcome<InvoiceView>> {
 		return this.#invoiceCommand(input.invoiceId, false, async (_session, work, invoice, now) => {
 			if (invoice.buyerId !== input.buyerId) return notAllowed();
-			const address = await loadAddress(this.db, input.buyerId, input.addressId);
+			const address = await loadAddress(this.d1, input.buyerId, input.addressId);
 			if (!address) return reject("address_not_found", "Choose one of your saved addresses");
 			const kinds = await loadInvoiceKinds(this.db, invoice.id);
 			const paid = this.#applyInvoice(
@@ -1578,9 +1595,9 @@ export class SaleWriter {
 				kindsByInvoice.set(row.invoiceId, await loadInvoiceKinds(this.db, row.invoiceId));
 		}
 		return this.#transact(["invoices"], async (session, now) => {
-			const sale = await loadSale(this.db, this.saleId, now);
+			const sale = await this.storage.loadSale(this.saleId, now);
 			if (!sale || sale.sellerId !== input.sellerId) return notFound();
-			const work = new Work(this.db, sale, now);
+			const work = new Work(this.storage, sale, now);
 			await this.#withInvoices(session, work);
 			const actor = sellerActor(sale);
 			const results: TrackingRowResult[] = [];
@@ -1685,9 +1702,11 @@ export class SaleWriter {
 	/** One batch of an item import (WS-G); see import.ts. Holds the sale lock, so batches apply one at a time. */
 	applyImportBatch(input: ImportBatchInput): Promise<Outcome<ImportBatchResult>> {
 		return this.#transact(["sale"], async (_session, now) => {
-			const sale = await loadSale(this.db, this.saleId, now);
+			const sale = await this.storage.loadSale(this.saleId, now, { fresh: true });
 			if (!sale) return notFound();
-			return planImportBatch(this.db, sale, input, now);
+			// The import checks D1 for items with entries: send this sale's newest ones first.
+			await this.storage.settle();
+			return planImportBatch(this.#d1Storage, sale, input, now);
 		});
 	}
 

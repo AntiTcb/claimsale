@@ -48,13 +48,20 @@ import type { ImportBatchResult } from "./sale/import.ts";
 import * as rpc from "./sale/rpc.ts";
 import { sweepTimers } from "./sale/sweep.ts";
 import type { LiveSnapshot } from "@claimsale/core";
-import { loadLiveSnapshot, parseLivePath } from "./live/sale-live.ts";
+import { parseLivePath } from "./live/sale-live.ts";
 
 const LiveSnapshotInput = Schema.Struct({
 	saleId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
 	viewerId: Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))),
 });
 export type LiveSnapshotInput = typeof LiveSnapshotInput.Type;
+
+const BuyerChangedInput = Schema.Struct({
+	userId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+	/** Set for a block or unblock: only this seller's sales care. */
+	sellerId: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))),
+});
+export type BuyerChangedInput = typeof BuyerChangedInput.Type;
 
 export { SaleEngine } from "./sale-engine.ts";
 export type {
@@ -110,12 +117,85 @@ export default class Engine extends WorkerEntrypoint<EngineEnv> {
 			"engine.live.snapshot",
 			Schema.decodeUnknownEffect(LiveSnapshotInput)(input).pipe(
 				Effect.flatMap((decoded) =>
-					Effect.promise(
-						async () =>
-							(await loadLiveSnapshot(this.env.DB, decoded.saleId, decoded.viewerId, Date.now())) ?? null,
+					Effect.promise(async () =>
+						// The sale's own engine has its newest state (WS-N).
+						this.env.SALE_ENGINE.get(this.env.SALE_ENGINE.idFromName(decoded.saleId)).liveSnapshot(
+							decoded.saleId,
+							decoded.viewerId,
+						),
 					),
 				),
+				Effect.flatMap(fromRpcResult),
 			),
+		);
+	}
+
+	/**
+	 * A buyer was blocked, unblocked or banned: the live and scheduled sales that cached their
+	 * standing read it again on the next claim. Returns how many sales were told.
+	 *
+	 * @spec SM-9-buyer-cache
+	 */
+	async buyerChanged(input: BuyerChangedInput): Promise<RpcResult<number>> {
+		return runForRpc(
+			this.env,
+			"engine.sale.buyer_changed",
+			Schema.decodeUnknownEffect(BuyerChangedInput)(input).pipe(
+				Effect.flatMap(({ userId, sellerId }) =>
+					Effect.promise(async () => {
+						const db = this.env.DB;
+						const { results } = await (
+							sellerId === undefined
+								? db
+										.prepare(
+											`SELECT DISTINCT i.sale_id AS id FROM entries e JOIN items i ON i.id = e.item_id
+										JOIN sales s ON s.id = i.sale_id WHERE e.user_id = ?1 AND s.status IN ('scheduled', 'live')`,
+										)
+										.bind(userId)
+								: db
+										.prepare("SELECT id FROM sales WHERE seller_id = ?1 AND status IN ('scheduled', 'live')")
+										.bind(sellerId)
+						).all<{ id: string }>();
+						await Promise.all(
+							results.map((r) =>
+								this.env.SALE_ENGINE.get(this.env.SALE_ENGINE.idFromName(r.id)).forgetBuyer(userId),
+							),
+						);
+						return results.length;
+					}),
+				),
+			),
+		);
+	}
+
+	/**
+	 * After a D1 restore (Time Travel): every open sale's engine writes what it still has
+	 * pending, drops its copy and reads the sale from D1 again. Admins only; returns how
+	 * many sales were reloaded.
+	 *
+	 * @spec SM-9-hydrate
+	 */
+	async rehydrateSales(input: { adminId: string }): Promise<RpcResult<number | null>> {
+		return runForRpc(
+			this.env,
+			"engine.sale.rehydrate_all",
+			Effect.promise(async () => {
+				const db = this.env.DB;
+				const admin = await db
+					.prepare("SELECT role FROM users WHERE id = ?1")
+					.bind(input.adminId)
+					.first<{ role: string }>();
+				if (admin?.role !== "admin") return null;
+				const { results } = await db
+					.prepare("SELECT id FROM sales WHERE status IN ('scheduled', 'live', 'closed')")
+					.all<{ id: string }>();
+				let reloaded = 0;
+				for (const { id } of results) {
+					const result = await this.env.SALE_ENGINE.get(this.env.SALE_ENGINE.idFromName(id)).rehydrate(id);
+					if (result.ok && result.value) reloaded++;
+				}
+				return reloaded;
+			}),
 		);
 	}
 

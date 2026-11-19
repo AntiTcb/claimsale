@@ -6,6 +6,7 @@ import {
 	validateHandle,
 } from "@claimsale/core";
 import { fail, redirect } from "@sveltejs/kit";
+import { dropSessionCache } from "#lib/server/auth.ts";
 import { auth, db, turnstile } from "#lib/server/context.ts";
 import { forwardCookies } from "#lib/server/cookies.ts";
 import { type FormErrors, field, formError } from "#lib/server/forms.ts";
@@ -64,6 +65,8 @@ export const actions: Actions = {
 				{ handle: handle.value, displayName: displayName.value, ageAttested: age.value },
 				new Date(),
 			);
+			// The session cookie cached the user before the handle and age were set.
+			dropSessionCache(url.origin, cookies);
 		} catch (error) {
 			// Someone took the handle a moment ago: the account exists, so finish on onboarding.
 			if (isUniqueViolation(error)) redirect(303, "/onboarding?taken=1");

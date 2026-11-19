@@ -9,6 +9,7 @@ import {
 	addUser,
 	auditOf,
 	claim,
+	d1Storage,
 	DAY,
 	db,
 	engine,
@@ -21,6 +22,7 @@ import {
 	stubFor,
 	uid,
 	value,
+	writeBehindEngine,
 	type SaleSetup,
 } from "./sale-fixtures.ts";
 
@@ -184,14 +186,18 @@ describe("mutual agreement answers", () => {
 		const { sale, entryId } = await rescinded("mutual_agreement");
 		await runInDurableObject(stubFor(sale.saleId), (_i, state) => state.storage.deleteAlarm());
 		// A row written before WS-I: no phase, created more than 72h ago.
-		await db
-			.prepare("UPDATE rescinds SET phase = NULL, created_at = ?1 WHERE entry_id = ?2")
-			.bind(Date.now() - 73 * HOUR, entryId)
-			.run();
-		expect((await loadTimers(db, sale.saleId, Date.now())).map((t) => t.kind)).toContain("mutual_answer_due");
+		await writeBehindEngine(
+			sale.saleId,
+			"UPDATE rescinds SET phase = NULL, created_at = ?1 WHERE entry_id = ?2",
+			Date.now() - 73 * HOUR,
+			entryId,
+		);
+		expect((await loadTimers(d1Storage(), sale.saleId, Date.now())).map((t) => t.kind)).toContain(
+			"mutual_answer_due",
+		);
 		await Effect.runPromise(sweepTimers(env));
 		expect(await rescindOf(entryId)).toMatchObject({ phase: "final", answered_at: expect.any(Number) });
-		expect((await loadTimers(db, sale.saleId, Date.now())).map((t) => t.kind)).not.toContain(
+		expect((await loadTimers(d1Storage(), sale.saleId, Date.now())).map((t) => t.kind)).not.toContain(
 			"mutual_answer_due",
 		);
 	});

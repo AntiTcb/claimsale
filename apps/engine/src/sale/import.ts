@@ -27,6 +27,7 @@ import {
 import { d1CatalogLookup, type CatalogRow } from "../catalog/lookup.ts";
 import { rowsOf } from "./rows.ts";
 import { parseJson } from "./settings.ts";
+import type { SaleStorage } from "./storage.ts";
 import { newId, Work, type SaleRecord } from "./store.ts";
 import type { Outcome } from "./writer.ts";
 
@@ -212,7 +213,8 @@ const json = (values: unknown) => JSON.stringify(values);
  * applies (after any removal); rows past it are errors that say how many fit.
  */
 export async function planImportBatch(
-	db: D1Database,
+	/** D1-backed: an import writes items and its job rows straight to D1 (the engine copies them in after). */
+	storage: SaleStorage,
 	sale: SaleRecord,
 	input: ImportBatchInput,
 	now: Millis,
@@ -225,7 +227,8 @@ export async function planImportBatch(
 	}
 	const importId = input.importId.toLowerCase();
 	const rowNumbers = input.rows.map((r) => r.row);
-	const work = new Work(db, sale, now);
+	const db = storage.d1;
+	const work = new Work(storage, sale, now);
 	const [jobs, recordedRows, existing] = await db.batch([
 		db.prepare("SELECT seller_id, sale_id, kind FROM io_jobs WHERE id = ?1").bind(importId),
 		db

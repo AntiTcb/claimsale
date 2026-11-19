@@ -19,9 +19,11 @@ import {
 	rejection,
 	saleRow,
 	setClock,
+	settle,
 	stubFor,
 	uid,
 	value,
+	writeBehindEngine,
 } from "./sale-fixtures.ts";
 
 let quiet: ReturnType<typeof vi.spyOn>[] = [];
@@ -302,10 +304,12 @@ describe("timers and the single alarm", () => {
 		await claim(sale, buyer);
 		// Lose the alarm and make the deadline due.
 		await runInDurableObject(stubFor(sale.saleId), (_i, state) => state.storage.deleteAlarm());
-		await db
-			.prepare("UPDATE items SET decision_deadline = ?1 WHERE id = ?2")
-			.bind(Date.now() - 1000, sale.itemIds[0])
-			.run();
+		await writeBehindEngine(
+			sale.saleId,
+			"UPDATE items SET decision_deadline = ?1 WHERE id = ?2",
+			Date.now() - 1000,
+			sale.itemIds[0],
+		);
 		const report = await Effect.runPromise(sweepTimers(env));
 		expect(report.sales).toBeGreaterThanOrEqual(1);
 		expect((await entriesOf(sale.itemIds[0]!))[0]).toMatchObject({ status: "won" });
@@ -679,6 +683,7 @@ describe("rate limiting", () => {
 		const results = await Promise.all(sale.itemIds.map((itemId) => claim(sale, buyer, itemId)));
 		const limited = results.filter((r) => r.ok && !r.value.ok && r.value.error.code === "rate_limited");
 		expect(limited.length).toBeGreaterThan(0);
+		await settle(sale.saleId);
 		const placed = await db
 			.prepare("SELECT count(*) AS n FROM entries e JOIN items i ON i.id = e.item_id WHERE i.sale_id = ?1")
 			.bind(sale.saleId)

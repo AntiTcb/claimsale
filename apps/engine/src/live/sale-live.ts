@@ -8,7 +8,8 @@ import {
 	type LiveSnapshot,
 	type Millis,
 } from "@claimsale/core";
-import { loadSale, loadSaleAndItems, type SaleRecord, type Work } from "../sale/store.ts";
+import type { SaleStorage } from "../sale/storage.ts";
+import type { SaleRecord, Work } from "../sale/store.ts";
 import { projectionViewer, type LiveHub, type LiveRole, type LiveViewer } from "./hub.ts";
 
 /**
@@ -59,12 +60,12 @@ const saleView = (sale: SaleRecord["sale"], at: Millis): LiveSale => ({
  * @spec LIVE-no-leak — every item goes through core's `liveItem` projection for this viewer.
  */
 export async function loadLiveSnapshot(
-	db: D1Database,
+	storage: SaleStorage,
 	saleId: string,
 	userId: string | null,
 	now: Millis,
 ): Promise<LiveSnapshot | undefined> {
-	const loaded = await loadSaleAndItems(db, saleId, "all", now);
+	const loaded = await storage.loadSaleAndItems(saleId, "all", now);
 	const sale = loaded.sale;
 	if (!sale) return undefined;
 	const role = roleFor(sale, userId);
@@ -89,17 +90,17 @@ export async function loadLiveSnapshot(
  */
 export async function connectLive(
 	hub: LiveHub,
-	db: D1Database,
+	storage: SaleStorage,
 	saleId: string,
 	userId: string | null,
 	now: Millis,
 ): Promise<Response> {
-	const sale = await loadSale(db, saleId, now);
+	const sale = await storage.loadSale(saleId, now);
 	const role = sale ? roleFor(sale, userId) : "visitor";
 	if (!sale || !visibleTo(sale.sale.status, role)) return new Response("Not found", { status: 404 });
 	const { client, server } = hub.accept({ userId, role, connectedAt: now });
 	hub.send(server, "hello", { protocol: LIVE_PROTOCOL, serverNow: now });
-	const snapshot = await loadLiveSnapshot(db, saleId, userId, now);
+	const snapshot = await loadLiveSnapshot(storage, saleId, userId, now);
 	if (snapshot) hub.send(server, "snapshot", { ...snapshot });
 	else server.close(LIVE_CLOSE_NOT_FOUND, "The sale is gone");
 	return new Response(null, { status: 101, webSocket: client });
@@ -149,12 +150,12 @@ export function broadcastCommit(hub: LiveHub, work: Work): void {
  */
 export async function broadcastRefresh(
 	hub: LiveHub,
-	db: D1Database,
+	storage: SaleStorage,
 	saleId: string,
 	now: Millis,
 ): Promise<boolean> {
 	if (hub.count() === 0) return true;
-	const loaded = await loadSaleAndItems(db, saleId, "all", now);
+	const loaded = await storage.loadSaleAndItems(saleId, "all", now);
 	const sale = loaded.sale;
 	if (!sale) return false;
 	const slots = [...loaded.items.values()];

@@ -341,14 +341,48 @@ promotion), so a single SQL statement per action is no longer enough.
   the result as a single `db.batch()` (a transaction) with a version check on the item.
 - After a successful write, it broadcasts diffs to connected WebSockets and
   enqueues notifications.
-- **D1 remains the source of truth.** The DO holds no data that can't be rebuilt.
 - The same DO owns the sale's alarm (section 7), so timed and user-triggered
   transitions go through the same lock.
 
-*If load testing shows D1 round-trips make go-live claims too slow* (target: p95
-< 300ms for 200 claims/second on one sale), move live entry state into the DO's
-own SQLite storage, and copy it out to D1 through an outbox. Only the engine's storage
-adapter changes; the transition functions stay the same.
+**Decision (WS-N, 2026-11-18): the sale lives in its DO's own SQLite; D1 is its read model.**
+The first staging load test missed the target (p95 < 300 ms at 200 claims/second on one
+sale): from 50 claims/second, D1 rate-limited the database. So the fallback this section
+named was taken. Only the engine's storage adapter changed; the transition functions
+didn't.
+
+- **What lives in the DO:** a sale's items, entries, invoices and their lines, rescinds,
+  take-back requests and new audit rows. These are the same tables and columns as D1,
+  built from the Drizzle schema (`@claimsale/db/local`).
+  - The sale row, users, plans, blocks and every other sale stay in D1.
+  - The engine caches the sale row for 2 s, and a buyer's standing for 30 s or until the
+    web Worker reports a block, unblock, ban or Pro change (`buyerChanged`).
+  - Lifecycle commands (publish, unpublish, go live, close) read the sale fresh and change
+    it in D1 first. The free seller's active-sale cap spans other sales.
+- **Hydration:** the first time a DO serves a sale, it copies the sale's rows in from D1.
+  `rehydrate` drops the copy and copies again, after writing everything pending to D1. Use
+  it for repairs and after a D1 restore.
+- **The outbox:**
+  - **What it records:** triggers record every write to the DO's tables. A command's events
+    and its cross-sale writes (an account flag) go in the same transaction.
+  - **How it flushes:** a flush sends D1 the current state of each changed row in commit
+    order, as idempotent upserts. Only after D1 accepts does it queue the events. A flush
+    runs right after each commit; commits that land meanwhile go together in the next one.
+  - **On failure:** a failed flush keeps everything, and the alarm retries it.
+  - **Items:** the web Worker still owns their other fields. The engine writes only its
+    columns (state, version, deadlines, units won). Versions only grow.
+- **Read-your-writes:**
+  - Claims, offers, withdrawals and counter answers return once the DO has them. D1
+    follows within a flush, normally a few milliseconds.
+  - Every other command waits for D1, because the web Worker reads it right after.
+  - Pages get the live state from the DO (`liveSnapshot`), not from D1.
+- **Items edited in D1:** the web editor, imports, and drafts too. They reach the DO
+  through `listingsChanged`, or on publish and go-live. An item the DO doesn't know yet is
+  copied in when someone claims it.
+  - Once an item has entries, its price and quantity are locked (D40). If a change slipped
+    in anyway, it is written back.
+- **The rollback switch:** the engine var `SALE_STORE = "d1"` puts every sale back in D1. A
+  DO in that mode first writes its outbox to D1, then drops its tables. Both stores run the
+  whole Workers suite (the `engine` and `engine-d1` projects).
 
 Every transition writes an `audit_log` row in the same batch.
 
@@ -543,4 +577,11 @@ IDs stay in the table, marked ~~struck~~.
 | `DISC-copy-text` | The seller's "copy as text" export lists the sale's items in sale order with price, condition and quantity, marks sold-out ones, leaves withdrawn ones out, and ends with the sale link; it includes only buyer-facing fields | PLAN 6 (Phase 1) |
 | `SHARE-private-title-only` | A sale's share card (`og:image`, `og:` and `twitter:` tags) shows what a signed-out visitor may see, whoever is viewing: a public or unlisted sale's title, seller, status, item count and first items with prices; a private sale's title, seller and status only; drafts and deleted sales have none (the image is a 404) | PLAN 3 (Visibility), TECH_STACK S13 |
 | `SHARE-cache-version` | Share images are cached in R2 per card version (the card's fields plus the design version); a change to anything on the card gives a new version and a new `og:image` URL, the same card always the same one, and a sale's older versions are deleted | TECH_STACK S13 |
+| `SM-9-local-store` | A sale's items, entries, invoices, rescinds and take-backs live in its SaleEngine's own SQLite; D1 is their read model (the web Worker's edits to items are copied in, and a claimed item keeps its price and quantity) | 9, D40 |
+| `SM-9-outbox` | Every committed write reaches D1 through the outbox in commit order, each changed row written once per flush; events are queued only after D1 has the rows; a failed flush keeps everything and is retried | 9 |
+| `SM-9-hydrate` | The first time an engine serves a sale it copies the sale's rows in from D1; `rehydrate` writes everything pending to D1, then copies the sale in again | 9 |
+| `SM-9-read-your-writes` | Claims, offers, withdrawals and counter answers return once the engine has them; every other command returns only after D1 has its writes | 9 |
+| `SM-9-buyer-cache` | The engine reads a buyer's standing (verified, account age, blocked, banned, Pro) from D1 at most every 30 s per sale, or again at once after a block, unblock, ban or Pro change | 9, D22 |
+| `SM-9-claim-access-cache` | The claim and entry-action endpoints check a public or unlisted sale against a copy at most 5 s old; private sales are read every time; the engine still refuses a sale that isn't live | 9, D5 |
+| `AUTH-session-cookie-cache` | A session and its user are cached in a signed cookie for at most 60 s; the user's own profile writes (onboarding, settings, phone) drop it, so the next request reads D1 | TECH_STACK S40 |
 

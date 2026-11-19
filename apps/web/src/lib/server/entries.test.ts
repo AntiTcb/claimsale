@@ -8,6 +8,8 @@ import {
 	parseEntryAction,
 	parsePlaceEntry,
 	placeEntry,
+	SALE_GATE_TTL_MS,
+	SaleGateCache,
 	type EntriesBinding,
 	type EntryActionsBinding,
 } from "./entries.ts";
@@ -151,6 +153,54 @@ describe("claims and offers from the web", () => {
 					.status,
 			).toBe(status);
 		}
+	});
+});
+
+describe("the sale lookup on the claim path", () => {
+	const viewer = { user: buyer, unlockCookie: undefined };
+	const claim = { itemId: "i1", kind: "claim" };
+
+	it("[SM-9-claim-access-cache] reads a public or unlisted sale from D1 at most once every 5 seconds", async () => {
+		const saleId = await liveSale();
+		let clock = now;
+		const gates = new SaleGateCache(() => clock);
+		const { engine, calls } = fakeEngine(won);
+		const deps = { db, secret: SECRET, engine, gates };
+		expect((await placeEntry(deps, viewer, saleId, claim)).status).toBe(201);
+		// Deleted in D1 meanwhile: the cached row still lets the claim reach the engine,
+		// which reads the sale itself and has the final say.
+		await db.update(sales).set({ status: "deleted" }).where(eq(sales.id, saleId));
+		clock += SALE_GATE_TTL_MS - 1;
+		expect((await placeEntry(deps, viewer, saleId, claim)).status).toBe(201);
+		clock += 1;
+		expect((await placeEntry(deps, viewer, saleId, claim)).status).toBe(404);
+		expect(calls).toHaveLength(2);
+	});
+
+	it("[SM-9-claim-access-cache] reads a private sale every time, so losing access applies at once", async () => {
+		const saleId = await liveSale("private");
+		await setPrivateAccess(db, saleId, { allowlist: [buyer.email] }, now);
+		const gates = new SaleGateCache(() => now);
+		const { engine, calls } = fakeEngine(won);
+		const deps = { db, secret: SECRET, engine, gates };
+		expect((await placeEntry(deps, viewer, saleId, claim)).status).toBe(201);
+		await setPrivateAccess(db, saleId, { passwordHash: "pbkdf2$1$x$y", allowlist: null }, now);
+		expect((await placeEntry(deps, viewer, saleId, claim)).status).toBe(404);
+		expect(
+			(
+				await entryAction(
+					{ db, secret: SECRET, engine: fakeActionEngine(won).engine, gates },
+					viewer,
+					saleId,
+					"e1",
+					{
+						itemId: "i1",
+						action: "withdraw_offer",
+					},
+				)
+			).status,
+		).toBe(404);
+		expect(calls).toHaveLength(1);
 	});
 });
 

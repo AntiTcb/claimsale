@@ -1,7 +1,7 @@
 import { createDb } from "@claimsale/db";
 import { APIError } from "better-auth/api";
 import { describe, expect, it, vi } from "vitest";
-import { authSecret, createAuth } from "./auth.ts";
+import { authSecret, createAuth, dropSessionCache, sessionCacheCookieName } from "./auth.ts";
 import { magicLinkEmail, passwordResetEmail, verificationEmail } from "./emails.ts";
 import { authErrorMessage, field, fieldError, formError, isApiError } from "./forms.ts";
 import type { EmailBinding, Mailer } from "./mailer.ts";
@@ -232,6 +232,41 @@ describe("Better Auth against the real schema", () => {
 		expect(authErrorMessage(refused)).toMatch(/suspended/);
 		await sqlDb.update(users).set({ bannedAt: null }).where(eq(users.email, body.email));
 		expect((await auth.api.signInEmail({ body })).user.email).toBe(body.email);
+	});
+
+	it("[AUTH-session-cookie-cache] serves the session from its cookie until our own profile write drops it", async () => {
+		const { auth, sqlDb, users } = await setup();
+		const { eq } = await import("@claimsale/db");
+		const body = { email: "misty@example.test", password: "staryu-staryu-1" };
+		await auth.api.signUpEmail({ body: { name: "Misty", ...body } });
+		const signIn = await auth.api.signInEmail({ body, returnHeaders: true });
+		const jar = new Map(
+			signIn.headers.getSetCookie().map((c) => {
+				const pair = c.split(";")[0]!;
+				return [pair.slice(0, pair.indexOf("=")), pair] as const;
+			}),
+		);
+		const cacheName = sessionCacheCookieName("http://localhost:8787");
+		expect(jar.has(cacheName)).toBe(true);
+		const session = (without?: string) =>
+			auth.api.getSession({
+				headers: new Headers({
+					cookie: [...jar]
+						.filter(([n]) => n !== without)
+						.map(([, c]) => c)
+						.join("; "),
+				}),
+			});
+
+		await sqlDb.update(users).set({ handle: "misty" }).where(eq(users.email, body.email));
+		// Within the minute, the cookie's copy answers: no D1 read, so the old (null) handle.
+		expect((await session())?.user.handle).toBeNull();
+		// dropSessionCache deletes that cookie; the next request reads D1 again.
+		const deleted: string[] = [];
+		dropSessionCache("http://localhost:8787", { delete: (name) => deleted.push(name) });
+		expect(deleted).toEqual([cacheName]);
+		expect((await session(cacheName))?.user.handle).toBe("misty");
+		expect(sessionCacheCookieName("https://claimsale.net")).toBe("__Secure-cs.session_data");
 	});
 
 	it("rejects profile fields sent in a sign-up body", async () => {

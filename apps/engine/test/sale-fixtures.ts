@@ -3,6 +3,7 @@ import { env, exports } from "cloudflare:workers";
 import type { Entry, Millis } from "@claimsale/core";
 import type { RpcResult } from "../src/runtime.ts";
 import type { Outcome, SaleEngine } from "../src/sale-engine.ts";
+import { D1SaleStorage } from "../src/sale/storage.ts";
 
 /**
  * Test data for the sale write path. Every test makes its own users, sale and items
@@ -192,7 +193,46 @@ export function rejection<A>(result: RpcResult<Outcome<A>>): string {
 	return o.error.code;
 }
 
+/**
+ * Waits until D1 has every write the sale's engine committed (WS-N: with the local store,
+ * D1 follows through an outbox). Tests that read D1 after a claim call this first, like any
+ * reader of D1 would see the claim a moment later.
+ */
+export async function settle(saleId: string) {
+	const result = await stubFor(saleId).settle(saleId);
+	if (!result.ok) throw new Error(`settle failed: ${result.error.message}`);
+	if (result.value > 0) throw new Error(`${result.value} outbox entries didn't reach D1`);
+}
+
+async function saleOfItem(itemId: string) {
+	const row = await db
+		.prepare("SELECT sale_id FROM items WHERE id = ?1")
+		.bind(itemId)
+		.first<{ sale_id: string }>();
+	return row?.sale_id;
+}
+
+/**
+ * A write straight to D1, behind the engine's back (old rows, a repair): D1 first gets what
+ * the engine holds, then the engine reads the sale from D1 again (what an operator's
+ * `rehydrate` does).
+ */
+export async function writeBehindEngine(saleId: string, sql: string, ...params: unknown[]) {
+	await settle(saleId);
+	await db
+		.prepare(sql)
+		.bind(...params)
+		.run();
+	const result = await stubFor(saleId).rehydrate(saleId);
+	if (!result.ok) throw new Error(`rehydrate failed: ${result.error.message}`);
+}
+
+/** The d1 adapter, for tests of the unit of work itself. */
+export const d1Storage = () => new D1SaleStorage(db, () => undefined, { publish: () => undefined });
+
 export async function entriesOf(itemId: string) {
+	const saleId = await saleOfItem(itemId);
+	if (saleId) await settle(saleId);
 	const { results } = await db
 		.prepare("SELECT * FROM entries WHERE item_id = ?1 ORDER BY created_at, id")
 		.bind(itemId)
@@ -201,6 +241,8 @@ export async function entriesOf(itemId: string) {
 }
 
 export async function itemRow(itemId: string) {
+	const saleId = await saleOfItem(itemId);
+	if (saleId) await settle(saleId);
 	return (await db.prepare("SELECT * FROM items WHERE id = ?1").bind(itemId).first())!;
 }
 
@@ -209,6 +251,7 @@ export async function saleRow(saleId: string) {
 }
 
 export async function invoicesOf(saleId: string) {
+	await settle(saleId);
 	const { results } = await db
 		.prepare("SELECT * FROM invoices WHERE sale_id = ?1 ORDER BY created_at, id")
 		.bind(saleId)
@@ -225,6 +268,7 @@ export async function invoicesOf(saleId: string) {
 }
 
 export async function auditOf(saleId: string) {
+	await settle(saleId);
 	const { results } = await db
 		.prepare("SELECT * FROM audit_log WHERE sale_id = ?1 ORDER BY created_at, id")
 		.bind(saleId)

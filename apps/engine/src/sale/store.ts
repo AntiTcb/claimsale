@@ -28,13 +28,13 @@ import {
 	type SaleRow,
 } from "./rows.ts";
 import { readSaleSettings, type SaleSettings } from "./settings.ts";
+import type { SaleStorage } from "./storage.ts";
 
 /**
- * The engine's D1 storage adapter (STATE_MACHINES §9). Reads go out as one
- * `db.batch()` where possible; every command's writes go out as **one** batch (a
- * transaction) holding the item version checks, the entry / invoice rows and the
- * audit row. If load testing ever moves live entry state into the Durable Object's
- * own SQLite, only this file changes.
+ * The sale's queries and the unit of work (STATE_MACHINES §9). The queries run on D1 or,
+ * since WS-N, on the SaleEngine's own SQLite (`storage.ts` picks); every command's writes
+ * go out as **one** batch (a transaction) holding the item version checks, the entry /
+ * invoice rows and the audit row.
  */
 
 const PRO_SQL = (userParam: string, side: "seller" | "buyer", nowParam: string) =>
@@ -71,7 +71,7 @@ export class WriteConflict extends Error {
 	override readonly name = "WriteConflict";
 }
 
-const isConflict = (error: unknown) =>
+export const isConflict = (error: unknown) =>
 	error instanceof Error &&
 	/NOT NULL constraint failed: (items\.version|invoices\.updated_at|sales\.status)/.test(error.message);
 
@@ -321,16 +321,25 @@ export interface SaleChange {
 	readonly activeSaleCap?: number;
 }
 
+/** A write to a table outside the sale (an account flag), run on D1 with the commit. */
+export interface RemoteStatement {
+	readonly sql: string;
+	readonly params: readonly (string | number | null)[];
+}
+
 /**
  * Everything one command read and changed. `commit()` turns the differences into
- * one D1 batch: version-checked item updates, entry and invoice upserts, the extra
- * rows the command added (rescinds, take-backs) and its audit row.
+ * one batch: version-checked item updates, entry and invoice upserts, the extra
+ * rows the command added (rescinds, take-backs) and its audit row. The storage
+ * adapter decides where the batch goes.
  */
 export class Work {
 	readonly items = new Map<string, { readonly before: LoadedItem; after: Item }>();
 	invoices: Map<string, LoadedInvoice> | undefined;
 	readonly invoiceChanges = new Map<string, Invoice>();
 	readonly extra: D1PreparedStatement[] = [];
+	/** Writes to D1 tables outside the sale (cross-sale), committed with the work. */
+	readonly remote: RemoteStatement[] = [];
 	readonly audits: AuditRecord[] = [];
 	readonly events: Array<Record<string, unknown>> = [];
 	/** Timers the extra rows create (a mutual-agreement rescind's answer deadline). */
@@ -338,10 +347,15 @@ export class Work {
 	saleChange: SaleChange | undefined;
 
 	constructor(
-		readonly db: D1Database,
+		readonly storage: SaleStorage,
 		readonly sale: SaleRecord,
 		readonly now: Millis,
 	) {}
+
+	/** Where the sale's own rows are written (the object's SQLite, or D1). */
+	get db(): D1Database {
+		return this.storage.local;
+	}
 
 	addItems(items: ReadonlyMap<string, LoadedItem>): void {
 		for (const [id, before] of items)
@@ -421,7 +435,6 @@ export class Work {
 	statements(): D1PreparedStatement[] {
 		const { db, now } = this;
 		const out: D1PreparedStatement[] = [];
-		if (this.saleChange) out.push(saleUpdate(db, this.sale, this.saleChange, now));
 		for (const id of this.changedItemIds()) {
 			const slot = this.items.get(id)!;
 			const after = slot.after;
@@ -500,16 +513,12 @@ export class Work {
 			);
 	}
 
-	/** Writes everything in one batch. Throws WriteConflict when a version check fails. */
-	async commit(): Promise<void> {
-		const statements = this.statements();
-		if (statements.length === 0) return;
-		try {
-			await this.db.batch(statements);
-		} catch (error) {
-			if (isConflict(error)) throw new WriteConflict("The item changed during the write");
-			throw error;
-		}
+	/**
+	 * Writes everything in one batch (the sale row change, when there is one, goes to D1
+	 * first). Throws WriteConflict when a version check fails.
+	 */
+	commit(): Promise<void> {
+		return this.storage.commit(this);
 	}
 }
 
@@ -565,7 +574,12 @@ function entryUpsert(db: D1Database, itemId: string, e: Entry): D1PreparedStatem
 		);
 }
 
-function saleUpdate(db: D1Database, sale: SaleRecord, change: SaleChange, now: Millis): D1PreparedStatement {
+export function saleUpdate(
+	db: D1Database,
+	sale: SaleRecord,
+	change: SaleChange,
+	now: Millis,
+): D1PreparedStatement {
 	// A status that changed under us, or (free sellers) a cap another sale filled
 	// meanwhile, sets status to NULL: the NOT NULL constraint aborts the whole batch.
 	const cap = change.activeSaleCap ?? null;

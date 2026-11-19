@@ -17,6 +17,9 @@
 		// Notification email (WS-K): "capture" writes it to email_outbox (E2E reads it), "cloudflare"
 		// sends it. Never "capture" where the data is shared with real users (staging, production).
 		"MAILER": "capture",
+		// Where a sale's items, entries and invoices live (STATE_MACHINES §9, WS-N): "local" in
+		// its SaleEngine's own SQLite, copied to D1 through an outbox; "d1" is the rollback switch.
+		"SALE_STORE": "local",
 		// The web app's origin, for links in notification email.
 		"SITE_URL": "http://localhost:8787",
 		// Sentry DSN (public by design); empty disables error reports (TECH_STACK S38).
@@ -59,6 +62,7 @@
 				"VERSION": "set-by-ci",
 				"MAIL_FROM": "no-reply@notify.claimsale.net",
 				"MAILER": "cloudflare",
+				"SALE_STORE": "local",
 				"SITE_URL": "https://staging.claimsale.net",
 				"SENTRY_DSN": "",
 				"TCGCSV_BASE_URL": "https://tcgcsv.com",
@@ -95,6 +99,7 @@
 				"VERSION": "set-by-ci",
 				"MAIL_FROM": "no-reply@notify.claimsale.net",
 				"MAILER": "cloudflare",
+				"SALE_STORE": "local",
 				"SITE_URL": "https://claimsale.net",
 				"SENTRY_DSN": "",
 				"TCGCSV_BASE_URL": "https://tcgcsv.com",

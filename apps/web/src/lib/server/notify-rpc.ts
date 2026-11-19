@@ -16,6 +16,7 @@ export interface NotifyRpc {
 	sendAllowlistInvites(input: { saleId: string; sellerId: string }): Promise<RpcResult<boolean>>;
 	listingsChanged(input: { saleId: string; sellerId: string }): Promise<RpcResult<boolean>>;
 	revokeLiveViewers(input: { saleId: string; sellerId: string }): Promise<RpcResult<boolean>>;
+	buyerChanged(input: { userId: string; sellerId?: string }): Promise<RpcResult<number>>;
 }
 
 class NotifyRpcError extends Error {
@@ -47,6 +48,17 @@ export const requestAllowlistInvites = (engine: NotifyRpc, saleId: string, selle
  */
 export const refreshLiveListings = (engine: NotifyRpc, saleId: string, sellerId: string) =>
 	bestEffort("live refresh", () => engine.listingsChanged({ saleId, sellerId }));
+
+/**
+ * A buyer's standing changed (blocked or unblocked by `sellerId`, banned, unbanned, Pro granted
+ * or revoked): the sale engines that cached it read it again on the next claim.
+ *
+ * @spec SM-9-buyer-cache
+ */
+export const buyerStandingChanged = (engine: NotifyRpc, userId: string, sellerId?: string) =>
+	bestEffort("buyer standing", () =>
+		engine.buyerChanged(sellerId === undefined ? { userId } : { userId, sellerId }),
+	);
 
 /** A private sale's access changed: viewers other than the seller are disconnected (LIVE-access). */
 export const revokeLiveAccess = (engine: NotifyRpc, saleId: string, sellerId: string) =>

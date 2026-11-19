@@ -63,12 +63,15 @@ export const loadSaleContext = (
 				.bind(ids(refs.entryIds))
 				.all<{ id: string; user_id: string; kind: "claim" | "offer" }>(),
 			db
-				.prepare("SELECT id, title FROM items WHERE sale_id = ?1 AND id IN (SELECT value FROM json_each(?2))")
+				// By primary key: a sale_id filter first would read every item of the sale.
+				.prepare(
+					"SELECT i.id, i.title FROM json_each(?2) j JOIN items i ON i.id = j.value WHERE i.sale_id = ?1",
+				)
 				.bind(saleId, ids(refs.itemIds))
 				.all<{ id: string; title: string }>(),
 			db
 				.prepare(
-					"SELECT id, buyer_id, total_cents FROM invoices WHERE sale_id = ?1 AND id IN (SELECT value FROM json_each(?2))",
+					"SELECT i.id, i.buyer_id, i.total_cents FROM json_each(?2) j JOIN invoices i ON i.id = j.value WHERE i.sale_id = ?1",
 				)
 				.bind(saleId, ids(refs.invoiceIds))
 				.all<{ id: string; buyer_id: string; total_cents: number }>(),

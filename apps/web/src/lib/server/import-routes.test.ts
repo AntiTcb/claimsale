@@ -1,5 +1,6 @@
 import { createDb, eq, sql, type Db } from "@claimsale/db";
 import { items, sales } from "@claimsale/db/schema";
+import { Effect } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testD1 } from "../../../test/d1.ts";
 import { addUser } from "../../../test/fixtures.ts";
@@ -10,6 +11,12 @@ import type { SessionUser } from "./auth.ts";
 let database: Db;
 const searchCatalog = vi.fn<(input: unknown) => Promise<unknown>>();
 const applyImportBatch = vi.fn<(input: Record<string, unknown>) => Promise<unknown>>();
+const listingsChanged = vi.fn<(input: { saleId: string; sellerId: string }) => Promise<unknown>>(
+	async () => ({
+		ok: true,
+		value: true,
+	}),
+);
 let deletedKeys: string[] = [];
 const refuse = (code: string) =>
 	applyImportBatch.mockResolvedValue({ ok: true, value: { ok: false, error: { code, message: "No" } } });
@@ -21,6 +28,11 @@ vi.mock("#lib/server/context.ts", () => ({
 		},
 	}),
 	engineRpc: () => ({ searchCatalog, applyImportBatch }),
+	notifyRpc: () => ({ listingsChanged }),
+}));
+// The Worker runtime (tracing, error reports) needs workerd; the routes' effects run plainly here.
+vi.mock("#lib/server/runtime.ts", () => ({
+	runExit: (_name: string, effect: Effect.Effect<unknown>) => Effect.runPromiseExit(effect),
 }));
 
 const { createDraft } = await import("./sales.ts");
@@ -248,6 +260,8 @@ describe("bulk % of market and the default %", () => {
 		const a = await add("A");
 		const b = await add("B");
 		expect(await bulk(`${a}:975,${b}:850`)).toEqual({ action: "bulkPrice", updated: 2 });
+		// Drafts too: the sale's engine keeps its own copy of the items (SM-9-local-store).
+		expect(listingsChanged).toHaveBeenLastCalledWith({ saleId, sellerId: "u1" });
 		const prices = await database.select({ id: items.id, price: items.priceCents }).from(items).all();
 		expect(new Map(prices.map((p) => [p.id, p.price]))).toEqual(
 			new Map([

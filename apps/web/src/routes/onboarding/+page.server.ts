@@ -1,5 +1,6 @@
 import { validateAge, validateDisplayName, validateHandle } from "@claimsale/core";
 import { fail, redirect } from "@sveltejs/kit";
+import { dropSessionCache } from "#lib/server/auth.ts";
 import { db } from "#lib/server/context.ts";
 import { type FormErrors, field, fieldError } from "#lib/server/forms.ts";
 import { needsOnboarding, safeRedirect } from "#lib/server/onboarding.ts";
@@ -20,7 +21,7 @@ export const load: PageServerLoad = ({ locals, url }) => {
 };
 
 export const actions: Actions = {
-	default: async ({ request, locals }) => {
+	default: async ({ request, locals, cookies, url }) => {
 		if (!locals.user) redirect(303, "/login");
 		const data = await request.formData();
 		const values = {
@@ -52,6 +53,7 @@ export const actions: Actions = {
 				return fail(409, { values, errors: fieldError("handle", "That handle is taken") });
 			throw error;
 		}
+		dropSessionCache(url.origin, cookies);
 		return redirect(303, next);
 	},
 };

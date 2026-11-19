@@ -1,6 +1,6 @@
 import { fail, type RequestEvent } from "@sveltejs/kit";
 import { requireAdmin } from "#lib/server/admin.ts";
-import { db } from "#lib/server/context.ts";
+import { db, notifyRpc } from "#lib/server/context.ts";
 import {
 	decideWindowRequest,
 	pendingWindowRequests,
@@ -9,6 +9,8 @@ import {
 } from "#lib/server/decision-window.ts";
 import { field } from "#lib/server/forms.ts";
 import { banUser, findUsers, grantPro, revokePro, unbanUser, userDetail } from "#lib/server/moderation.ts";
+import { buyerStandingChanged } from "#lib/server/notify-rpc.ts";
+import { runExit } from "#lib/server/runtime.ts";
 import type { Actions, PageServerLoad } from "./$types";
 
 /** Find an account; ban or unban it; grant or revoke Pro; answer decision-window requests (ADMIN-ban, ADMIN-pro-grant, ADMIN-decision-window). */
@@ -36,12 +38,15 @@ async function act(
 		now: number,
 	) => Promise<{ ok: boolean; error?: { message: string } }>,
 	done: string,
+	/** The change affects whether the account can claim: tell the sale engines (SM-9-buyer-cache). */
+	standing = false,
 ) {
 	const admin = requireAdmin(event);
 	const data = await event.request.formData();
 	const userId = field(data, "userId");
 	const result = await run(admin.id, userId, data, Date.now());
 	if (!result.ok) return fail(400, { message: result.error?.message ?? "That didn't work." });
+	if (standing) await runExit("web.engine.buyer_changed", buyerStandingChanged(notifyRpc(), userId));
 	return { message: done };
 }
 
@@ -52,6 +57,7 @@ export const actions: Actions = {
 			event,
 			(adminId, userId, data, now) => banUser(db(), { userId, adminId, reason: field(data, "reason") }, now),
 			"Account banned; its sessions have ended.",
+			true,
 		),
 	/** @spec ADMIN-ban */
 	unban: (event) =>
@@ -59,6 +65,7 @@ export const actions: Actions = {
 			event,
 			(adminId, userId, _data, now) => unbanUser(db(), { userId, adminId }, now),
 			"Account unbanned.",
+			true,
 		),
 	/** @spec ADMIN-pro-grant */
 	grant: (event) =>
@@ -80,6 +87,7 @@ export const actions: Actions = {
 				);
 			},
 			"Pro granted.",
+			true,
 		),
 	/** @spec ADMIN-pro-grant */
 	revoke: (event) =>
@@ -88,6 +96,7 @@ export const actions: Actions = {
 			(adminId, userId, data, now) =>
 				revokePro(db(), { userId, adminId, planId: field(data, "planId") }, now),
 			"Grant revoked.",
+			true,
 		),
 	/** @spec ADMIN-decision-window */
 	approveWindow: (event) =>

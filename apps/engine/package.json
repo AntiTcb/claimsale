@@ -9,7 +9,7 @@
 		"dev": "wrangler dev --port 8788",
 		"cf-typegen": "wrangler types --strict-vars=false src/worker-configuration.d.ts",
 		"typecheck": "tsc --noEmit && tsc -p test --noEmit",
-		"test": "vitest run",
+		"test": "vitest run --project engine && vitest run --project engine-d1",
 		"db:migrate:local": "wrangler d1 migrations apply DB --local"
 	},
 	"dependencies": {
