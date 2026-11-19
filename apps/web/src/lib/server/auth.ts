@@ -44,7 +44,7 @@ export function sessionCacheCookieName(origin: string): string {
 }
 
 /**
- * Drops the cached session after a write to the user's own profile (handle, age, phone…),
+ * Drops the cached session after a write to the user's own profile (handle, age, Facebook…),
  * so the next request reads the user from D1 and caches the new values.
  *
  * @spec AUTH-session-cookie-cache
@@ -86,8 +86,6 @@ export function createAuth(deps: AuthDeps) {
 				ageAttestedAt: date,
 				fbProfileUrl: text,
 				country: text,
-				phoneE164: text,
-				phoneVerifiedAt: date,
 				// "admin" opens /admin (#lib/server/admin.ts); set with SQL only, never from a request.
 				role: text,
 			},

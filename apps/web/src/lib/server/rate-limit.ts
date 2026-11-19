@@ -4,7 +4,7 @@ import { rateLimits } from "@claimsale/db/schema";
 import { uuidv7 } from "uuidv7";
 
 /**
- * A fixed-window counter in D1 for limits Better Auth doesn't cover (phone codes).
+ * A fixed-window counter in D1 for limits Better Auth doesn't cover (reports).
  * It shares Better Auth's `rate_limits` table; our keys start with `cs:` so they
  * never collide with its `<ip><path>` keys. Here `last_request` is the start of
  * the current window. One upsert, so concurrent requests can't both slip under.

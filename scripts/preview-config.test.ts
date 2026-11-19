@@ -63,7 +63,8 @@ describe("preview-config", () => {
 	});
 
 	it("captures phone codes and uses Turnstile's test key in the pair, never staging's", () => {
-		expect(web["vars"]).toMatchObject({ SMS: "capture", TURNSTILE_SITE_KEY: "1x00000000000000000000AA" });
+		expect(web["vars"]).toMatchObject({ MAILER: "capture", TURNSTILE_SITE_KEY: "1x00000000000000000000AA" });
+		expect(web["vars"]).not.toHaveProperty("SMS");
 	});
 
 	it("keeps web's placement next to the database (TECH_STACK S42)", () => {

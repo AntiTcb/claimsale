@@ -8,8 +8,6 @@ import { FREE_ACTIVE_SALE_CAP, FREE_ITEM_CAP } from "./plans.ts";
  */
 export interface PlanLimits {
 	readonly tier: Tier;
-	/** D55: Pro sellers skip phone verification. */
-	readonly sellerPhoneRequired: boolean;
 	/** D29: Pro buyers skip email verification and sellers' new-account requirements. */
 	readonly buyerRequirementsApply: boolean;
 	/** D30; `null` for no cap. */
@@ -19,7 +17,6 @@ export interface PlanLimits {
 
 const FREE: PlanLimits = {
 	tier: "free",
-	sellerPhoneRequired: true,
 	buyerRequirementsApply: true,
 	activeSaleCap: FREE_ACTIVE_SALE_CAP,
 	itemCapPerSale: FREE_ITEM_CAP,
@@ -27,7 +24,6 @@ const FREE: PlanLimits = {
 
 const PRO: PlanLimits = {
 	tier: "pro",
-	sellerPhoneRequired: false,
 	buyerRequirementsApply: false,
 	activeSaleCap: null,
 	itemCapPerSale: null,

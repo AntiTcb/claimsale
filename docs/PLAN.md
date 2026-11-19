@@ -67,7 +67,7 @@ one giant post where every item is a photo and every claim is a comment.
 | D52 | Take-back requests are allowed until the buyer marks the invoice paid. | 2026-10-08 |
 | D53 | Buyers see a running total of their wins during a live sale. | 2026-10-08 |
 | D54 | Seller analytics: basic counts are free; detailed analytics are Pro. | 2026-10-08 |
-| D55 | **Sellers must be 18+ and verify email and phone. Pro sellers skip phone verification.** | 2026-10-08 |
+| D55 | **Sellers must be 18+ and verify email and phone. Pro sellers skip phone verification.** *(Phone part paused by D70.)* | 2026-10-08 |
 | D56 | Browse and search include public sales only (not unlisted). | 2026-10-08 |
 | D57 | **Import/export tools ship at launch:** bulk import of sale data, export of sales and buyer/order info, and re-import of shipping tracking numbers. See section 3c. | 2026-10-08 |
 | D59 | **TCG-focused platform.** ClaimSale is for trading card games only (Yu-Gi-Oh, Pokémon, Magic: The Gathering, Riftbound and other TCGs): singles, graded cards, sealed product, TCG accessories, and lots. **Game** is a first-class concept, and items link to a shared **card and product catalog**. No general-purpose categories. See "TCG catalog and item model" in section 3. | 2026-10-08 |
@@ -82,6 +82,7 @@ one giant post where every item is a photo and every claim is a comment.
 | D67 | **Invoice details confirmed.** "I've paid" always needs one of the buyer's saved addresses, local pickup included; the invoice keeps a snapshot of it (`SM-6-address-snapshot`). Invoice numbers are shown as `CS-<n>`, on invoices and in tracking imports and exports. | 2026-11-17 |
 | D68 | **Control room details confirmed.** A seller is flagged after **3 overturned buyer-fault rescinds in 30 days** (older ones stop counting). Contests are 10 to 2,000 characters. A Pro seller's decision window is capped at **7 days**; they can ask an admin to approve a longer cap, up to 30 days. Suspected-fraud rescinds go straight to admin review, with no buyer contest. Admins can see account emails. Sellers **can't turn off** the verified-email requirement (D20 always applies). | 2026-11-17 |
 | D69 | **Unlisted sales alert only the people involved:** their buyers and seller get claim, invoice and rescind notifications as usual, but followers and want-list matches are never told about them (only public sales are announced). | 2026-11-18 |
+| D70 | **No SMS for now: phone verification is out.** Twilio Verify and the phone verification flow are removed from the code; selling needs **18+ and a verified email** for every seller, free or Pro (D55's phone part is paused). The `users.phone_e164` and `phone_verified_at` columns stay (expand/contract); dropping them would be a later contract migration. Revisit before phone verification returns. | 2026-11-19 |
 
 The detailed behavior spec for claims, offers, take-backs and invoices lives in
 [`STATE_MACHINES.md`](./STATE_MACHINES.md).
@@ -372,7 +373,6 @@ The options:
 | **Seller:** rescind and pass to the next backup | ✓ | ✓ |
 | **Seller:** private sales (password / allowlist) | — (unlisted only) | ✓ |
 | **Seller:** Discord webhooks | — | ✓ |
-| **Seller:** phone verification to publish | Required | Skipped |
 | **Seller:** analytics | Basic counts | Detailed |
 | **Buyer:** rescind own claim without approval | — | ✓ until the invoice is sent, 5/month |
 | **Buyer:** skip email verification / new-account requirements | — | ✓ |
@@ -508,7 +508,7 @@ themselves from strangers.
 - **When reviewing a claimant,** the seller sees their record at a glance
   ("12 completed, 1 non-pay, member since 2026").
 - **Per-sale buyer requirements** (optional): a minimum number of completed
-  purchases, a minimum account age, or a verified phone. This mirrors "no
+  purchases or a minimum account age. This mirrors "no
   zero-feedback buyers" rules in FB groups.
 
 ## 4. Features by phase
@@ -571,7 +571,7 @@ themselves from strangers.
 | Images | **R2** for originals + **Cloudflare Images transformations** for resizing | Thumbnails are generated on the fly from URL params and cached at the edge. |
 | Realtime | **Durable Objects** (one per sale) using the WebSocket Hibernation API | Used to push updates. See the concurrency notes below. |
 | Background jobs | **Queues** (notification fan-out) + **DO alarms** / **cron triggers** | Alarms handle go-live, close, offer expiry and payment deadlines. |
-| Auth | **Better Auth** with a D1 / Drizzle adapter | Email + password, magic link, Discord; phone OTP via Twilio Verify. Sessions are stored in D1. |
+| Auth | **Better Auth** with a D1 / Drizzle adapter | Email + password, magic link, Discord (no phone OTP for now, D70). Sessions are stored in D1. |
 | Email | **Cloudflare Email Service** (Email Sending, public beta) via the `send_email` binding | Transactional only, Svelte templates. See TECH_STACK S28. |
 | Bot protection | **Turnstile** on sign-up, plus the Workers **Rate Limiting** binding on claim and offer endpoints | |
 | Styling | Tailwind CSS v4 + a headless component library (bits-ui / shadcn-svelte) | |
@@ -627,11 +627,9 @@ Details are in [`STATE_MACHINES.md` section 9](./STATE_MACHINES.md#9-write-path-
   Display names are not unique, so show the avatar plus the profile link.
 - **Buyers:** a verified email is required before claiming (Pro buyers skip it, D29),
   and buyers must be 13+ (D38).
-- **Sellers (D55):** must attest they are 18+ and verify both email and phone before
-  publishing a sale. **Pro sellers skip phone verification.** Their paid
-  subscription card is the identity signal.
-- **Phone numbers** are stored in E.164 format, are unique per account (one
-  number can't verify many seller accounts), and are never shown publicly.
+- **Sellers (D55, D70):** must attest they are 18+ and verify their email before
+  publishing a sale. Phone verification is paused (D70): no SMS provider for now.
+  The `users.phone_e164` / `phone_verified_at` columns stay for when it returns.
 
 ### Scheduled work
 - Each live or scheduled sale's DO sets an **alarm** for its next event: go-live,
@@ -846,8 +844,8 @@ None. Everything is decided through D69. **Before the pilot sale** (not blocking
    spec IDs, unit tests and property tests. No UI yet.
    *Built 2026-11-13 in `packages/core` (sections 2–8; clarifications in STATE_MACHINES 9a).
    The write-path rules (`SM-9-*`) and audit replay come with the engine in milestone 5.*
-3. **Auth:** Better Auth (email + password, magic link, Discord), email and phone
-   verification, age attestation, profiles and handles.
+3. **Auth:** Better Auth (email + password, magic link, Discord), email verification
+   (phone verification was built, then removed by D70), age attestation, profiles and handles.
    *First slice built 2026-11-13 (TECH_STACK S40): sign-up with handle and age, email
    verification, password and magic-link sign-in, password reset, Discord (when configured),
    onboarding, settings and public profiles. Next slice: phone verification (Twilio), Turnstile,

@@ -44,10 +44,7 @@ export function isApiError(error: unknown): error is APIError {
 
 /** Field errors for the account forms; `form` is the message for the whole form. */
 export type FormErrors = Partial<
-	Record<
-		"form" | "displayName" | "handle" | "email" | "password" | "age" | "fbProfileUrl" | "phone" | "code",
-		string
-	>
+	Record<"form" | "displayName" | "handle" | "email" | "password" | "age" | "fbProfileUrl", string>
 >;
 
 export const formError = (message: string): FormErrors => ({ form: message });

@@ -4,11 +4,9 @@
 	interface Props {
 		/** From `sellerReadiness()`: what's missing, in order. */
 		blockers: readonly SellerBlocker[];
-		/** Pro sellers skip phone verification (D55); the list says so. */
-		pro: boolean;
 	}
 
-	let { blockers, pro }: Props = $props();
+	let { blockers }: Props = $props();
 
 	const steps = $derived([
 		{
@@ -23,16 +21,6 @@
 			fix: "Open the link we emailed you, or send a new one.",
 			href: "/me/settings",
 		},
-		...(pro
-			? []
-			: [
-					{
-						key: "phone" as const,
-						label: "Verified mobile number",
-						fix: "We text you a code. Your number is never shown to anyone.",
-						href: "/me/settings#phone",
-					},
-				]),
 	]);
 </script>
 
@@ -61,7 +49,4 @@
 			</li>
 		{/each}
 	</ul>
-	{#if pro}
-		<p class="text-sm text-zinc-600 dark:text-zinc-300">Pro sellers don't need to verify a phone.</p>
-	{/if}
 </section>

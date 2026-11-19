@@ -8,7 +8,6 @@ describe("plan limits", () => {
 		for (const tier of [undefined, null, "", "free", "PRO", "enterprise", 1]) {
 			expect(planLimits(tier)).toMatchObject({
 				tier: "free",
-				sellerPhoneRequired: true,
 				buyerRequirementsApply: true,
 				activeSaleCap: FREE_ACTIVE_SALE_CAP,
 				itemCapPerSale: FREE_ITEM_CAP,
@@ -16,7 +15,6 @@ describe("plan limits", () => {
 		}
 		expect(planLimits("pro")).toEqual({
 			tier: "pro",
-			sellerPhoneRequired: false,
 			buyerRequirementsApply: false,
 			activeSaleCap: null,
 			itemCapPerSale: null,

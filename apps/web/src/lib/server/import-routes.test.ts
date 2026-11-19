@@ -53,7 +53,6 @@ const user = (id: string, overrides: Partial<SessionUser> = {}): SessionUser => 
 	updatedAt: new Date("2026-11-01T00:00:00Z"),
 	emailVerified: true,
 	ageAttested: "18+",
-	phoneVerifiedAt: new Date("2026-11-14T00:00:00Z"),
 	...overrides,
 });
 
@@ -209,7 +208,7 @@ describe("import endpoints", () => {
 
 	it("[TCG-market-placeholder] market prices go only to the seller of the sale", async () => {
 		expect((await marketGet(null)).status).toBe(401);
-		expect((await marketGet(user("u2", { phoneVerifiedAt: null }))).status).toBe(403);
+		expect((await marketGet(user("u2", { emailVerified: false }))).status).toBe(403);
 		expect((await marketGet(user("u2"))).status).toBe(404); // u2 isn't this sale's seller
 		expect((await marketGet(user("u1"), undefined, "abc")).status).toBe(400);
 		const own = await marketGet(user("u1"));

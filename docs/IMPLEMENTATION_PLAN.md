@@ -13,7 +13,7 @@
 | 0. Foundations (monorepo, CI, previews, staging/prod) | Done |
 | 1. Observability spike (T28, S38) | Done; Sentry check waits on owner steps (TECH_STACK §11) |
 | 2. Domain core (`packages/core`, SM-2…SM-8 pure) | Done |
-| 3. Auth | Done: Better Auth (#8), phone OTP, Turnstile, seller requirements (WS-D, #14) |
+| 3. Auth | Done: Better Auth (#8), Turnstile, seller requirements (WS-D, #14); phone OTP removed (D70) |
 | 4. Sales and items | Done: WS-A (#13), WS-B (#15), item import WS-G (#24) |
 | 4b. TCG catalog + photo authenticity | Done: WS-C (#16), WS-F1 (#17), WS-F2 (#23) |
 | 5. Engine (SaleEngine DO write path) | Done: WS-E (#22); the staging load test missed its target (2026-11-18), so WS-N moves each sale into its engine's SQLite |
@@ -103,6 +103,8 @@ All pure functions in `packages/core` (no I/O), so it can start now.
   `tier` field read through one `entitlements(user)` function to swap later.
 - **Done:** a new seller is blocked at publish until verified; E2E for phone OTP in
   capture mode.
+- **Later (2026-11-19, D70):** phone OTP and the phone seller requirement were removed; selling
+  needs 18+ and a verified email.
 
 ### WS-E · The engine write path (M5)
 Needs WS-A merged (tables).
@@ -506,6 +508,6 @@ Waves 1–3 are merged (status in §1).
 
 ## 4. Owner steps that gate later waves
 - TCGCSV terms and attribution check (before WS-C ships to staging).
-- Twilio Verify account and Turnstile site keys into Infisical (WS-D on staging).
+- Turnstile site keys into Infisical (WS-D on staging). (No Twilio: D70.)
 - ~~`claimsale.net` + `notify.claimsale.net` in Email Service~~ Done 2026-11-18 (PILOT_CHECKLIST §1).
 - The remaining TECH_STACK §11 checklist items (Sentry, Access).

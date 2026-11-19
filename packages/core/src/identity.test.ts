@@ -134,14 +134,12 @@ describe("buyer requirements (D20, D29)", () => {
 	});
 });
 
-describe("seller requirements (D55)", () => {
-	it("[AUTH-seller-requirements] needs 18+, a verified email and, unless Pro, a verified phone", () => {
-		const ready = { ageAttested: "18+" as const, emailVerified: true, phoneVerified: true, pro: false };
+describe("seller requirements (D55, D70)", () => {
+	it("[AUTH-seller-requirements] needs 18+ and a verified email, and nothing else", () => {
+		const ready = { ageAttested: "18+" as const, emailVerified: true };
 		expect(sellerBlockers(ready)).toEqual([]);
-		expect(sellerBlockers({ ...ready, phoneVerified: false, pro: true })).toEqual([]);
-		expect(
-			sellerBlockers({ ageAttested: "13+", emailVerified: false, phoneVerified: false, pro: false }),
-		).toEqual(["age", "email", "phone"]);
+		expect(sellerBlockers({ ageAttested: "13+", emailVerified: false })).toEqual(["age", "email"]);
 		expect(sellerBlockers({ ...ready, ageAttested: null })).toEqual(["age"]);
+		expect(sellerBlockers({ ...ready, emailVerified: false })).toEqual(["email"]);
 	});
 });

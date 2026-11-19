@@ -65,19 +65,6 @@ export async function updateProfile(
 		.where(eq(users.id, userId));
 }
 
-/**
- * The verified phone, read from D1 rather than the session: after a form action
- * verifies it, `locals.user` (loaded before the action) is stale.
- */
-export async function verifiedPhone(db: Db, userId: string): Promise<string | null> {
-	const row = await db
-		.select({ e164: users.phoneE164, at: users.phoneVerifiedAt })
-		.from(users)
-		.where(eq(users.id, userId))
-		.get();
-	return row?.e164 && row.at ? row.e164 : null;
-}
-
 /** SQLite's unique-constraint error, e.g. two people taking the same handle at once. */
 export function isUniqueViolation(error: unknown): boolean {
 	const cause = error instanceof Error && error.cause instanceof Error ? error.cause.message : "";

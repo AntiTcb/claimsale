@@ -95,57 +95,13 @@ export async function waitForTurnstile(page: Page): Promise<void> {
 	await expect(page.locator('input[name="cf-turnstile-response"]')).not.toHaveValue("", { timeout: 15_000 });
 }
 
-/** Whether captured phone codes can be read here (local, test and isolated preview pairs only). */
-export async function smsCaptureAvailable(request: APIRequestContext): Promise<boolean> {
-	const res = await request.get("/api/test/sms?to=%2B12025550100");
-	return res.status() === 200;
-}
-
-const digit = (min: number) => String(min + Math.floor(Math.random() * (10 - min)));
-
-/** A random, valid North American number, so parallel tests and reruns never share one. */
-export function newPhone(): { e164: string; typed: string; last4: string } {
-	const area = digit(2) + digit(0) + digit(0);
-	const exchange = digit(2) + digit(0) + digit(0);
-	const line = digit(0) + digit(0) + digit(0) + digit(0);
-	return { e164: `+1${area}${exchange}${line}`, typed: `(${area}) ${exchange}-${line}`, last4: line };
-}
-
 /**
- * Makes a signed-in 18+ account ready to sell (D55): verifies its email through the
- * captured outbox and a fresh phone through captured SMS codes.
+ * Makes a signed-in 18+ account ready to sell (D55, D70): verifies its email through the
+ * captured outbox. Selling needs no phone (D70).
  */
 export async function verifySeller(page: Page, email: string): Promise<void> {
-	const request = page.request;
-	await page.goto(await linkFromEmail(request, email, "Confirm your email"));
+	await page.goto(await linkFromEmail(page.request, email, "Confirm your email"));
 	await waitForRouter(page);
-	const phone = newPhone();
-	await page.goto("/me/settings");
-	// Same WebKit race as waitForWelcome: until the router has started and the page's startup
-	// requests are done, WebKit can reload the document, wiping the number typed into it.
-	await waitForRouter(page);
-	await page.waitForLoadState("networkidle");
-	await page.getByLabel("Mobile number").fill(phone.e164);
-	await page.getByRole("button", { name: "Text me a code" }).click();
-	await page.getByLabel("Code").fill(await codeFromSms(request, phone.e164));
-	await page.getByRole("button", { name: "Verify" }).click();
-	await expect(page.getByRole("status")).toHaveText("Your phone number is verified.");
-}
-
-/** The latest captured code for a number. */
-export async function codeFromSms(request: APIRequestContext, e164: string): Promise<string> {
-	let code = "";
-	await expect
-		.poll(
-			async () => {
-				const res = await request.get(`/api/test/sms?to=${encodeURIComponent(e164)}`);
-				code = ((await res.json()) as { code?: string } | null)?.code ?? "";
-				return code;
-			},
-			{ message: `code texted to ${e164}`, timeout: 10_000 },
-		)
-		.not.toBe("");
-	return code;
 }
 
 export async function signOut(page: Page): Promise<void> {

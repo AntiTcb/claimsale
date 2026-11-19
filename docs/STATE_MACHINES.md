@@ -540,9 +540,9 @@ IDs stay in the table, marked ~~struck~~.
 | `TCG-market-pct` | % buttons compute price = market × pct, rounded down ($0.05 under $5, $0.25 from $5), never below $0.05; bulk apply is previewed first | PLAN 3, D64 |
 | `IMG-timestamp-required` | Sellers with fewer than 5 completed sales can't publish a sale without an approved, new timestamp photo; "Timestamped" badge when present | PLAN 3 (Photo authenticity), D66 |
 | `IMG-public-approved` | Buyers and visitors only ever see `approved` photos; pending, held and rejected photos are visible to their seller and admins only | PLAN 3 (Photo authenticity), WS-F2 |
-| `AUTH-seller-requirements` | Selling needs an 18+ attestation, a verified email and, unless Pro, a verified phone; the seller is shown what's missing | PLAN 5 (Auth and identity), D55 |
-| `AUTH-phone-e164` | Phone numbers are stored in E.164, verified by a one-time code, unique per account, and never shown publicly (masked for the owner) | PLAN 5 (Auth and identity), D55 |
-| `AUTH-phone-otp-limit` | Phone code sends are limited per account and per number, and code checks per account | PLAN 5 (Auth and identity), TECH_STACK S10 |
+| `AUTH-seller-requirements` | Selling needs an 18+ attestation and a verified email, for every seller (no phone, D70); the seller is shown what's missing | PLAN 5 (Auth and identity), D55, D70 |
+| ~~`AUTH-phone-e164`~~ | *Retired: phone verification removed (D70)* | — |
+| ~~`AUTH-phone-otp-limit`~~ | *Retired: phone verification removed (D70)* | — |
 | `AUTH-signup-captcha` | Email sign-up, through the form or the API, needs a passing Turnstile check | TECH_STACK S41 |
 | `SM-2-visibility` | Drafts are seen only by their seller; public and unlisted sales by anyone with the link; private sales by the seller, a browser that entered the password, or a verified allowlisted email. Only public sales are listed or indexed (unlisted and private are `noindex`) | 2, D5, D56 |
 | `SM-2-private-pro` | Private visibility (password / allowlist) is Pro only; free sellers choose public or unlisted | 2, D31 |
@@ -586,5 +586,5 @@ IDs stay in the table, marked ~~struck~~.
 | `SM-9-read-your-writes` | Claims, offers, withdrawals and counter answers return once the engine has them; every other command returns only after D1 has its writes | 9 |
 | `SM-9-buyer-cache` | The engine reads a buyer's standing (verified, account age, blocked, banned, Pro) from D1 at most every 30 s per sale, or again at once after a block, unblock, ban or Pro change; past 30 s an old copy that lets the buyer claim is served while one read runs in the background, one that refuses them never is | 9, D22 |
 | `SM-9-claim-access-cache` | The claim and entry-action endpoints check a public or unlisted sale against a copy at most 5 s old; private sales are read every time; the engine still refuses a sale that isn't live | 9, D5 |
-| `AUTH-session-cookie-cache` | A session and its user are cached in a signed cookie for at most 60 s; the user's own profile writes (onboarding, settings, phone) drop it, so the next request reads D1 | TECH_STACK S40 |
+| `AUTH-session-cookie-cache` | A session and its user are cached in a signed cookie for at most 60 s; the user's own profile writes (onboarding, settings) drop it, so the next request reads D1 | TECH_STACK S40 |
 

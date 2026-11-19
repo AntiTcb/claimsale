@@ -168,7 +168,7 @@ answers its own "OK to proceed?" with yes. It prints a bookmark that undoes the 
       ones (TECH_STACK S43). Include that step in the staging drill.
 
 ## 6. Smoke test before the pilot sale
-- [ ] On staging: sign up a seller and a buyer, verify email and phone, schedule a public sale
+- [ ] On staging: sign up a seller and a buyer, verify their emails (no phone, D70), schedule a public sale
       with photos, find it on `/browse`, `/g/<game>` and search, claim at go-live, close,
       invoice, mark paid and shipped (the E2E specs cover each step locally).
 - [ ] The seller's "Copy as text" output pastes cleanly into a Facebook post.
