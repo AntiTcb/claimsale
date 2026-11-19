@@ -6,7 +6,7 @@
 //   k6 run load/claim-rush.js \
 //     -e BASE_URL=https://staging.claimsale.net \
 //     -e SALE_ID=<a live staging sale> -e ITEM_IDS=<id1,id2,...> \
-//     -e SESSIONS=./load/sessions.json \
+//     -e SESSIONS=./load/sessions.json -e WARM_PATH=/s/<the sale's slug> \
 //     -e CF_ACCESS_CLIENT_ID=... -e CF_ACCESS_CLIENT_SECRET=...
 //
 // Setup, by hand on staging:
@@ -96,7 +96,9 @@ export function setup() {
 		const responses = http.batch(
 			chunk.map((cookie) => [
 				"GET",
-				`${BASE_URL}/api/auth/get-session`,
+				// The sale page, as buyers open it before go-live (Better Auth's own endpoints are
+				// limited to 100 requests a minute per address, so they can't warm 200 buyers).
+				`${BASE_URL}${__ENV.WARM_PATH || "/"}`,
 				null,
 				{ headers: headers(cookie), jar: new http.CookieJar(), tags: { name: "warm_up" } },
 			]),
