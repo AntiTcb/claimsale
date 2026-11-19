@@ -75,7 +75,23 @@ per-buyer rate limit) and an Access service token.
           walked every item of the sale (about 400 rows per call).
       - **Fixed since, not yet measured:** expired copies are served while one read runs in
         the background, and the consumer's lookups use the primary key (`CROSS JOIN`).
-- [ ] Re-run 200/s on a fresh sale after those fixes deploy, then once more on staging after merge.
+- [x] Re-run 200/s on a fresh sale after those fixes deploy (2026-11-19, `c2fedf4`, a fresh
+      120-item sale with 200 new buyers, 100/s then 200/s). **Every claim was handled and no
+      errors were logged; the server side is within target:**
+
+      | Rate | Handled | p95 (k6) | p95, web Worker | p95, engine RPC |
+      |---|---|---|---|---|
+      | 100/s | 100% | 388 ms | 224 ms | 117 ms |
+      | 200/s | 100% | 451 ms | 260 ms | 186 ms |
+
+      - **The gap between k6 and the Worker** is the network between the test machine and
+        the edge (Access included).
+      - **Half the warm-ups were refused:** Better Auth's limit of 100 requests a minute on
+        `/api/auth/*` turned away about 100 of the 200 warm-up requests. Those buyers' claims
+        read their session from D1, and still passed. A real buyer's cache comes from loading
+        a page, which isn't rate-limited.
+- [ ] Run it once more on staging after merge (from a machine close to the edge, to judge the
+      300 ms target end to end).
 
 ## 4. Observability (owner for the Sentry account)
 - [ ] TECH_STACK §11 Sentry items done: project DSN in Infisical, the `sentry-traces` and
