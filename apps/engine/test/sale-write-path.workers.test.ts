@@ -1,3 +1,5 @@
+import { runInDurableObject } from "cloudflare:test";
+import { env } from "cloudflare:workers";
 import { type Entry, type Invoice } from "@claimsale/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { KeyedLocks } from "../src/sale/locks.ts";
@@ -6,6 +8,7 @@ import {
 	addUser,
 	auditOf,
 	claim,
+	d1Storage,
 	db,
 	engine,
 	entriesOf,
@@ -16,6 +19,7 @@ import {
 	offer,
 	outcome,
 	rejection,
+	stubFor,
 	uid,
 	value,
 } from "./sale-fixtures.ts";
@@ -26,6 +30,21 @@ beforeEach(() => {
 });
 afterEach(() => {
 	for (const spy of quiet) spy.mockRestore();
+});
+
+it("[SM-9-local-store] keeps the sale in the engine's SQLite only with the local store", async () => {
+	const sale = await makeSale();
+	value(await claim(sale, await addUser()));
+	const tables = await runInDurableObject(stubFor(sale.saleId), (_i, state) =>
+		state.storage.sql
+			.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'")
+			.toArray()
+			.map((r) => r.name),
+	);
+	const local = env.SALE_STORE !== "d1";
+	expect(["items", "entries", "invoices", "_outbox"].map((t) => tables.includes(t))).toEqual(
+		Array.from({ length: 4 }, () => local),
+	);
 });
 
 describe("the claim race", () => {
@@ -67,8 +86,9 @@ describe("the claim race", () => {
 		const sale = await makeSale();
 		const buyer = await addUser();
 		const now = Date.now();
+		// The version check itself, on D1 (the local store has a single writer, the engine).
 		const loaded = await loadSaleAndItems(db, sale.saleId, sale.itemIds, now);
-		const work = new Work(db, loaded.sale!, now);
+		const work = new Work(d1Storage(), loaded.sale!, now);
 		work.addItems(loaded.items);
 		const item = work.item(sale.itemIds[0]!)!;
 		const entry: Entry = {

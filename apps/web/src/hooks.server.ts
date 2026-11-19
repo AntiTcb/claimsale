@@ -1,6 +1,7 @@
 import { redirect } from "@sveltejs/kit";
 import type { Handle, HandleServerError } from "@sveltejs/kit/hooks";
 import { auth } from "#lib/server/context.ts";
+import { forwardCookies } from "#lib/server/cookies.ts";
 import { isOnboardingExempt, needsOnboarding } from "#lib/server/onboarding.ts";
 import { activeTraceIds, reportError } from "#lib/server/runtime.ts";
 
@@ -16,7 +17,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.session = null;
 	const path = event.url.pathname;
 	if (!SESSIONLESS.some((prefix) => path.startsWith(prefix))) {
-		const current = await auth(event.url.origin).api.getSession({ headers: event.request.headers });
+		// With the cookie cache on, a read from D1 (no cache yet, or an expired one) comes
+		// back with a fresh cache cookie to send on (AUTH-session-cookie-cache).
+		const { headers, response: current } = await auth(event.url.origin).api.getSession({
+			headers: event.request.headers,
+			returnHeaders: true,
+		});
+		forwardCookies(headers, event.cookies);
 		if (current) {
 			event.locals.user = current.user;
 			event.locals.session = { id: current.session.id, expiresAt: current.session.expiresAt };

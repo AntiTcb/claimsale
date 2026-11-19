@@ -25,6 +25,11 @@ export interface EngineEnv {
 	 * `cloudflare` sends it. Anything else fails closed to `cloudflare` (TECH_STACK §10, S40).
 	 */
 	readonly MAILER: string;
+	/**
+	 * Where a sale's own rows live (WS-N): "local" (the SaleEngine's SQLite, D1 follows through
+	 * an outbox) or "d1" (the rollback switch). Anything else means "local".
+	 */
+	readonly SALE_STORE: string;
 	/** The web app's origin for links in email, e.g. `https://claimsale.net`; empty → site-relative links. */
 	readonly SITE_URL: string;
 	/** Sentry DSN for error reports; empty disables reporting. A DSN is public by design. */

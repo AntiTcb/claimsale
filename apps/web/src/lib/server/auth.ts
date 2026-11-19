@@ -1,6 +1,7 @@
 import { PASSWORD_MAX, PASSWORD_MIN } from "@claimsale/core";
 import { eq, type Db } from "@claimsale/db";
 import { authAccounts, rateLimits, sessions, users, verifications } from "@claimsale/db/schema";
+import type { Cookies } from "@sveltejs/kit";
 import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -30,6 +31,26 @@ export interface AuthDeps {
 	 * one address, so the per-address sign-up limit is raised there. Never on shared data.
 	 */
 	readonly throwawayData?: boolean;
+}
+
+/** How long a session's cookie copy is trusted before D1 is read again. */
+export const SESSION_CACHE_SECONDS = 60;
+
+const COOKIE_PREFIX = "cs";
+
+/** The cookie holding Better Auth's cached session (`session.cookieCache`). */
+export function sessionCacheCookieName(origin: string): string {
+	return `${origin.startsWith("https://") ? "__Secure-" : ""}${COOKIE_PREFIX}.session_data`;
+}
+
+/**
+ * Drops the cached session after a write to the user's own profile (handle, age, phone…),
+ * so the next request reads the user from D1 and caches the new values.
+ *
+ * @spec AUTH-session-cookie-cache
+ */
+export function dropSessionCache(origin: string, cookies: Pick<Cookies, "delete">): void {
+	cookies.delete(sessionCacheCookieName(origin), { path: "/" });
 }
 
 /** Better Auth endpoints that need a Turnstile token in `x-captcha-response`. */
@@ -71,8 +92,16 @@ export function createAuth(deps: AuthDeps) {
 				role: text,
 			},
 		},
-		// No session cookie cache: handle and age are written straight to D1 after sign-up
-		// and onboarding, and a cached copy would be stale. One D1 read per page view.
+		/**
+		 * A signed copy of the session and user in a cookie for a minute, so most requests
+		 * (and every claim at a go-live rush) skip D1 (WS-N). Our own profile writes drop
+		 * the copy with `dropSessionCache`, so the next request reads D1 again.
+		 *
+		 * @spec AUTH-session-cookie-cache
+		 */
+		session: {
+			cookieCache: { enabled: true, maxAge: SESSION_CACHE_SECONDS },
+		},
 		account: {
 			accountLinking: { enabled: true, trustedProviders: ["discord"] },
 		},
@@ -143,7 +172,7 @@ export function createAuth(deps: AuthDeps) {
 			},
 		},
 		advanced: {
-			cookiePrefix: "cs",
+			cookiePrefix: COOKIE_PREFIX,
 			useSecureCookies: deps.origin.startsWith("https://"),
 			database: { generateId: () => uuidv7() },
 			// Workers see the client address in this header.

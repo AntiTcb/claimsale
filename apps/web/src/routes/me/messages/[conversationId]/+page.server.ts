@@ -11,7 +11,7 @@ import {
 	unblockBuyer,
 } from "#lib/server/messaging.ts";
 import { markConversationNotificationsRead } from "#lib/server/notifications.ts";
-import { notifyMessagePosted } from "#lib/server/notify-rpc.ts";
+import { buyerStandingChanged, notifyMessagePosted } from "#lib/server/notify-rpc.ts";
 import { runExit } from "#lib/server/runtime.ts";
 import { requireUser } from "#lib/server/sell.ts";
 import type { Actions, PageServerLoad, RequestEvent } from "./$types";
@@ -77,6 +77,10 @@ export const actions: Actions = {
 		const { user, conversation } = await conversationFor(event);
 		const blocked = await blockBuyer(db(), conversation, user.id, Date.now());
 		if (!blocked.ok) return fail(403, { action: "block" as const, error: blocked.error.message });
+		await runExit(
+			"web.engine.buyer_changed",
+			buyerStandingChanged(notifyRpc(), conversation.buyer.id, user.id),
+		);
 		return { action: "block" as const, done: true };
 	},
 
@@ -84,6 +88,10 @@ export const actions: Actions = {
 		const { user, conversation } = await conversationFor(event);
 		const unblocked = await unblockBuyer(db(), conversation, user.id);
 		if (!unblocked.ok) return fail(403, { action: "unblock" as const, error: unblocked.error.message });
+		await runExit(
+			"web.engine.buyer_changed",
+			buyerStandingChanged(notifyRpc(), conversation.buyer.id, user.id),
+		);
 		return { action: "unblock" as const, done: true };
 	},
 };

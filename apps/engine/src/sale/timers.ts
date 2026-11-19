@@ -8,9 +8,9 @@ import {
 	type InvoiceRow,
 	type ItemRow,
 	type RescindRow,
-	type SaleRow,
 } from "./rows.ts";
-import { entriesQuery, itemsQuery, saleQuery, toLoadedItems, toSaleRecord } from "./store.ts";
+import type { SaleStorage } from "./storage.ts";
+import { entriesQuery, itemsQuery, toLoadedItems } from "./store.ts";
 
 /**
  * Mutual-agreement rescinds of a sale still waiting for the buyer's answer (§4.3.1).
@@ -20,12 +20,16 @@ const AWAITING_MUTUAL = `r.reason_code = 'mutual_agreement' AND r.answered_at IS
 	AND (r.phase = 'awaiting_buyer' OR (r.phase IS NULL AND r.contested_at IS NULL AND r.resolved_at IS NULL))`;
 
 /**
- * Every pending timer of one sale (STATE_MACHINES §7), read from D1 in one round trip.
- * The alarm handler runs the due ones and re-arms at the earliest of the rest.
+ * Every pending timer of one sale (STATE_MACHINES §7), from the sale's store in one round
+ * trip (plus the sale row). The alarm handler runs the due ones and re-arms at the
+ * earliest of the rest.
  */
-export async function loadTimers(db: D1Database, saleId: string, now: Millis): Promise<Timer[]> {
-	const [sale, items, entries, invoices, lines, rescinds] = await db.batch([
-		saleQuery(db, saleId, now),
+export async function loadTimers(storage: SaleStorage, saleId: string, now: Millis): Promise<Timer[]> {
+	await storage.ready(saleId);
+	const record = await storage.loadSale(saleId, now, { fresh: true });
+	if (!record) return [];
+	const db = storage.local;
+	const [items, entries, invoices, lines, rescinds] = await db.batch([
 		itemsQuery(db, saleId, "all"),
 		entriesQuery(db, saleId, "all"),
 		db.prepare("SELECT * FROM invoices WHERE sale_id = ?1 AND status IN ('sent', 'shipped')").bind(saleId),
@@ -41,9 +45,6 @@ export async function loadTimers(db: D1Database, saleId: string, now: Millis): P
 			)
 			.bind(saleId),
 	]);
-	const saleRow = rowsOf<SaleRow>(sale)[0];
-	if (!saleRow || saleRow.status === "deleted") return [];
-	const record = toSaleRecord(saleRow);
 	const loaded = toLoadedItems(rowsOf<ItemRow>(items), rowsOf<EntryRow>(entries));
 	const lineRows = rowsOf<InvoiceLineRow>(lines);
 	return pendingTimers(

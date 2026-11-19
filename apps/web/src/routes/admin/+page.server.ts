@@ -37,6 +37,18 @@ export const actions: Actions = {
 	approve: (event) => review(event, "approved"),
 	/** @spec IMG-dup-review — an admin rejects a held photo (it counts toward IMG-repeat-offender). */
 	reject: (event) => review(event, "rejected"),
+	/**
+	 * After a D1 restore: every open sale's engine reads its sale from D1 again (TECH_STACK S43).
+	 *
+	 * @spec SM-9-hydrate
+	 */
+	rehydrateSales: async (event) => {
+		const admin = requireAdmin(event);
+		const result = await env.ENGINE.rehydrateSales({ adminId: admin.id });
+		if (!result.ok || result.value === null)
+			return fail(502, { message: "The sales weren't reloaded. Try again." });
+		return { message: `Reloaded ${result.value} ${result.value === 1 ? "sale" : "sales"} from D1.` };
+	},
 	/** @spec IMG-repeat-offender — the admin has looked at a flagged account. */
 	resolveFlag: async (event) => {
 		const admin = requireAdmin(event);

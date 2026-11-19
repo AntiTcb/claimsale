@@ -1,7 +1,7 @@
 import type { Db } from "@claimsale/db";
 import type { ItemCommandResult, Outcome, RpcResult } from "@claimsale/engine";
 import { accessFor, type AccessViewer } from "./sale-access.ts";
-import { findSaleById } from "./sales.ts";
+import { findSaleById, type PublicSale } from "./sales.ts";
 
 /**
  * Claims and offers from the web (`POST /api/sales/[saleId]/entries`). The web Worker
@@ -10,6 +10,67 @@ import { findSaleById } from "./sales.ts";
  */
 
 export type EntriesBinding = Pick<Env["ENGINE"], "placeEntry">;
+
+// ---------------------------------------------------------------------------
+// The sale lookup on the claim path (WS-N)
+
+type GateSale = Pick<
+	PublicSale,
+	"id" | "sellerId" | "status" | "visibility" | "hasPassword" | "allowlistEnabled" | "passwordHash"
+>;
+
+/** How long a claim endpoint trusts a public or unlisted sale it looked up. */
+export const SALE_GATE_TTL_MS = 5_000;
+
+/**
+ * The sale rows the claim and entry-action endpoints check access against, kept per
+ * isolate for a few seconds so a go-live rush doesn't read D1 for the same sale on
+ * every claim. Only public and unlisted sales are kept: a private sale is read every
+ * time, so a password change or an allowlist removal applies at once. A sale that
+ * stops being live meanwhile is still refused by the engine (`sale_not_live`).
+ *
+ * @spec SM-9-claim-access-cache
+ */
+export class SaleGateCache {
+	readonly #rows = new Map<string, { readonly sale: GateSale; readonly at: number }>();
+
+	constructor(readonly clock: () => number = Date.now) {}
+
+	async get(db: Db, saleId: string): Promise<GateSale | undefined> {
+		const now = this.clock();
+		const hit = this.#rows.get(saleId);
+		if (hit && now - hit.at < SALE_GATE_TTL_MS) return hit.sale;
+		const sale = await findSaleById(db, saleId);
+		if (sale && sale.visibility !== "private") {
+			if (this.#rows.size >= 1_000) this.#rows.clear();
+			this.#rows.set(saleId, { sale: gateOf(sale), at: now });
+		} else {
+			this.#rows.delete(saleId);
+		}
+		return sale && gateOf(sale);
+	}
+}
+
+const gateOf = (sale: GateSale): GateSale => ({
+	id: sale.id,
+	sellerId: sale.sellerId,
+	status: sale.status,
+	visibility: sale.visibility,
+	hasPassword: sale.hasPassword,
+	allowlistEnabled: sale.allowlistEnabled,
+	passwordHash: sale.passwordHash,
+});
+
+const isolateGates = new SaleGateCache();
+
+async function canEnter(
+	deps: { readonly db: Db; readonly secret: string; readonly gates?: SaleGateCache | undefined },
+	viewer: AccessViewer,
+	saleId: string,
+): Promise<boolean> {
+	const sale = await (deps.gates ?? isolateGates).get(deps.db, saleId);
+	return sale !== undefined && (await accessFor(deps.db, deps.secret, sale, viewer)) === "ok";
+}
 
 export interface PlaceEntryBody {
 	readonly itemId: string;
@@ -49,7 +110,12 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
 };
 
 export async function placeEntry(
-	deps: { readonly db: Db; readonly secret: string; readonly engine: EntriesBinding },
+	deps: {
+		readonly db: Db;
+		readonly secret: string;
+		readonly engine: EntriesBinding;
+		readonly gates?: SaleGateCache | undefined;
+	},
 	viewer: AccessViewer,
 	saleId: string,
 	body: unknown,
@@ -58,8 +124,7 @@ export async function placeEntry(
 	const input = parsePlaceEntry(body);
 	if (!input)
 		return { status: 400, body: { code: "invalid_input", message: "Send an item and a claim or an offer" } };
-	const sale = await findSaleById(deps.db, saleId);
-	if (!sale || (await accessFor(deps.db, deps.secret, sale, viewer)) !== "ok") {
+	if (!(await canEnter(deps, viewer, saleId))) {
 		return { status: 404, body: { code: "not_found", message: "No such sale" } };
 	}
 	const result = (await deps.engine.placeEntry({
@@ -125,7 +190,12 @@ export function parseEntryAction(body: unknown): EntryActionBody | undefined {
  * @spec SM-4.4-counter
  */
 export async function entryAction(
-	deps: { readonly db: Db; readonly secret: string; readonly engine: EntryActionsBinding },
+	deps: {
+		readonly db: Db;
+		readonly secret: string;
+		readonly engine: EntryActionsBinding;
+		readonly gates?: SaleGateCache | undefined;
+	},
 	viewer: AccessViewer,
 	saleId: string,
 	entryId: string,
@@ -135,8 +205,7 @@ export async function entryAction(
 	const input = parseEntryAction(body);
 	if (!input || entryId.length === 0 || entryId.length > 64)
 		return { status: 400, body: { code: "invalid_input", message: "Send an item and an action" } };
-	const sale = await findSaleById(deps.db, saleId);
-	if (!sale || (await accessFor(deps.db, deps.secret, sale, viewer)) !== "ok") {
+	if (!(await canEnter(deps, viewer, saleId))) {
 		return { status: 404, body: { code: "not_found", message: "No such sale" } };
 	}
 	const command = { saleId, itemId: input.itemId, entryId, buyerId: viewer.user.id };

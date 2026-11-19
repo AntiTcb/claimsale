@@ -104,3 +104,16 @@
 		</ul>
 	{/if}
 </section>
+
+<section class="mt-10" aria-labelledby="restore-heading">
+	<h2 id="restore-heading" class="text-lg font-semibold">After a database restore</h2>
+	<p class="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+		Each open sale keeps its own copy of its claims. After restoring D1, reload those copies from the restored
+		database. Pause live sales first.
+	</p>
+	<form method="POST" action="?/rehydrateSales" use:enhance class="mt-3">
+		<button type="submit" class="rounded-md border border-zinc-400 px-3 py-1 text-sm"
+			>Reload open sales from D1</button
+		>
+	</form>
+</section>

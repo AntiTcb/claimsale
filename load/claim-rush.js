@@ -1,7 +1,7 @@
 // Go-live claim rush (TESTING §1 "Load", STATE_MACHINES §9): 200 claims a second on one
 // sale, p95 under 300 ms, through the real path web → engine RPC → SaleEngine → D1.
 //
-// Run against staging only, on demand before the pilot (never in CI, never production):
+// Run against staging or a PR's isolated Worker pair, on demand (never in CI, never production):
 //
 //   k6 run load/claim-rush.js \
 //     -e BASE_URL=https://staging.claimsale.net \
@@ -16,6 +16,9 @@
 //   (20 per 10 s, SM-9-entry-rate-limit), so at 200 claims a second use at least 150
 //   buyers. The file holds live sessions: keep it out of git and delete it afterwards;
 // - a Cloudflare Access service token for staging (Access guards it).
+//
+// Before the rush, setup() opens a page as each buyer, as browsers would have (so their session
+// cache cookie is set); keep DURATION under that cookie's 60 s.
 //
 // Every buyer claims each item at most once; repeats answer 409 `already_entered`,
 // which still runs the whole engine path (lock, D1 read, transition) and counts.
@@ -35,8 +38,12 @@ if (!BASE_URL || !SALE_ID || ITEM_IDS.length === 0 || SESSIONS.length === 0) {
 	throw new Error("Set BASE_URL, SALE_ID, ITEM_IDS and SESSIONS (see the header of this file)");
 }
 // A guard against pointing it at production by mistake.
-if (!/^https?:\/\/(?:[^/]*staging[^/]*|localhost|127\.0\.0\.1)(?::\d+)?(?:\/|$)/.test(BASE_URL)) {
-	throw new Error("This load test only runs against staging (or a local stack)");
+if (
+	!/^https?:\/\/(?:[^/]*staging[^/]*|claimsale-web-pr-\d+\.[^/]+|localhost|127\.0\.0\.1)(?::\d+)?(?:\/|$)/.test(
+		BASE_URL,
+	)
+) {
+	throw new Error("This load test only runs against staging, a PR's Worker pair or a local stack");
 }
 
 const rateLimited = new Counter("claims_rate_limited");
@@ -73,15 +80,42 @@ const headers = (cookie) => ({
 		: {}),
 });
 
-export default function claimRush() {
+/** `name=value` of every cookie a response sets. */
+const setCookies = (response) =>
+	Object.values(response.cookies).flatMap((list) => list.map((c) => `${c.name}=${c.value}`));
+
+/**
+ * Each buyer opens the sale page before go-live, as a real buyer would: that request reads
+ * their session from D1 once and sets the session cache cookie (AUTH-session-cookie-cache,
+ * 60 s), which their claims then carry. Returns each buyer's full Cookie header.
+ */
+export function setup() {
+	const buyers = [];
+	for (let i = 0; i < SESSIONS.length; i += 50) {
+		const chunk = SESSIONS.slice(i, i + 50);
+		const responses = http.batch(
+			chunk.map((cookie) => [
+				"GET",
+				`${BASE_URL}/api/auth/get-session`,
+				null,
+				{ headers: headers(cookie), jar: new http.CookieJar(), tags: { name: "warm_up" } },
+			]),
+		);
+		responses.forEach((response, j) => buyers.push([chunk[j], ...setCookies(response)].join("; ")));
+	}
+	return buyers;
+}
+
+export default function claimRush(buyers) {
 	// Spread buyers and items so most requests are first claims, like a real go-live.
 	const n = __VU * 7919 + __ITER;
-	const cookie = SESSIONS[n % SESSIONS.length];
-	const itemId = ITEM_IDS[Math.floor(n / SESSIONS.length) % ITEM_IDS.length];
+	const cookie = buyers[n % buyers.length];
+	const itemId = ITEM_IDS[Math.floor(n / buyers.length) % ITEM_IDS.length];
 	const response = http.post(
 		`${BASE_URL}/api/sales/${SALE_ID}/entries`,
 		JSON.stringify({ itemId, kind: "claim" }),
-		{ headers: headers(cookie), tags: { name: "claim" } },
+		// Its own empty jar: VUs take turns with buyers, so a shared jar would mix their cookies.
+		{ headers: headers(cookie), jar: new http.CookieJar(), tags: { name: "claim" } },
 	);
 	if (response.status === 429) rateLimited.add(1);
 	handled.add(response.status === 201 || response.status === 409);

@@ -16,7 +16,7 @@
 | 3. Auth | Done: Better Auth (#8), phone OTP, Turnstile, seller requirements (WS-D, #14) |
 | 4. Sales and items | Done: WS-A (#13), WS-B (#15), item import WS-G (#24) |
 | 4b. TCG catalog + photo authenticity | Done: WS-C (#16), WS-F1 (#17), WS-F2 (#23) |
-| 5. Engine (SaleEngine DO write path) | Done: WS-E (#22); the k6 load test hasn't been run on staging |
+| 5. Engine (SaleEngine DO write path) | Done: WS-E (#22); the staging load test missed its target (2026-11-18), so WS-N moves each sale into its engine's SQLite |
 | 6. Live grid | Done: WS-H (#25); open items in its notes below |
 | 7. Seller control room + admin disputes | Done: WS-I (#27), with D68 |
 | 8. Invoices after close + exports + tracking import | Done: WS-J (#26), with D67 |
@@ -34,7 +34,7 @@ ones that matter before the pilot.
 - **Done in WS-M1:** want-list matching for items added or repriced after publishing;
   `@spec` tags for `IO-export-roundtrip` and `IMG-hash-robust`; dropping `import_rows`.
 - **Open questions:** WS-E's nonpayment attribution and the WS-F1 hash questions above.
-- **Not run yet:** the WS-E k6 load test on staging (p95 < 300 ms).
+- **Load test:** run on staging on 2026-11-18; it missed p95 < 300 ms at 200 claims/s (D1 overload). WS-N below.
 
 ## 2. Workstreams
 
@@ -260,6 +260,32 @@ After WS-L. Two PRs, like WS-L.
     follows one item on the sale's socket (`LiveGrid`'s `itemId` option).
   - Fix to M1: the editor's snapshot is marked `edited`, and the page refetches, so new
     titles, prices and photos show without a reload.
+
+### WS-N · Claims off D1 (2026-11-18)
+After the staging load test (PILOT_CHECKLIST §3): from 50 claims/s, D1 rate-limited the
+database. That is the trigger STATE_MACHINES §9 named, so the fallback was taken.
+- **Web hot path:**
+  - Better Auth's cookie cache (60 s, `AUTH-session-cookie-cache`). The user's own
+    profile writes drop it.
+  - The claim and entry-action endpoints keep a public or unlisted sale's row for 5 s
+    (`SM-9-claim-access-cache`).
+- **DO-local store** (`SM-9-local-store`, `-outbox`, `-hydrate`, `-read-your-writes`,
+  `-buyer-cache`):
+  - Each sale's items, entries, invoices, rescinds and take-backs live in its
+    SaleEngine's SQLite, with tables built from the Drizzle schema
+    (`@claimsale/db/local`).
+  - Triggers record writes in an outbox. Flushes write each changed row to D1 once, in
+    order, then queue the events.
+  - Claims and buyer entry actions don't wait for D1; every other command does.
+  - `liveSnapshot` reads the DO.
+  - The web Worker tells the engine about item edits (drafts too, and reorders) and
+    about block, ban and Pro changes (`buyerChanged`).
+  - `SALE_STORE = "d1"` is the rollback switch. The Workers suite runs once per store.
+- **Planned but left out:**
+  - The per-buyer invoice lock: with the store local, a win holds the sale-wide lock for
+    microseconds, not two D1 round trips.
+  - Events carrying titles for the notifications consumer: a flush now queues one
+    message instead of one per claim. Revisit if the next load test shows the consumer.
 
 ### After the pilot (PLAN Phase 2)
 Stripe Billing for Pro, merged invoices (D16), Discord webhooks, Q&A, web push, auto

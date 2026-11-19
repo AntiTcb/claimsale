@@ -1,6 +1,7 @@
 import { maskPhoneForOwner, validateDisplayName, validateFacebookUrl, validateHandle } from "@claimsale/core";
 import { fail, redirect } from "@sveltejs/kit";
 import { defaultMarketPercent, setDefaultMarketPercent } from "#lib/server/catalog.ts";
+import { dropSessionCache } from "#lib/server/auth.ts";
 import { auth, db, phoneVerifier } from "#lib/server/context.ts";
 import { type FormErrors, authErrorMessage, field, fieldError } from "#lib/server/forms.ts";
 import {
@@ -38,7 +39,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 };
 
 export const actions: Actions = {
-	profile: async ({ request, locals }) => {
+	profile: async ({ request, locals, cookies, url }) => {
 		if (!locals.user) redirect(303, "/login");
 		const data = await request.formData();
 		const values = {
@@ -74,6 +75,7 @@ export const actions: Actions = {
 				});
 			throw error;
 		}
+		dropSessionCache(url.origin, cookies);
 		return { action: "profile" as const, saved: true };
 	},
 
@@ -120,7 +122,7 @@ export const actions: Actions = {
 		return { action: "phone" as const, sentTo: result.masked };
 	},
 
-	phoneCheck: async ({ request, locals }) => {
+	phoneCheck: async ({ request, locals, cookies, url }) => {
 		if (!locals.user) redirect(303, "/login");
 		const data = await request.formData();
 		const result = await checkPhoneVerification({
@@ -133,6 +135,7 @@ export const actions: Actions = {
 		if (!result.ok) {
 			return fail(400, { action: "phone" as const, phone: "", errors: { [result.field]: result.message } });
 		}
+		dropSessionCache(url.origin, cookies);
 		return { action: "phone" as const, verified: result.masked };
 	},
 
