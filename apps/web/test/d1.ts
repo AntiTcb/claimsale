@@ -10,6 +10,9 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 
 const MIGRATIONS = join(import.meta.dirname, "../../../packages/db/migrations");
 
+/** D1 refuses a statement with more bound parameters than this (node:sqlite allows thousands). */
+export const D1_MAX_PARAMS = 100;
+
 function toInput(value: unknown): SQLInputValue {
 	if (value === undefined) return null;
 	if (typeof value === "boolean") return value ? 1 : 0;
@@ -30,7 +33,15 @@ export function testD1(): D1Database {
 	const statement = (sql: string, params: unknown[]) => {
 		const args = () => params.map(toInput);
 		const self = {
-			bind: (...values: unknown[]) => statement(sql, values),
+			bind: (...values: unknown[]) => {
+				// As D1 does: a list bound one parameter per value breaks past 100 values.
+				if (values.length > D1_MAX_PARAMS) {
+					throw new Error(
+						`D1_ERROR: too many SQL variables (${values.length} bound; D1 allows ${D1_MAX_PARAMS})`,
+					);
+				}
+				return statement(sql, values);
+			},
 			all: async () => ({ results: sqlite.prepare(sql).all(...args()), success: true, meta: {} }),
 			first: async (column?: string) => {
 				const row = sqlite.prepare(sql).get(...args()) as Record<string, unknown> | undefined;

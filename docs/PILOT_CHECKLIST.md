@@ -90,8 +90,32 @@ per-buyer rate limit) and an Access service token.
         `/api/auth/*` turned away about 100 of the 200 warm-up requests. Those buyers' claims
         read their session from D1, and still passed. A real buyer's cache comes from loading
         a page, which isn't rate-limited.
-- [ ] Run it once more on staging after merge (from a machine close to the edge, to judge the
-      300 ms target end to end).
+- [x] Run it once more on staging after merge (2026-11-19, `3874ad2`; a fresh 120-item sale with
+      200 new buyers; the same home connection). **The server side meets the target at 200/s;
+      what's left is the test client.**
+
+      | Run | Handled (k6) | p95 (k6) | p95, web Worker, claims | Errors logged |
+      |---|---|---|---|---|
+      | 50/s | 99.9% | 300 ms | — | none |
+      | 100/s | 100% | 319 ms | 233 ms | none |
+      | 200/s, half the buyers' sessions uncached | 99.5% | 3.29 s | 2.95 s | none |
+      | 200/s, every session warm | 95.7% | 1.38 s | **255 ms** | none |
+
+      - **Uncached sessions:** in the third run, Better Auth's limit of 100 requests a minute on
+        `/api/auth/*` refused half the warm-ups. Those claims read their session from D1 and
+        were slow. `setup()` now warms sessions through a page (`WARM_PATH`), as a browser
+        does.
+      - **The last run's failures never reached the Worker.** It answered every claim it got
+        (201 or 409). The 258 k6 failures were TCP resets of this one home connection, which
+        held hundreds of open connections (`wsarecv: forcibly closed by the remote host`). The
+        37 s maximum is the same.
+      - **To judge the target end to end:** run from a well-connected machine, or from several.
+- [x] Found by this run (not WS-N): the sale page failed with a 500 for a sale of about 100 or
+      more items, because `photosByItem` and other queries bound one parameter per ID and D1
+      allows 100 per statement. Pro sales have no item cap. Fixed: lists that grow with the data
+      go through `inList` / `notInList` (`@claimsale/db`, one JSON parameter). The web unit
+      tests' D1 now refuses more than 100 parameters, as D1 does, and `large-sale.test.ts` covers
+      a 120-item sale.
 
 ## 4. Observability (owner for the Sentry account)
 - [ ] TECH_STACK §11 Sentry items done: project DSN in Infisical, the `sentry-traces` and

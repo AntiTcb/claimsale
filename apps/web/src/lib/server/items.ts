@@ -9,7 +9,7 @@ import {
 	type SaleStatus,
 	type Tier,
 } from "@claimsale/core";
-import { and, asc, eq, inArray, sql, type Db } from "@claimsale/db";
+import { and, asc, eq, inList, sql, type Db } from "@claimsale/db";
 import { auditLog, entries, itemAttributes, itemImages, items, sales } from "@claimsale/db/schema";
 import { uuidv7 } from "uuidv7";
 import type { ItemFields } from "#lib/listing-input.ts";
@@ -84,7 +84,7 @@ export async function itemsWithEntries(db: Db, itemIds: readonly string[]): Prom
 	const rows = await db
 		.selectDistinct({ itemId: entries.itemId })
 		.from(entries)
-		.where(inArray(entries.itemId, [...itemIds]))
+		.where(inList(entries.itemId, [...itemIds]))
 		.all();
 	return new Set(rows.map((r) => r.itemId));
 }
@@ -251,7 +251,7 @@ export async function setPrices(
 	const own = await db
 		.select({ id: items.id })
 		.from(items)
-		.where(and(eq(items.saleId, saleId), inArray(items.id, ids)))
+		.where(and(eq(items.saleId, saleId), inList(items.id, ids)))
 		.all();
 	if (own.length !== ids.length) return notFound();
 	if ((await itemsWithEntries(db, ids)).size > 0) {
