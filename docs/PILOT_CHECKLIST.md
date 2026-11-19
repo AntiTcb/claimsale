@@ -137,11 +137,29 @@ pnpm --filter @claimsale/engine exec wrangler d1 time-travel info claimsale-stag
 # 2. Make a visible change on staging (e.g. rename a test sale), then restore
 pnpm --filter @claimsale/engine exec wrangler d1 time-travel restore claimsale-staging --env staging --bookmark=<bookmark>
 
-# 3. Check the change is gone, and that sign-in, a sale page and /api/health still work
+# 3. On /admin, press "Reload open sales from D1" (each open sale's engine reads it again)
+
+# 4. Check the change is gone, and that sign-in, a sale page and /api/health still work
 ```
 
-- [ ] Drill done on staging; record the date, how long the restore took, and anything
-      surprising here.
+`restore` has no `-y` flag: run it non-interactively (as above, from a script or CI) and it
+answers its own "OK to proceed?" with yes. It prints a bookmark that undoes the restore.
+
+- [x] Drill done on staging; record the date, how long the restore took, and anything
+      surprising here. **2026-11-19:**
+      - **Setup:** a live drill sale with two items and three buyers. Buyer 1 claimed item 1, then
+        the bookmark was taken. After it, buyer 2 claimed item 2 and the sale was renamed.
+      - **Restore:** 2.8 s end to end. D1 was back to one claim and the old title, with item 2
+        free.
+      - **Surprising, as expected:** the sale's engine still showed item 2 sold out after the
+        restore (the page's live snapshot read from the engine). A claim at that point would
+        have written the engine's stale rows back over the restore.
+      - **Reload:** **Reload open sales from D1** took 1.9 s for staging's 3 open sales. The
+        engine then matched D1, and buyer 2 won item 2 again with a new claim.
+      - **After:** sign-in, the sale page and `/api/health` all answered 200. The drill's rows
+        were then deleted.
+      - **For production:** the restore also rewinds every other staging write made after the
+        bookmark (about a minute here), so pause live sales first.
 - [ ] Note for production: a restore rewinds every table, including sessions, claims and
       invoices written after the bookmark. Durable Object alarms and storage are not rewound,
       so close or pause live sales before restoring production. Since WS-N each sale's claims
