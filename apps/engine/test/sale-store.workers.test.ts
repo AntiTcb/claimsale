@@ -12,6 +12,7 @@ import {
 	invoicesOf,
 	makeSale,
 	rejection,
+	setClock,
 	settle,
 	stubFor,
 	uid,
@@ -150,6 +151,33 @@ describe("the local store", () => {
 		await settle(sale.saleId);
 		expect(await engine.buyerChanged({ userId: banned })).toEqual({ ok: true, value: 1 });
 		expect(rejection(await claim(sale, banned, sale.itemIds[2]))).toBe("buyer_blocked");
+	});
+
+	it("[SM-9-buyer-cache] past 30 s a buyer's standing is served while it's read again, unless the old copy would refuse them", async () => {
+		const sale = await makeSale({ items: [{}, {}, {}, {}] });
+		const start = Date.now();
+		await setClock(sale.saleId, start);
+		const unverified = await addUser(uid("unverified"), { emailVerified: false });
+		expect(rejection(await claim(sale, unverified, sale.itemIds[0]))).toBe("email_not_verified");
+		const banned = await addUser();
+		value(await claim(sale, banned, sale.itemIds[1]));
+
+		await db.prepare("UPDATE users SET email_verified = 1 WHERE id = ?1").bind(unverified).run();
+		await db.prepare("UPDATE users SET banned_at = 1 WHERE id = ?1").bind(banned).run();
+		await setClock(sale.saleId, start + 31_000);
+		// The old copy refused this buyer, so it's read again first: the claim goes through.
+		value(await claim(sale, unverified, sale.itemIds[0]));
+		// The old copy let this one claim: it's served while D1 is read in the background...
+		value(await claim(sale, banned, sale.itemIds[2]));
+		// ...and once that read is back, the ban applies.
+		// (Until then a repeat claim may still win or meet the unit limit.)
+		let code = "";
+		for (let i = 0; i < 50 && code !== "buyer_blocked"; i++) {
+			if (i > 0) await new Promise((resolve) => setTimeout(resolve, 20));
+			const result = await claim(sale, banned, sale.itemIds[3]);
+			code = result.ok && !result.value.ok ? result.value.error.code : "accepted";
+		}
+		expect(code).toBe("buyer_blocked");
 	});
 
 	it("[SM-9-local-store] keeps a claimed item's price and quantity, and writes them back over a late edit (D40)", async () => {

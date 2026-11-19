@@ -356,6 +356,9 @@ didn't.
   - The sale row, users, plans, blocks and every other sale stay in D1.
   - The engine caches the sale row for 2 s, and a buyer's standing for 30 s or until the
     web Worker reports a block, unblock, ban or Pro change (`buyerChanged`).
+  - Past that time, an expired copy is still served for up to a minute while one read runs
+    in the background, so a claim never waits for D1 under its item's lock. This applies
+    only to a live sale, and only to a buyer the copy lets claim.
   - Lifecycle commands (publish, unpublish, go live, close) read the sale fresh and change
     it in D1 first. The free seller's active-sale cap spans other sales.
 - **Hydration:** the first time a DO serves a sale, it copies the sale's rows in from D1.
@@ -581,7 +584,7 @@ IDs stay in the table, marked ~~struck~~.
 | `SM-9-outbox` | Every committed write reaches D1 through the outbox in commit order, each changed row written once per flush; events are queued only after D1 has the rows; a failed flush keeps everything and is retried | 9 |
 | `SM-9-hydrate` | The first time an engine serves a sale it copies the sale's rows in from D1; `rehydrate` writes everything pending to D1, then copies the sale in again | 9 |
 | `SM-9-read-your-writes` | Claims, offers, withdrawals and counter answers return once the engine has them; every other command returns only after D1 has its writes | 9 |
-| `SM-9-buyer-cache` | The engine reads a buyer's standing (verified, account age, blocked, banned, Pro) from D1 at most every 30 s per sale, or again at once after a block, unblock, ban or Pro change | 9, D22 |
+| `SM-9-buyer-cache` | The engine reads a buyer's standing (verified, account age, blocked, banned, Pro) from D1 at most every 30 s per sale, or again at once after a block, unblock, ban or Pro change; past 30 s an old copy that lets the buyer claim is served while one read runs in the background, one that refuses them never is | 9, D22 |
 | `SM-9-claim-access-cache` | The claim and entry-action endpoints check a public or unlisted sale against a copy at most 5 s old; private sales are read every time; the engine still refuses a sale that isn't live | 9, D5 |
 | `AUTH-session-cookie-cache` | A session and its user are cached in a signed cookie for at most 60 s; the user's own profile writes (onboarding, settings, phone) drop it, so the next request reads D1 | TECH_STACK S40 |
 

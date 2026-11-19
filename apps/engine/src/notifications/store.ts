@@ -63,15 +63,16 @@ export const loadSaleContext = (
 				.bind(ids(refs.entryIds))
 				.all<{ id: string; user_id: string; kind: "claim" | "offer" }>(),
 			db
-				// By primary key: a sale_id filter first would read every item of the sale.
+				// By primary key: CROSS JOIN keeps json_each outside (SQLite would otherwise walk every
+				// item of the sale through the sale_id index).
 				.prepare(
-					"SELECT i.id, i.title FROM json_each(?2) j JOIN items i ON i.id = j.value WHERE i.sale_id = ?1",
+					"SELECT i.id, i.title FROM json_each(?2) j CROSS JOIN items i ON i.id = j.value WHERE i.sale_id = ?1",
 				)
 				.bind(saleId, ids(refs.itemIds))
 				.all<{ id: string; title: string }>(),
 			db
 				.prepare(
-					"SELECT i.id, i.buyer_id, i.total_cents FROM json_each(?2) j JOIN invoices i ON i.id = j.value WHERE i.sale_id = ?1",
+					"SELECT i.id, i.buyer_id, i.total_cents FROM json_each(?2) j CROSS JOIN invoices i ON i.id = j.value WHERE i.sale_id = ?1",
 				)
 				.bind(saleId, ids(refs.invoiceIds))
 				.all<{ id: string; buyer_id: string; total_cents: number }>(),

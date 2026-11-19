@@ -153,6 +153,73 @@ export class D1SaleStorage implements SaleStorage {
 export const SALE_CACHE_MS = 2_000;
 /** How long a cached buyer record (verified, banned, blocked, tier) is trusted. */
 export const BUYER_CACHE_MS = 30_000;
+/**
+ * Past its time, a cached row is still served (while one refresh runs in the background)
+ * for this long, so a claim in a rush never waits for D1 under its item's lock.
+ */
+export const STALE_SERVE_MS = 60_000;
+
+/**
+ * A cache whose expired entries are refreshed once in the background while the old value
+ * is served (stale-while-revalidate), with one D1 read per key at a time. `forget` wins over
+ * a refresh already on its way.
+ */
+class Refreshing<T> {
+	readonly #entries = new Map<string, { readonly value: T; readonly at: Millis }>();
+	readonly #loading = new Map<string, { readonly promise: Promise<T>; readonly generation: number }>();
+	#generation = 0;
+
+	constructor(
+		readonly ttl: Millis,
+		readonly waitUntil: (promise: Promise<unknown>) => void,
+		readonly warn: (message: string, error: unknown) => void,
+	) {}
+
+	async get(
+		key: string,
+		now: Millis,
+		load: () => Promise<T>,
+		options: { readonly fresh?: boolean; readonly serveStale?: (value: T) => boolean } = {},
+	): Promise<T> {
+		const cached = this.#entries.get(key);
+		if (!options.fresh && cached && now >= cached.at) {
+			const age = now - cached.at;
+			if (age < this.ttl) return cached.value;
+			if (age < this.ttl + STALE_SERVE_MS && (options.serveStale?.(cached.value) ?? true)) {
+				this.waitUntil(
+					this.#load(key, now, load).catch((error: unknown) => this.warn("cache refresh failed", error)),
+				);
+				return cached.value;
+			}
+		}
+		return this.#load(key, now, load);
+	}
+
+	#load(key: string, now: Millis, load: () => Promise<T>): Promise<T> {
+		const running = this.#loading.get(key);
+		if (running && running.generation === this.#generation) return running.promise;
+		const generation = this.#generation;
+		const promise = load().then((value) => {
+			if (generation === this.#generation) {
+				if (this.#entries.size >= 5_000) this.#entries.clear();
+				this.#entries.set(key, { value, at: now });
+			}
+			return value;
+		});
+		const settled = () => {
+			if (this.#loading.get(key)?.promise === promise) this.#loading.delete(key);
+		};
+		promise.then(settled, settled);
+		this.#loading.set(key, { promise, generation });
+		return promise;
+	}
+
+	forget(key?: string): void {
+		this.#generation++;
+		if (key === undefined) this.#entries.clear();
+		else this.#entries.delete(key);
+	}
+}
 /** How soon a failed flush is tried again. */
 export const FLUSH_RETRY_MS = 5_000;
 
@@ -170,8 +237,8 @@ export class LocalSaleStorage implements SaleStorage {
 	readonly #raw: SqlStorage;
 	#schema = false;
 	#ready: Promise<void> | undefined;
-	#sale: { readonly record: SaleRecord | undefined; readonly at: Millis } | undefined;
-	readonly #buyers = new Map<string, { readonly record: BuyerRecord | undefined; readonly at: Millis }>();
+	readonly #sale: Refreshing<SaleRecord | undefined>;
+	readonly #buyers: Refreshing<BuyerRecord | undefined>;
 	#flushing: Promise<void> | undefined;
 	#again = false;
 	#failedAt: Millis | null = null;
@@ -183,6 +250,8 @@ export class LocalSaleStorage implements SaleStorage {
 		readonly hooks: StorageHooks,
 		readonly clock: () => Millis,
 	) {
+		this.#sale = new Refreshing(SALE_CACHE_MS, hooks.waitUntil, hooks.warn);
+		this.#buyers = new Refreshing(BUYER_CACHE_MS, hooks.waitUntil, hooks.warn);
 		this.#raw = ctx.storage.sql;
 		this.#db = new LocalD1(this.#raw, ctx.storage);
 		this.local = this.#db.asD1();
@@ -264,22 +333,30 @@ export class LocalSaleStorage implements SaleStorage {
 		await this.ready(saleId);
 	}
 
-	async loadSale(saleId: string, now: Millis, options: { fresh?: boolean } = {}) {
-		const cached = this.#sale;
-		if (!options.fresh && cached && now - cached.at < SALE_CACHE_MS && now >= cached.at) return cached.record;
-		const record = await loadSaleFrom(this.d1, saleId, now);
-		this.#sale = { record, at: now };
-		return record;
+	/** The sale row: cached 2 s, then served stale while one refresh runs (`fresh` always reads D1). */
+	loadSale(saleId: string, now: Millis, options: { fresh?: boolean } = {}) {
+		return this.#sale.get(saleId, now, () => loadSaleFrom(this.d1, saleId, now), {
+			...(options.fresh ? { fresh: true } : {}),
+			// A sale no longer live is read again before it's answered.
+			serveStale: (record) => record?.sale.status === "live",
+		});
 	}
 
-	async #buyer(buyerId: string, saleId: string, now: Millis): Promise<BuyerRecord | undefined> {
-		const cached = this.#buyers.get(buyerId);
-		if (cached && now - cached.at < BUYER_CACHE_MS && now >= cached.at) return cached.record;
-		const row = await buyerQuery(this.d1, buyerId, saleId, now).first<BuyerRow>();
-		const record = row ? toBuyer(row) : undefined;
-		if (this.#buyers.size >= 5_000) this.#buyers.clear();
-		this.#buyers.set(buyerId, { record, at: now });
-		return record;
+	/**
+	 * A buyer's standing: cached 30 s, then served stale while one refresh runs, but only
+	 * when it would let them claim (a buyer who just verified their email isn't refused from
+	 * an old copy). A block, unblock or ban forgets it at once (`buyerChanged`).
+	 */
+	#buyer(buyerId: string, saleId: string, now: Millis): Promise<BuyerRecord | undefined> {
+		return this.#buyers.get(
+			buyerId,
+			now,
+			async () => {
+				const row = await buyerQuery(this.d1, buyerId, saleId, now).first<BuyerRow>();
+				return row ? toBuyer(row) : undefined;
+			},
+			{ serveStale: (record) => record !== undefined && record.emailVerified && !record.blocked },
+		);
 	}
 
 	async loadSaleAndItems(
@@ -326,7 +403,7 @@ export class LocalSaleStorage implements SaleStorage {
 				if (isConflict(error)) throw new WriteConflict("The sale changed during the write");
 				throw error;
 			}
-			this.#sale = undefined;
+			this.#sale.forget();
 		}
 		const statements = [
 			...work.statements(),
@@ -483,14 +560,14 @@ export class LocalSaleStorage implements SaleStorage {
 				);
 			}
 		});
-		this.#sale = undefined;
+		this.#sale.forget();
 		if (pendingOutbox(this.#sql) > 0) this.kick();
 	}
 
 	forget(what: { sale?: boolean; buyerId?: string; allBuyers?: boolean }): void {
-		if (what.sale) this.#sale = undefined;
-		if (what.allBuyers) this.#buyers.clear();
-		if (what.buyerId !== undefined) this.#buyers.delete(what.buyerId);
+		if (what.sale) this.#sale.forget();
+		if (what.allBuyers) this.#buyers.forget();
+		if (what.buyerId !== undefined) this.#buyers.forget(what.buyerId);
 	}
 
 	retryAt(now: Millis): Millis | null {

@@ -52,6 +52,30 @@ per-buyer rate limit) and an Access service token.
 - [x] Delete the sessions file afterwards (it holds live sessions). Deleted, and the seeded
       users, sessions, sale, entries, draft invoices and notifications were removed from
       staging D1 (bookmark before seeding: `00000153-00000000-00005127-d560ec0cfe7382e14f880573567230f5`).
+- [x] **2026-11-19, WS-N on PR #33's Worker pair** (its own D1, engine and queue; same seeding,
+      same client). The local store fixed the D1 overload on the claim path:
+
+      | Run | Handled | p95 (k6) | p95 (web Worker, server side) |
+      |---|---|---|---|
+      | 25/s (cold start) | 100% | 358 ms | — |
+      | 50/s | 100% | 222 ms | — |
+      | 100/s | 100% | 260 ms | — |
+      | 200/s, sessions from D1 | 90.6% (500s: session reads) | 584 ms | 334 ms |
+      | 200/s, warm sessions, mostly repeat claims | 95.4% (429s: rate limit) | 408 ms | 163 ms |
+      | 200/s, warm sessions, fresh sale (first claims) | **100%** | 1.29 s | 734 ms |
+
+      - **Before the sessions fix:** k6 sent only each buyer's session token, so every claim
+        read its session from D1. That is what failed at 200/s. `setup()` now opens a page
+        as each buyer first, as a browser would, so claims carry the session cache cookie.
+      - **What made the last run slow:** the engine's RPCs spent their time waiting (3 ms of
+        CPU at p95, 765 ms of wall time), for two reasons:
+        - When the sale cache (2 s) and new buyers' standing expired, every claim in flight
+          read D1 while holding its item's lock.
+        - The notifications consumer was working off earlier runs' backlog. Its item lookup
+          walked every item of the sale (about 400 rows per call).
+      - **Fixed since, not yet measured:** expired copies are served while one read runs in
+        the background, and the consumer's lookups use the primary key (`CROSS JOIN`).
+- [ ] Re-run 200/s on a fresh sale after those fixes deploy, then once more on staging after merge.
 
 ## 4. Observability (owner for the Sentry account)
 - [ ] TECH_STACK §11 Sentry items done: project DSN in Infisical, the `sentry-traces` and
