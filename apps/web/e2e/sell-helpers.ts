@@ -3,7 +3,6 @@ import {
 	newIdentity,
 	outboxAvailable,
 	signUp,
-	smsCaptureAvailable,
 	verifySeller,
 	waitForWelcome,
 	type Identity,
@@ -67,13 +66,10 @@ export function localDateTime(page: Page, days: number): Promise<string> {
 
 /**
  * Signs up a new 18+ seller, waits until the post-sign-up redirect has fully loaded,
- * and verifies their email and phone (D55) through capture mode.
+ * and verifies their email (D55, D70) through capture mode.
  */
 export async function signedUpSeller(page: Page): Promise<Identity> {
-	test.skip(
-		!(await outboxAvailable(page.request)) || !(await smsCaptureAvailable(page.request)),
-		"Captured email and phone codes aren't readable here",
-	);
+	test.skip(!(await outboxAvailable(page.request)), "Captured email isn't readable here");
 	const seller = newIdentity("seller");
 	await signUp(page, seller);
 	await waitForWelcome(page);

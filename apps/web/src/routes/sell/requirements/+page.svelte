@@ -15,7 +15,7 @@
 		To keep sales safe, every seller confirms a few things first.
 	</p>
 	<div class="mt-6">
-		<SellerRequirements blockers={data.blockers} pro={data.pro} />
+		<SellerRequirements blockers={data.blockers} />
 	</div>
 	{#if data.blockers.length === 0}
 		<a

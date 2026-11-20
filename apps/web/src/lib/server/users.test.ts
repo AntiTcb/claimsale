@@ -8,7 +8,6 @@ import {
 	isHandleAvailable,
 	isUniqueViolation,
 	updateProfile,
-	verifiedPhone,
 } from "./users.ts";
 
 let db: Db;
@@ -29,19 +28,6 @@ beforeEach(async () => {
 	db = createDb(testD1());
 	await addUser("u1", "ash");
 	await addUser("u2", null);
-});
-
-describe("verifiedPhone", () => {
-	// Regression: /me/settings read the phone from the session loaded before the verify
-	// action ran, so the page said "Not verified yet" right after verifying.
-	it("[AUTH-phone-e164] reads the verified number from D1, and nothing for unverified ones", async () => {
-		const { eq } = await import("@claimsale/db");
-		expect(await verifiedPhone(db, "u1")).toBeNull();
-		await db.update(users).set({ phoneE164: "+12025550123" }).where(eq(users.id, "u1"));
-		expect(await verifiedPhone(db, "u1")).toBeNull();
-		await db.update(users).set({ phoneVerifiedAt: created }).where(eq(users.id, "u1"));
-		expect(await verifiedPhone(db, "u1")).toBe("+12025550123");
-	});
 });
 
 describe("users repository", () => {

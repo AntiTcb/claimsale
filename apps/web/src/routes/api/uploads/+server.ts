@@ -28,7 +28,7 @@ export const POST: RequestHandler = async ({ request, url, locals }) => {
 	const now = Date.now();
 	const tier = (await entitlements(db(), locals.user.id, now)).seller;
 	// D55: the same seller gate as the /sell pages (an API can't redirect, so 403).
-	if (sellerReadiness(locals.user, tier).length > 0) {
+	if (sellerReadiness(locals.user).length > 0) {
 		return json({ message: "Finish the seller requirements first" }, { status: 403 });
 	}
 	const result = timestamp

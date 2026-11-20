@@ -5,27 +5,22 @@ import SellerRequirements from "./SellerRequirements.svelte";
 
 describe("SellerRequirements", () => {
 	it("[AUTH-seller-requirements] lists each requirement with what to do about the missing ones", async () => {
-		await render(SellerRequirements, { blockers: ["email", "phone"], pro: false });
+		await render(SellerRequirements, { blockers: ["email"] });
 		await expect.element(page.getByRole("heading", { name: "Before you can sell" })).toBeVisible();
 		await expect.element(page.getByText("You're 18 or older: done")).toBeInTheDocument();
 		await expect.element(page.getByText("Verified email: missing")).toBeInTheDocument();
-		await expect.element(page.getByText("Verified mobile number: missing")).toBeInTheDocument();
 		const links = page.getByRole("link", { name: "Go to settings" });
-		expect(links.elements().map((a) => a.getAttribute("href"))).toEqual([
-			"/me/settings",
-			"/me/settings#phone",
-		]);
+		expect(links.elements().map((a) => a.getAttribute("href"))).toEqual(["/me/settings"]);
 	});
 
-	it("[AUTH-seller-requirements] leaves the phone out for Pro sellers", async () => {
-		await render(SellerRequirements, { blockers: [], pro: true });
+	it("[AUTH-seller-requirements] asks for no phone number (D70)", async () => {
+		await render(SellerRequirements, { blockers: [] });
 		await expect.element(page.getByRole("heading", { name: "You're ready to sell" })).toBeVisible();
-		await expect.element(page.getByText(/Verified mobile number/)).not.toBeInTheDocument();
-		await expect.element(page.getByText("Pro sellers don't need to verify a phone.")).toBeVisible();
+		await expect.element(page.getByText(/mobile|phone/i)).not.toBeInTheDocument();
 	});
 
 	it("explains the age requirement without a settings link", async () => {
-		await render(SellerRequirements, { blockers: ["age"], pro: false });
+		await render(SellerRequirements, { blockers: ["age"] });
 		await expect.element(page.getByText(/Selling is for adults/)).toBeVisible();
 		await expect.element(page.getByRole("link", { name: "Go to settings" })).not.toBeInTheDocument();
 	});

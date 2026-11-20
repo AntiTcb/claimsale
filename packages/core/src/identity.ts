@@ -113,24 +113,21 @@ export function validateAge(choice: unknown, parentalConsent: unknown): Validate
 	}
 }
 
-export type SellerBlocker = "age" | "email" | "phone";
+export type SellerBlocker = "age" | "email";
 
 /**
- * Who may sell (D55): 18+, a verified email and, for free sellers, a verified phone.
- * Returns what's missing, in the order the seller should fix it.
+ * Who may sell (D55, D70): 18+ and a verified email, for every seller. Phone verification
+ * is out until SMS returns (D70). Returns what's missing, in the order to fix it.
  *
- * @spec AUTH-seller-requirements — selling needs 18+, a verified email and (unless Pro) a verified phone.
+ * @spec AUTH-seller-requirements — selling needs 18+ and a verified email.
  */
 export function sellerBlockers(user: {
 	readonly ageAttested: AgeAttestation | null;
 	readonly emailVerified: boolean;
-	readonly phoneVerified: boolean;
-	readonly pro: boolean;
 }): SellerBlocker[] {
 	const blockers: SellerBlocker[] = [];
 	if (user.ageAttested !== "18+") blockers.push("age");
 	if (!user.emailVerified) blockers.push("email");
-	if (!user.pro && !user.phoneVerified) blockers.push("phone");
 	return blockers;
 }
 

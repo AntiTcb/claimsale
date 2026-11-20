@@ -36,7 +36,6 @@ const ready: TestUser = {
 	updatedAt: new Date("2026-11-01T00:00:00Z"),
 	emailVerified: true,
 	ageAttested: "18+",
-	phoneVerifiedAt: new Date("2026-11-14T00:00:00Z"),
 };
 
 function event(user: TestUser | null, path = "/sell/new") {
@@ -87,7 +86,7 @@ beforeEach(async () => {
 
 describe("the seller gate on /sell (D55)", () => {
 	it("[AUTH-seller-requirements] every /sell load and action sends an unready seller to the checklist", async () => {
-		const results = await sweep({ ...ready, phoneVerifiedAt: null });
+		const results = await sweep({ ...ready, emailVerified: false });
 		expect(Object.keys(results).length).toBeGreaterThanOrEqual(12);
 		for (const [handler, result] of Object.entries(results)) {
 			expect(`${handler}: ${result}`).toBe(`${handler}: 303 /sell/requirements`);
@@ -103,7 +102,6 @@ describe("the seller gate on /sell (D55)", () => {
 			{ ...ready, ageAttested: "13+" },
 			{ ...ready, ageAttested: null },
 			{ ...ready, emailVerified: false },
-			{ ...ready, phoneVerifiedAt: null },
 		]) {
 			// oxlint-disable-next-line no-await-in-loop -- one case at a time
 			expect(await outcome(() => requireSeller(event(user)))).toBe("303 /sell/requirements");
@@ -115,15 +113,12 @@ describe("the seller gate on /sell (D55)", () => {
 		}
 	});
 
-	it("[AUTH-seller-requirements] Pro sellers skip phone verification, but not email or age", async () => {
+	it("[AUTH-seller-requirements] Pro sellers need a verified email and 18+ too", async () => {
 		await grantSellerPro(database, "u1");
-		expect(await requireSeller(event({ ...ready, phoneVerifiedAt: null }))).toEqual({
-			id: "u1",
-			tier: "pro",
-		});
-		expect(
-			await outcome(() => requireSeller(event({ ...ready, phoneVerifiedAt: null, emailVerified: false }))),
-		).toBe("303 /sell/requirements");
+		expect(await requireSeller(event(ready))).toEqual({ id: "u1", tier: "pro" });
+		expect(await outcome(() => requireSeller(event({ ...ready, emailVerified: false })))).toBe(
+			"303 /sell/requirements",
+		);
 	});
 
 	it("[AUTH-seller-requirements] photo uploads refuse an unready seller with 403", async () => {
@@ -136,7 +131,7 @@ describe("the seller gate on /sell (D55)", () => {
 					body: new Uint8Array([1, 2, 3]),
 				}),
 			} as never);
-		expect((await upload({ ...ready, phoneVerifiedAt: null })).status).toBe(403);
+		expect((await upload({ ...ready, emailVerified: false })).status).toBe(403);
 		// A ready seller gets past the gate (and on to "no such item").
 		expect((await upload(ready)).status).toBe(404);
 	});

@@ -24,8 +24,6 @@ describe("createAuth", () => {
 			"ageAttestedAt",
 			"fbProfileUrl",
 			"country",
-			"phoneE164",
-			"phoneVerifiedAt",
 			"role",
 		]);
 		expect(options.rateLimit).toMatchObject({ enabled: true, storage: "database" });

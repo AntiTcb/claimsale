@@ -6,21 +6,14 @@ import type { ImageStore } from "./images.ts";
 import { invoiceCommands, type InvoiceCommands } from "./invoices.ts";
 import { makeMailer, type Mailer } from "./mailer.ts";
 import type { NotifyRpc } from "./notify-rpc.ts";
-import { makePhoneVerifier, type PhoneVerifier } from "./sms.ts";
 import { turnstileConfig, type TurnstileConfig } from "./turnstile.ts";
 
 /**
  * Per-isolate services wired to `cloudflare:workers` bindings. Kept thin: the
- * logic lives in auth.ts, mailer.ts, sms.ts and users.ts, which take these as arguments.
+ * logic lives in auth.ts, mailer.ts and users.ts, which take these as arguments.
  */
 
-type OptionalSecret =
-	| "DISCORD_CLIENT_ID"
-	| "DISCORD_CLIENT_SECRET"
-	| "TURNSTILE_SECRET_KEY"
-	| "TWILIO_API_KEY_SID"
-	| "TWILIO_API_KEY_SECRET"
-	| "TWILIO_VERIFY_SERVICE_SID";
+type OptionalSecret = "DISCORD_CLIENT_ID" | "DISCORD_CLIENT_SECRET" | "TURNSTILE_SECRET_KEY";
 
 /** Optional secrets, set in `.dev.vars` or as Worker secrets, absent by default. */
 function optional(name: OptionalSecret): string | undefined {
@@ -71,20 +64,6 @@ export function mailer(): Mailer {
 	return makeMailer({ mode: env.MAILER, from: env.MAIL_FROM, binding: env.EMAIL, db: db() });
 }
 
-export function phoneVerifier(): PhoneVerifier {
-	const apiKeySid = optional("TWILIO_API_KEY_SID");
-	const apiKeySecret = optional("TWILIO_API_KEY_SECRET");
-	const verifyServiceSid = optional("TWILIO_VERIFY_SERVICE_SID");
-	return makePhoneVerifier({
-		mode: env.SMS,
-		db: db(),
-		twilio:
-			apiKeySid && apiKeySecret && verifyServiceSid
-				? { apiKeySid, apiKeySecret, verifyServiceSid }
-				: undefined,
-	});
-}
-
 export function turnstile(): TurnstileConfig | undefined {
 	return turnstileConfig(env.TURNSTILE_SITE_KEY, optional("TURNSTILE_SECRET_KEY"));
 }
@@ -122,9 +101,4 @@ const sharedData = () => env.APP_ENV === "production" || env.APP_ENV === "stagin
 /** Whether the test-only outbox endpoint is on: captured mail, and never on shared data. */
 export function outboxEnabled(): boolean {
 	return env.MAILER === "capture" && !sharedData();
-}
-
-/** Whether the test-only SMS code endpoint is on: captured codes, and never on shared data. */
-export function smsCaptureEnabled(): boolean {
-	return env.SMS === "capture" && !sharedData();
 }

@@ -19,16 +19,15 @@ export function requireUser(event: Pick<RequestEvent, "locals" | "url">): Sessio
 
 /**
  * The signed-in seller with their tier, read server-side on every request (PLAN §3a).
- * Every /sell load and action calls this, so it is also the D55 gate: accounts
- * missing 18+, a verified email or (free sellers) a verified phone go to
- * /sell/requirements instead.
+ * Every /sell load and action calls this, so it is also the D55 gate (D70): accounts
+ * missing 18+ or a verified email go to /sell/requirements instead.
  */
 export async function requireSeller(
 	event: Pick<RequestEvent, "locals" | "url">,
 ): Promise<Seller & { tier: Tier }> {
 	const user = requireUser(event);
 	const { seller } = await entitlements(db(), user.id, Date.now());
-	assertSellerReady(event.url, user, seller);
+	assertSellerReady(event.url, user);
 	return { id: user.id, tier: seller };
 }
 

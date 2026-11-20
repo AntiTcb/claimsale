@@ -42,7 +42,7 @@ live in [`STATE_MACHINES.md` section 10](./STATE_MACHINES.md#10-rule-id-registry
 | A new UI component | A browser test: renders, main interactions, keyboard operation, and no axe violations. |
 | A new page or flow | Browser tests for its components + at least one Playwright E2E for the happy path, and E2E tests for the important failure paths. |
 | A DB migration | A Workers integration test that applies all migrations to an empty DB **and** to a DB seeded at the previous schema (expand/contract safety). |
-| An external integration (Twilio, Stripe, TCGCSV, Discord) | Unit/integration tests with **MSW** (`msw@3`) handlers for success, error and timeout. A staging smoke test with the provider's test mode. |
+| An external integration (Stripe, TCGCSV, Discord) | Unit/integration tests with **MSW** (`msw@3`) handlers for success, error and timeout. A staging smoke test with the provider's test mode. |
 | Email (Cloudflare Email Service binding) | Unit: in-memory `Mailer`. Workers integration: assert on the simulated `send_email` binding. E2E: read the `CapturingMailer` outbox through the test-only endpoint. Staging smoke: one real send to a verified address. |
 | Import / export | Unit: parsers and schemas against a fixture library of real-world files (Excel-saved CSV with BOM, `;` delimiters, Windows-1252, blank rows, 2,000 rows, malicious formula cells). Property test: export → import round-trip makes no changes (`IO-export-roundtrip`). Workers integration: batch apply, idempotency, tracking transitions. E2E: import with a photo ZIP → preview → confirm → live grid; orders export download; tracking re-import marks invoices shipped. |
 | Photo authenticity | Unit + property tests on the hash functions: the same image after resize / recompress / mirror / rotate stays within the reject distance; different images stay beyond it. A labelled **fixture set** of real card photos (same card / different copies, graded slabs of the same card, sleeves and toploaders, playmat backgrounds) is used to tune and regression-test the thresholds. Workers integration: the verify job, band lookup and publish blocking. E2E: uploading another seller's photo is rejected. |
@@ -95,7 +95,7 @@ script fails if a spec ID has no test, so the spec and the tests can't drift apa
 
 **Critical paths** (tagged `@critical`):
 - Sign-up (email + password, magic link, Discord via a stub provider in test env),
-  email and phone verification.
+  email verification.
 - A seller creates a sale with items and photos, schedules it, and it goes live.
 - **Claim race:** N buyer contexts claim the same item at go-live; exactly one wins,
   everyone else sees their correct backup position live.
@@ -186,7 +186,7 @@ Nightly: Firefox e2e · Stryker on core · k6 load test against staging (on dema
 
 - **Factories, not fixtures:** `packages/testing` exports typed builders
   (`aSale().live().withItems(3)`, `aBuyer().pro()`) and Effect test Layers (in-memory
-  clock, IDs, mailer, SMS, queue).
+  clock, IDs, mailer, queue).
 - **Test names** describe behavior: `"claim on item with pending offers starts decision window [SM-4.1-deciding]"`.
 - **One behavior per test.** Assert on outcomes (state, events, UI), not on
   implementation details.

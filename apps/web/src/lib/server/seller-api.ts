@@ -15,7 +15,7 @@ export async function sellerSaleForApi(
 	const user = event.locals.user;
 	if (!user) return { ok: false, response: json({ message: "Sign in first" }, { status: 401 }) };
 	const tier = (await entitlements(db(), user.id, Date.now())).seller;
-	if (sellerReadiness(user, tier).length > 0) {
+	if (sellerReadiness(user).length > 0) {
 		return {
 			ok: false,
 			response: json({ message: "Finish the seller requirements first" }, { status: 403 }),
