@@ -25,7 +25,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       PR: ${{ github.event.pull_request.number || inputs.pr }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: ./.github/actions/setup
       - name: Delete the PR's Worker Preview of claimsale-web-staging, if any (wrangler)
         # A PR may have had either kind of preview, or both (TECH_STACK S37).
