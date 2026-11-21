@@ -1,16 +1,10 @@
 <script lang="ts">
 	import type { PageProps } from "./$types";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	let { data }: PageProps = $props();
-	const when = (at: number | null) =>
-		at === null
-			? ""
-			: new Date(at).toLocaleString("en-US", {
-					month: "short",
-					day: "numeric",
-					hour: "numeric",
-					minute: "2-digit",
-				});
+	const dates = useDates();
+	const when = (at: number | null) => (at === null ? "" : dates(at, "short"));
 </script>
 
 <svelte:head>

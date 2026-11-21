@@ -5,6 +5,7 @@ import {
 	detectCarrier,
 	matchTrackingRows,
 	resolveCarrier,
+	trackingUrl,
 	trackingRowsFromTable,
 	type TrackableInvoice,
 	type TrackingRow,
@@ -129,5 +130,37 @@ describe("tracking row matching [IO-tracking-match]", () => {
 				carrier: "USPS",
 			},
 		]);
+	});
+});
+
+describe("tracking links [IO-tracking-link]", () => {
+	it("links each known carrier's tracking page [IO-tracking-link]", () => {
+		expect(trackingUrl("USPS", "9400 1000 0000 0000 0000 00")).toBe(
+			"https://tools.usps.com/go/TrackConfirmAction?tLabels=9400100000000000000000",
+		);
+		expect(trackingUrl("UPS", "1z999aa10123456784")).toBe(
+			"https://www.ups.com/track?tracknum=1Z999AA10123456784",
+		);
+		expect(trackingUrl("FedEx", "123456789012")).toBe(
+			"https://www.fedex.com/fedextrack/?trknbr=123456789012",
+		);
+		expect(trackingUrl("DHL", "1234567890")).toBe(
+			"https://www.dhl.com/us-en/home/tracking.html?submit=1&tracking-id=1234567890",
+		);
+	});
+
+	it("accepts the carriers' other names [IO-tracking-link]", () => {
+		expect(trackingUrl("United States Postal Service", "EA123456789US")).toContain("usps.com");
+		expect(trackingUrl("Federal Express", "123456789012")).toContain("fedex.com");
+	});
+
+	it("detects the carrier when the name is blank [IO-tracking-link]", () => {
+		expect(trackingUrl("", "1Z999AA10123456784")).toContain("ups.com");
+	});
+
+	it("gives no link for an unknown carrier, an ambiguous number or a blank one [IO-tracking-link]", () => {
+		expect(trackingUrl("OnTrac", "C12345678901234")).toBeNull();
+		expect(trackingUrl("", "92001234567890123456")).toBeNull();
+		expect(trackingUrl("USPS", "  ")).toBeNull();
 	});
 });

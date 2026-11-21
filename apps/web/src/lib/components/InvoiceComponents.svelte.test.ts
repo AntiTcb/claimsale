@@ -3,6 +3,7 @@ import { render } from "vitest-browser-svelte";
 import { page, userEvent } from "vitest/browser";
 import InvoiceLines from "./InvoiceLines.svelte";
 import ShippingMenuEditor from "./ShippingMenuEditor.svelte";
+import TrackingNumber from "./TrackingNumber.svelte";
 
 const invoice = {
 	lines: [
@@ -87,5 +88,23 @@ describe("ShippingMenuEditor", () => {
 			.element(page.getByLabelText("Price ($) for option 2"))
 			.toHaveAccessibleDescription("Shipping can be at most $100.00");
 		await expect.element(page.getByText("Offer at most 10 options")).toBeVisible();
+	});
+});
+
+describe("TrackingNumber", () => {
+	it("links the number to the carrier's tracking page [IO-tracking-link]", async () => {
+		await render(TrackingNumber, { carrier: "UPS", number: "1Z999AA10123456784" });
+		const link = page.getByRole("link", { name: /1Z999AA10123456784/ });
+		await expect
+			.element(link)
+			.toHaveAttribute("href", "https://www.ups.com/track?tracknum=1Z999AA10123456784");
+		await expect.element(link).toHaveAttribute("target", "_blank");
+		await expect.element(page.getByText(/^UPS/)).toBeVisible();
+	});
+
+	it("shows a plain number for a carrier it doesn't know [IO-tracking-link]", async () => {
+		await render(TrackingNumber, { carrier: "OnTrac", number: "C12345678901234" });
+		await expect.element(page.getByText("C12345678901234", { exact: false })).toBeVisible();
+		await expect.element(page.getByRole("link")).not.toBeInTheDocument();
 	});
 });

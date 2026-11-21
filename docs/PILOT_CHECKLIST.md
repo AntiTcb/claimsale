@@ -13,6 +13,8 @@ done by anyone with staging access. Tick them in the PR that closes WS-L, or in 
       `cf email-sending subdomains list --zone claimsale.net`). Starting quota: 1,000 emails a day.
 - [ ] Check: sign up on staging with a fresh address; "Confirm your email" arrives, and a
       followed seller's new public sale sends the follower an email (WS-K).
+      **2026-11-20:** "Confirm your email" arrived for two fresh Gmail plus-addresses, and both
+      links verified (smoke test, §6). The follower email is still unchecked.
 
 ## 2. Policies (owner)
 - [x] Prohibited items page: `/policies/prohibited-items`, from D21, D59, D62 and D63.
@@ -168,8 +170,32 @@ answers its own "OK to proceed?" with yes. It prints a bookmark that undoes the 
       ones (TECH_STACK S43). Include that step in the staging drill.
 
 ## 6. Smoke test before the pilot sale
-- [ ] On staging: sign up a seller and a buyer, verify their emails (no phone, D70), schedule a public sale
+- [x] On staging: sign up a seller and a buyer, verify their emails (no phone, D70), schedule a public sale
       with photos, find it on `/browse`, `/g/<game>` and search, claim at go-live, close,
       invoice, mark paid and shipped (the E2E specs cover each step locally).
+      **2026-11-20, `80bb07a`, in the desktop app's browser:** every step passed. The steps:
+      sign-up and verification by email link, the seller requirements page, a public 2-item
+      Pokémon sale with an approved photo per item and an approved timestamp photo, scheduled
+      5 minutes ahead. It was listed under "Going live soon" on `/browse`, both items were on
+      `/g/pokemon` and in search, and the grid flipped to claimable at go-live without a reload.
+      Then: claim and confirm ("You're #1"), the control room's winner, close, send, the buyer's
+      address and "I've paid", the seller's confirm, and mark shipped with tracking.
+      Found:
+      - **Times render in UTC until the page re-renders.** Server-rendered dates use
+        `toLocaleString` in the Worker (UTC), and hydration keeps that text. Seen on
+        `/browse` ("opens 11:09 PM" for 6:09 PM EST), the buyer's invoice deadline ("Pay by
+        … 11:10 PM") and the seller's invoice timeline. The same pages show local time after
+        a form action re-renders them. About 20 files format dates this way. Fix before the pilot.
+      - The sale header kept "Scheduled" and "Preview. Claims open …" after go-live, while the
+        grid below said "Live" (until reload).
+      - A buyer who has won an item still sees "Claim as backup" on it.
+      - On `/me/invoices`, only the sale title is a link, not the invoice row.
+      - Signup flags a handle with a hyphen only after submitting (400). The hint above the field
+        is correct.
+      The smoke sale (`smoke-test-sale-staging-delete-me-j5vfyba9`) and the users
+      `@smoke_seller_1120` / `@smoke_buyer_1120` are still on staging.
 - [ ] The seller's "Copy as text" output pastes cleanly into a Facebook post.
+      **2026-11-20:** the copied text is plain text: title, go-live and close times with the
+      time zone, one numbered line per item (title · condition · price), and the claim link.
+      Pasting it into Facebook itself is still up to the owner.
 - [ ] The release PR `dev` → `main` is merged and production `/api/health` reports both Workers.

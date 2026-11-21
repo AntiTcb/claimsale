@@ -144,6 +144,10 @@ test.describe("invoices", () => {
 		// Ash confirms receipt.
 		await ash.page.reload();
 		await expect(ash.page.getByTestId("tracking")).toContainText("9400 1000 0000 0000 0000 00");
+		await expect(ash.page.getByTestId("tracking").getByRole("link")).toHaveAttribute(
+			"href",
+			"https://tools.usps.com/go/TrackConfirmAction?tLabels=9400100000000000000000",
+		);
 		await ash.page.getByRole("button", { name: "I received it" }).click();
 		await expect(ash.page.getByTestId("invoice-status")).toHaveText("Completed");
 

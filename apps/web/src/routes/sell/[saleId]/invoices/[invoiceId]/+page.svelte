@@ -2,13 +2,16 @@
 	import { formatCents } from "@claimsale/core";
 	import { enhance } from "$app/forms";
 	import InvoiceLines from "#lib/components/InvoiceLines.svelte";
+	import TrackingNumber from "#lib/components/TrackingNumber.svelte";
 	import { addressLines, CARRIER_CHOICES, INVOICE_STATUS_LABELS } from "#lib/invoice-labels.ts";
 	import type { PageProps } from "./$types";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	let { data, form }: PageProps = $props();
+	const dates = useDates();
 	const invoice = $derived(data.invoice);
 	const closed = $derived(data.sale.status === "closed" || data.sale.status === "archived");
-	const at = (ms: number | null) => (ms === null ? "" : new Date(ms).toLocaleString());
+	const at = (ms: number | null) => (ms === null ? "" : dates(ms));
 	const message = $derived(form && "message" in form ? form.message : null);
 	const fieldClass =
 		"rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900";
@@ -48,8 +51,7 @@
 			<dd>{at(invoice.shippedAt)}</dd>{/if}
 		{#if invoice.tracking}<dt class="font-medium">Tracking</dt>
 			<dd data-testid="tracking">
-				{invoice.tracking.carrier}
-				{invoice.tracking.number}
+				<TrackingNumber carrier={invoice.tracking.carrier} number={invoice.tracking.number} />
 			</dd>{/if}
 		{#if invoice.completedAt}<dt class="font-medium">Completed</dt>
 			<dd>{at(invoice.completedAt)}</dd>{/if}

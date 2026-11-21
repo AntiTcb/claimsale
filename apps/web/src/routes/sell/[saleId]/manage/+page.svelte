@@ -3,11 +3,12 @@
 	import ControlRoomItem from "#lib/components/ControlRoomItem.svelte";
 	import { buyerLabel, describeRecord, PHASE_LABELS, RESCIND_REASON_LABELS } from "#lib/control-room.ts";
 	import type { PageProps } from "./$types";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	let { data, form }: PageProps = $props();
+	const dates = useDates();
 	const room = $derived(data.room);
-	const fmt = (ms: number) =>
-		new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+	const fmt = (ms: number) => dates(ms);
 	const open = $derived(room.rescinds.filter((r) => r.phase !== "final"));
 </script>
 

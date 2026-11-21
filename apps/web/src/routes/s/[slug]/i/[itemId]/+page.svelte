@@ -4,8 +4,10 @@
 	import LiveItemPanel from "#lib/components/LiveItemPanel.svelte";
 	import { describeItem } from "#lib/listing-input.ts";
 	import type { PageProps } from "./$types";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	let { data }: PageProps = $props();
+	const dates = useDates();
 	const item = $derived(data.item);
 	const attributes = $derived(Object.entries(item.attributes));
 	const STATE_LABELS: Record<string, string> = {
@@ -62,10 +64,7 @@
 			/>
 			{#if data.header.status === "scheduled" && data.body.liveAt}
 				<p class="mt-4 rounded-md bg-sky-50 p-3 text-sky-950 dark:bg-sky-950 dark:text-sky-100" role="status">
-					Claims open {new Date(data.body.liveAt).toLocaleString(undefined, {
-						dateStyle: "full",
-						timeStyle: "short",
-					})}.
+					Claims open {dates(data.body.liveAt, "fullDateTime")}.
 				</p>
 			{/if}
 			{#if item.descriptionMd}<p class="mt-4 whitespace-pre-line">{item.descriptionMd}</p>{/if}

@@ -5,8 +5,10 @@
 	import SaleDetailsFields from "#lib/components/SaleDetailsFields.svelte";
 	import TimestampPhoto from "#lib/components/TimestampPhoto.svelte";
 	import type { PageProps } from "./$types";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	let { data, form }: PageProps = $props();
+	const dates = useDates();
 
 	const sale = $derived(data.sale);
 	const detailsValues = $derived(
@@ -37,8 +39,7 @@
 	});
 	// svelte-ignore state_referenced_locally
 	let when = $state(publishValues.when);
-	const fmt = (ms: number | null) =>
-		ms === null ? "" : new Date(ms).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
+	const fmt = (ms: number | null) => (ms === null ? "" : dates(ms, "fullDateTime"));
 </script>
 
 <svelte:head>
