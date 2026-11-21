@@ -7,11 +7,12 @@
 	import TextField from "#lib/components/TextField.svelte";
 	import { PAYMENT_METHODS } from "#lib/listing-input.ts";
 	import type { PageProps } from "./$types";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	let { data, form }: PageProps = $props();
+	const dates = useDates();
 	const header = $derived(data.header);
-	const fmt = (ms: number) =>
-		new Date(ms).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
+	const fmt = (ms: number) => dates(ms, "fullDateTime");
 	const methodName = (id: string) => PAYMENT_METHODS.find((m) => m.id === id)?.name ?? id;
 </script>
 

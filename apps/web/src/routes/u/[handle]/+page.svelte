@@ -3,11 +3,11 @@
 	import ReportButton from "#lib/components/ReportButton.svelte";
 	import SaleCard from "#lib/components/SaleCard.svelte";
 	import type { PageProps } from "./$types";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	let { data, form }: PageProps = $props();
-	const since = $derived(
-		new Date(data.profile.memberSince).toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-	);
+	const dates = useDates();
+	const since = $derived(dates(data.profile.memberSince, "monthYear"));
 </script>
 
 <svelte:head>

@@ -522,6 +522,7 @@ IDs stay in the table, marked ~~struck~~.
 | `IO-tracking-transition` | Only `paid` invoices move to `shipped`; others are rejected with a reason | PLAN 3c.3, SM 6 |
 | `IO-tracking-replace` | Replacing an existing tracking number needs confirmation and is logged | PLAN 3c.3 |
 | `IO-tracking-carrier` | The carrier is detected from the tracking number format when blank; ambiguous ones are flagged | PLAN 3c.3 |
+| `IO-tracking-link` | A shipped invoice links its tracking number to the carrier's tracking page when the carrier is known or detected | PLAN 3c.3 |
 | `TCG-tracked-graded-sealed` | Graded singles and sealed product always require tracked shipping, whatever the seller's threshold | PLAN 3 (TCG catalog), SM 6 |
 | ~~`TCG-real-photo`~~ | *Retired: replaced by `IMG-required` (D63)* | — |
 | `TCG-attribute-schema` | An item's attributes validate against its game + kind schema (forms, imports and API alike) | PLAN 3 (TCG catalog) |

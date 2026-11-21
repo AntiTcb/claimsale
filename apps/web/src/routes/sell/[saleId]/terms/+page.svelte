@@ -4,12 +4,14 @@
 	import WizardSteps from "#lib/components/WizardSteps.svelte";
 	import { PAYMENT_METHODS, UNPROTECTED_METHODS } from "#lib/listing-input.ts";
 	import type { PageProps } from "./$types";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	let { data, form }: PageProps = $props();
+	const dates = useDates();
 	const t = $derived(data.terms);
 	const errors = $derived<Record<string, string>>(form && "errors" in form ? form.errors : {});
 	const windowError = $derived(form && "windowRequestError" in form ? form.windowRequestError : null);
-	const dateTime = (ms: number) => new Date(ms).toLocaleDateString(undefined, { dateStyle: "medium" });
+	const dateTime = (ms: number) => dates(ms, "date");
 	const fieldClass =
 		"rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900";
 </script>

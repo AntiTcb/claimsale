@@ -4,10 +4,12 @@
 	import { invalidateAll } from "$app/navigation";
 	import { onMount } from "svelte";
 	import type { PageProps } from "./$types";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	let { data, form }: PageProps = $props();
+	const dates = useDates();
 	const running = $derived(data.jobs.some((j) => j.status === "running"));
-	const at = (ms: number | null) => (ms === null ? "" : new Date(ms).toLocaleString());
+	const at = (ms: number | null) => (ms === null ? "" : dates(ms));
 	const STATUS = { running: "Preparing…", ready: "Ready", failed: "Failed", expired: "Expired" } as const;
 	const fieldClass =
 		"rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900";
