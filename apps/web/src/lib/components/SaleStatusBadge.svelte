@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { SaleStatus } from "@claimsale/core";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	interface Props {
 		status: SaleStatus;
@@ -8,6 +9,7 @@
 	}
 
 	let { status, liveAt = null }: Props = $props();
+	const dates = useDates();
 
 	const LABELS: Record<SaleStatus, string> = {
 		draft: "Draft",
@@ -25,11 +27,7 @@
 		archived: "bg-zinc-100 text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300",
 		deleted: "bg-zinc-100 text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300",
 	};
-	const when = $derived(
-		status === "scheduled" && liveAt !== null
-			? new Date(liveAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
-			: null,
-	);
+	const when = $derived(status === "scheduled" && liveAt !== null ? dates(liveAt) : null);
 </script>
 
 <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium {STYLES[status]}">

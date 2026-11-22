@@ -2,10 +2,11 @@
 	import { enhance } from "$app/forms";
 	import { PHASE_LABELS, RESCIND_REASON_LABELS } from "#lib/control-room.ts";
 	import type { PageProps } from "./$types";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	let { data, form }: PageProps = $props();
-	const fmt = (ms: number) =>
-		new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+	const dates = useDates();
+	const fmt = (ms: number) => dates(ms);
 	const who = (handle: string | null) => (handle ? `@${handle}` : "an account without a handle");
 </script>
 

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { useDates } from "#lib/time-zone.svelte.ts";
+
 	interface Item {
 		readonly id: string;
 		readonly title: string;
@@ -12,14 +14,9 @@
 	}
 
 	let { notifications }: Props = $props();
+	const dates = useDates();
 
-	const when = (at: number) =>
-		new Date(at).toLocaleString("en-US", {
-			month: "short",
-			day: "numeric",
-			hour: "numeric",
-			minute: "2-digit",
-		});
+	const when = (at: number) => dates(at, "short");
 </script>
 
 {#if notifications.length === 0}

@@ -5,6 +5,7 @@ import ItemCard from "./ItemCard.svelte";
 import SaleDetailsFields from "./SaleDetailsFields.svelte";
 import SaleStatusBadge from "./SaleStatusBadge.svelte";
 import WizardSteps from "./WizardSteps.svelte";
+import { timeZoneContext } from "#lib/time-zone.svelte.ts";
 
 describe("WizardSteps", () => {
 	it("marks the current step and links back to finished ones", async () => {
@@ -33,6 +34,16 @@ describe("SaleStatusBadge", () => {
 				.element()
 				.closest("time") ?? page.getByRole("time").element();
 		expect(time?.getAttribute("datetime")).toBe(new Date(liveAt).toISOString());
+	});
+
+	it("shows the go-live time in the viewer's time zone, not the server's", async () => {
+		// Regression: pages rendered on the Worker showed UTC ("opens 11:09 PM" for 6:09 PM EST).
+		const liveAt = Date.UTC(2026, 10, 20, 23, 9);
+		await render(SaleStatusBadge, {
+			props: { status: "scheduled", liveAt },
+			context: timeZoneContext("America/New_York"),
+		});
+		await expect.element(page.getByText("Nov 20, 2026, 6:09 PM")).toBeVisible();
 	});
 
 	it("shows plain labels for other statuses", async () => {

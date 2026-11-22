@@ -2,17 +2,20 @@
 	import { formatCents } from "@claimsale/core";
 	import { enhance } from "$app/forms";
 	import InvoiceLines from "#lib/components/InvoiceLines.svelte";
+	import TrackingNumber from "#lib/components/TrackingNumber.svelte";
 	import { addressLines, INVOICE_STATUS_LABELS } from "#lib/invoice-labels.ts";
 	import { PAYMENT_METHODS, UNPROTECTED_METHODS } from "#lib/listing-input.ts";
 	import type { PageProps } from "./$types";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	let { data, form }: PageProps = $props();
+	const dates = useDates();
 	const invoice = $derived(data.invoice);
 	const payable = $derived(invoice.status === "sent" || invoice.status === "overdue");
 	const message = $derived(form && "message" in form ? form.message : null);
 	const values = $derived(form && "values" in form ? form.values : null);
 	const methodName = (id: string) => PAYMENT_METHODS.find((m) => m.id === id)?.name ?? id;
-	const at = (ms: number | null) => (ms === null ? "" : new Date(ms).toLocaleString());
+	const at = (ms: number | null) => (ms === null ? "" : dates(ms));
 	const defaultAddress = $derived(data.addresses.find((a) => a.isDefault)?.id ?? data.addresses[0]?.id ?? "");
 	const fieldClass =
 		"rounded-md border border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900";
@@ -130,8 +133,7 @@
 				<dd>{at(invoice.shippedAt)}</dd>{/if}
 			{#if invoice.tracking}<dt class="font-medium">Tracking</dt>
 				<dd data-testid="tracking">
-					{invoice.tracking.carrier}
-					{invoice.tracking.number}
+					<TrackingNumber carrier={invoice.tracking.carrier} number={invoice.tracking.number} />
 				</dd>{/if}
 		</dl>
 		{#if invoice.address}

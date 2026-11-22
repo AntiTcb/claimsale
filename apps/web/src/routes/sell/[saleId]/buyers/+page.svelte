@@ -3,13 +3,15 @@
 	import { enhance } from "$app/forms";
 	import { INVOICE_STATUS_LABELS } from "#lib/invoice-labels.ts";
 	import type { PageProps } from "./$types";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	let { data, form }: PageProps = $props();
+	const dates = useDates();
 	const closed = $derived(data.sale.status === "closed" || data.sale.status === "archived");
 	const drafts = $derived(
 		data.buyers.reduce((n, b) => n + b.invoices.filter((i) => i.status === "draft").length, 0),
 	);
-	const due = (at: number | null) => (at === null ? "" : new Date(at).toLocaleString());
+	const due = (at: number | null) => (at === null ? "" : dates(at));
 </script>
 
 <svelte:head>

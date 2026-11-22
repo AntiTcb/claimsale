@@ -2,10 +2,11 @@
 	import { enhance } from "$app/forms";
 	import { REPORT_REASON_LABELS } from "#lib/report-reasons.ts";
 	import type { PageProps } from "./$types";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	let { data, form }: PageProps = $props();
-	const fmt = (ms: number) =>
-		new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+	const dates = useDates();
+	const fmt = (ms: number) => dates(ms);
 	const input = "rounded-md border border-zinc-300 bg-white px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900";
 </script>
 

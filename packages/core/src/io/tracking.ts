@@ -290,3 +290,28 @@ export function carrierName(result: CarrierResult): string | null {
 	if (result.status === "given") return result.carrier === null ? result.name : CARRIER_NAMES[result.carrier];
 	return null;
 }
+
+/** Each carrier's public tracking page; the number goes in the query string. */
+const TRACKING_PAGES: Readonly<Record<Carrier, string>> = {
+	usps: "https://tools.usps.com/go/TrackConfirmAction?tLabels=",
+	ups: "https://www.ups.com/track?tracknum=",
+	fedex: "https://www.fedex.com/fedextrack/?trknbr=",
+	dhl: "https://www.dhl.com/us-en/home/tracking.html?submit=1&tracking-id=",
+};
+
+/**
+ * The carrier's tracking page for a shipped invoice's tracking.
+ *
+ * @spec IO-tracking-link
+ *
+ * The stored carrier name decides the page (USPS, UPS, FedEx or DHL, by any of their
+ * usual names); a blank one falls back to detection from the number. A carrier we
+ * don't know, or a number that fits several, gets no link.
+ */
+export function trackingUrl(carrier: string, trackingNumber: string): string | null {
+	const number = normalizeTrackingNumber(trackingNumber);
+	if (number === "") return null;
+	const result = resolveCarrier(carrier, number);
+	const known = result.status === "detected" || result.status === "given" ? result.carrier : null;
+	return known === null ? null : TRACKING_PAGES[known] + encodeURIComponent(number);
+}

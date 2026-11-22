@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { REPORT_REASON_LABELS, REPORT_REASONS } from "@claimsale/core";
 	import type { ThreadMessage } from "#lib/messaging/thread.ts";
+	import { useDates } from "#lib/time-zone.svelte.ts";
 
 	interface Props {
 		messages: readonly ThreadMessage[];
@@ -9,14 +10,9 @@
 	}
 
 	let { messages, canReport = true }: Props = $props();
+	const dates = useDates();
 
-	const when = (at: number) =>
-		new Date(at).toLocaleString("en-US", {
-			month: "short",
-			day: "numeric",
-			hour: "numeric",
-			minute: "2-digit",
-		});
+	const when = (at: number) => dates(at, "short");
 </script>
 
 {#if messages.length === 0}
