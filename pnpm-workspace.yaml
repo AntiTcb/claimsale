@@ -61,7 +61,7 @@ catalog:
   cf: 1.0.0-beta.29
   # Infisical CLI: secrets source of truth, synced to GitHub Environments (TECH_STACK S39).
   # Keep the global install (winget infisical.infisical) on the same version.
-  "@infisical/cli": 0.45.6
+  "@infisical/cli": 0.45.12
   typescript: 6.0.3
   "@types/node": 26.6.4
   oxlint: 1.87.0
