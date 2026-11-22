@@ -174,8 +174,8 @@ catalogs:
       specifier: 4.0.1
       version: 4.0.1
     '@infisical/cli':
-      specifier: 0.45.6
-      version: 0.45.6
+      specifier: 0.45.12
+      version: 0.45.12
     '@jsquash/jpeg':
       specifier: 1.6.0
       version: 1.6.0
@@ -289,7 +289,7 @@ importers:
     devDependencies:
       '@infisical/cli':
         specifier: 'catalog:'
-        version: 0.45.6
+        version: 0.45.12
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -1705,8 +1705,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@infisical/cli@0.45.6':
-    resolution: {integrity: sha512-TclkBhlp0J09LfVTbB4ybvGRKk4YumLzYo48lKtJBUlpzxxgGY5hFjIF8Y7vCZv/9MOA4PAbmgKd5qJwgxKzHw==}
+  '@infisical/cli@0.45.12':
+    resolution: {integrity: sha512-u6fBgqukyd1r/rVCfQzED8Zg5VNrzxkaWWi2159Ln8KrjRgV0ktf7BjqG/3fepzk+xiU+NYn0Qp15Sam1BLJ7g==}
     hasBin: true
 
   '@isaacs/fs-minipass@4.0.1':
@@ -4222,7 +4222,7 @@ snapshots:
   '@img/sharp-win32-x64@0.35.5':
     optional: true
 
-  '@infisical/cli@0.45.6':
+  '@infisical/cli@0.45.12':
     dependencies:
       tar: 7.5.22
       yauzl: 3.4.0
